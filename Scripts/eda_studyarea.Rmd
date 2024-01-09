@@ -1,0 +1,64 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+
+
+library(ggplot2)
+library(sf)
+library(terra)
+
+library(tmap)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = "C://Users//tg505//OneDrive - University of Exeter//Ecological Resilience//Scratch", progress=10)
+```
+
+
+##Introduction
+In this sccript I do EDA to determine areas of interest for proof of concept study of ecological resilience thresholds.
+For Brazil, I use Rosan et al., 2019 Woody Encroachment study as a basis to select for areas of interest (Fig 1)
+Rosan et al., emailed to me the EVImax trend and statistical significance rasters to extract areas where there is woody encroachment in the Cerrado. These areas were defined to be those where EVImax slope>0.002 with p<0.1, which I process in the chunk below.
+
+```{r}
+evimax_slope<- rast("C://Users//tg505//OneDrive - University of Exeter//Ecological Resilience//Data//Rosanetal2019_WoodyEncroachment//trendEVImax.tif")
+p<- rast("C://Users//tg505//OneDrive - University of Exeter//Ecological Resilience//Data//Rosanetal2019_WoodyEncroachment//pvalueEVImax.tif")
+
+Sys.time();evimax_slope[evimax_slope<=0.002]<- NA
+evimax_slope[evimax_slope>0]<-1
+p[p>0.1]<- NA
+p[p<1]<-1;Sys.time()
+
+aoi<-p+evimax_slope
+#writeRaster(aoi, "C://Users//tg505//OneDrive - University of Exeter//Ecological #Resilience//Data//Rosanetal2019_WoodyEncroachment//woodyencroachment.tif",overwrite=T)
+
+remove(evimax_slope, p)
+```
+
+Above areas are woody encroached in the Cerrado (+ 100km border into surrounding biomes)
+I add the Koppen climate zones to see if areas woody encroached are in the same climate zone (savanna presumably).
+
+
+```{r}
+cerrado_border<- st_read("C://Users//tg505//OneDrive - University of Exeter//Ecological Resilience//Data//Admin//biome_border//biome_border.shp")
+
+koppen_climate<- rast("C://Users//tg505//OneDrive - University of Exeter//DPhil//Paper2//Data//KoppenClimate//Beck_KG_V1_present_0p0083.tif")
+plot(koppen_climate)
+
+#changing crs to match aoi
+koppen_climate_proj<- terra::project(koppen_climate, aoi, method="near")
+koppen_climate_aoi<- terra::crop(koppen_climate_proj, aoi)
+koppen_climate_aoi<- terra::mask(koppen_climate_aoi, aoi)
+#writeRaster(koppen_climate_aoi, "C://Users//tg505//OneDrive - University of Exeter//Ecological Resilience//Scratch//woodyencroachment_koppen.tif",overwrite=T)
+```
+
+Visually checked that woody encroached areas from Rosan et al are in which Koppen climate zones in  QGIS. Region 1 & 5 in the central north and bordering Caatinga are in the Tropical savanna zone. This means that I can control for climate broadly and attribute any changes to disturbances (fire and changes in ppt). I also overlayed future climate zones as well and it looks like largely all woody encroached pixels will be in the Tropical savanna climate zone.
+
+
+
