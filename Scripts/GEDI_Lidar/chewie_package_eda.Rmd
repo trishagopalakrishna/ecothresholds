@@ -1,0 +1,71 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+library(pak)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+```
+
+
+##Introduction
+In this script I learn how to use the chewie package to download GEDI LiDAR. 
+I follow the tutorial on the chewie github page https://github.com/Permian-Global-Research/chewie
+First, I load the library, log in to my earthdata profile (NASA has the GEDI prints) and then set a cache folder, which I think is like a Scratch folder
+```{r}
+#pak::pkg_install("Permian-Global-Research/chewie")
+library (chewie)
+
+chewie_creds(force = T) # to set up your credentials
+chewie_health_check() # to check your credentials and cache setup.
+```
+
+Then I load the climate zones & chapada national park shp and search for gedi footprints that intersect with them. 
+```{r}
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+plot(d_trans)
+d_trans<- st_transform(d_trans, crs = 4326)
+
+chapada<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp", "WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp"))
+plot(chapada)
+
+gedi_1b_search <- find_gedi(chapada,
+  gedi_product = "1B",
+  date_start = "2019-05-31"
+)
+
+print(gedi_1b_search) #134 footprints in chapada area
+plot(gedi_1b_search)
+
+chewie_show(
+  gedi_1b_search,
+  time_group = "year",
+  zoom = 8
+) #shows the footprints and the year in which the satellite went over the footprint
+
+```
+
+
+```{r}
+gedi_1b_sf <- grab_gedi(gedi_1b_search) |>
+  select(
+   beam, rxwaveform, shot_number,txwaveform, longitude_bin0, latitude_bin0
+  ) |>
+  collect_gedi(gedi_find = gedi_1b_search)
+
+```

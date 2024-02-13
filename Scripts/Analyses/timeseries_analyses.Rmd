@@ -1,0 +1,193 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I explore the time series decomposition and then regression analyses of the decomposed components of the monthly anisoEVI values. 
+
+##Data input
+```{r}
+evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
+evi_raster_list<-lapply(evi_list, rast)
+aniso_evi<- rast(evi_raster_list)
+aniso_evi<- aniso_evi/10^5 #scaling factor mentioned on the description page of the GEE asset
+
+##changing band names to year and months
+colnames<- list()
+tic(); for ( i in 1:length(evi_list)){
+  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
+  colnames[[i]] <-x
+}; toc()
+colnames<- unlist(colnames)
+names(aniso_evi)<- colnames
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+```
+##Analyses
+
+##Decomposition analyses
+Marina and I discussed decomposing the trend into seasonal and long term trend using the BFAST (Breaks For Additive Seasonal and Trend) algorithm (Verbesselt et al., 2010). I read the Jong et al., 2012 GCB paper about global greening and browning and found it pretty solid. So here I try it out. There is a R package and here I try to better understand it. https://bfast.r-forge.r-project.org/
+
+Also see this post comparing bfast and Rbeast- https://stackoverflow.com/questions/52708697/detect-changes-in-the-seasonal-component-using-bfast. First trying bfast and then Rbeast
+```{r}
+#install.packages(c("Rbeast", "bfast"))
+library(Rbeast)
+library(bfast)
+
+ts_fun <- function(x) { 
+ x.ts = ts(x, start=c(2000,3), end=c(2021,12), frequency=12)
+ }
+
+tic(); evi_ts<- terra::app(aniso_evi, ts_fun); toc() #this is no different from the original aniso_evi stack 
+#because the original aniso_evi stack is neatly arranged in chronological order
+
+################## 1. Selecting a couple of random pixels (50) in each of the three zones 
+r<- aniso_evi[[1]] #take first raster of anisoevi stack
+empty<- rast(ext(r), resolution = res(r))
+crs(empty) <- crs(r)
+values(empty)<-1
+
+empty<- terra::crop(empty, d_trans)
+empty<- terra::mask(empty, d_trans)
+
+empty_zones<- list()
+tic(); for (i in 1:length(d_trans)){
+  geom<- d_trans$geometry[[i]]
+  rsample<- terra::crop(empty, vect(geom))
+  rsample<- terra::mask (rsample, vect(geom))
+  empty_zones[[i]]<- rsample
+}; toc()
+
+random_points_zones<- list()
+tic(); for (i in 1:length(empty_zones)){
+  x<- terra::spatSample(empty_zones[[i]], size = 50, method = "random", replace = FALSE, as.points= TRUE, na.rm=T)
+  random_points_zones[[i]]<- x
+}; toc()
+
+all_random_points<- do.call(rbind,random_points_zones)
+all_random_points<- st_as_sf(all_random_points) %>% mutate(PointID= 1:dim(all_random_points)[1])
+all_random_points<- all_random_points %>% st_join(d_trans)
+all_random_points$region #there are 2 points with NA region. I checked in QGIS. These two points are on the border of the southern region
+all_random_points<- all_random_points %>% mutate(region = ifelse(is.na(region), "Southern", region))
+st_write(all_random_points, here("Outputs","BFAST_Decomposition", "randompoints_generated_bfast_trial.shp"))
+remove(r, empty, empty_zones, random_points_zones)
+
+#neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+#map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+#                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+#random_points_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+#  tm_shape(d_trans)+ tm_fill()+
+#  tm_shape( st_as_sf(all_random_points))+ tm_dots()+
+#              tm_layout (legend.position = c("left", "bottom"))+
+#              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+#tmap_save(random_points_map, here("Outputs", "BFAST_Decomposition", "random_points_map.png") )
+#remove(neighbors, map_extent, random_points_map)
+
+################## 2. Sampling anisoEVI through time in the random pixels
+all_random_points<- st_read(here("Outputs", "BFAST_Decomposition", "randompoints_generated_bfast_trial.shp"))
+tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, method= "simple", xy=TRUE); toc()
+
+################## 3. Trial BFAST across above points
+#The main parameter to be input is h. h is calculated as the minimal segment size between potentially detected breaks in the trend model given as fraction relative to the sample size (i.e. the minimal number of observations in each segment divided by the total length of the timeseries). 
+#So I understand in terms of number of points of season switches i.e 2 a year which is 2*21 across the entire time-series 
+#which means h= (2*21)/261 (because h is a proportion). So trying this out for all random points below
+
+
+for (i in 1:length(all_random_points$PointID)){
+  print (paste0("Point number ", i))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y"))
+  print ("Creating time series object")
+  x.ts <- ts(unlist(one_point), frequency = 12) 
+  tic(); trial<- bfast::bfast(x.ts, h=(2*21)/261, season = "harmonic", max.iter = 20); toc()
+  print ("Completed bfast decomposition")
+  dev.off()
+  jpeg(here("Outputs", "BFAST_Decomposition", paste0("decomposition_point_",all_random_points$PointID[i], ".jpg")))
+  plot(trial)
+  dev.off()
+  print ("Check jpeg file on disk")
+}
+
+one_point<- anisoEVI_random_points[1,] %>% dplyr::select(-c("ID", "x", "y"))
+nbr.NA <- sum(!is.na(as.vector(one_point))) #Of 261 month steps, there are 257 with values i.e. 4 NA values
+x.ts <- ts(unlist(one_point), frequency = 12) 
+tic(); trial<- bfast::bfast(x.ts, h=(2*21)/261, season = "harmonic", max.iter = 20); toc()
+remove(nbr.NA)
+#Consider all points
+
+
+```
+
+
+#1- No trend lm
+```{r}
+no_trend_coef_fun <- function(x) { 
+  if (is.na(x[1])){ NA } 
+  else { m = lm(x ~ 1); #no trend means, the resulting x will be the mean of all the time series NDVI
+  summary(m)$coefficients[1] 
+  }}
+tic(); no_trend.slope<- terra::app(aniso_evi, no_trend_coef_fun); toc()
+plot(no_trend.slope, main="slope")
+```
+
+
+
+#2- Trying out linear regression curve fitting as per
+https://matinbrandt.wordpress.com/2013/11/15/pixel-wise-time-series-trend-anaylsis-with-ndvi-gimms-and-r/
+```{r}
+time <- 1:nlyr(aniso_evi) 
+lm_coef_fun <- function(x) { 
+  if (is.na(x[1])){ NA } #if all pixels in the first column (ie same pixels through time) are NA, then result is NA
+  else { m = lm(x ~ time); 
+  summary(m)$coefficients[2] 
+  }}
+tic(); evi.slope<- terra::app(aniso_evi, lm_coef_fun); toc()
+plot(evi.slope, main="slope")
+
+lm_p_fun<- function(x) { 
+  if (is.na(x[1])){ NA } #if all pixels in the first column (ie same pixels through time) are NA, then result is NA
+  else { m = lm(x ~ time); 
+  summary(m)$coefficients[8] 
+  }}
+tic(); p <- terra::app(aniso_evi, fun=lm_p_fun); toc()
+plot(p, main="p-Value")
+
+m = c(0, 0.05, 1, 0.05, 1, 0) 
+rclmat <- matrix(m, ncol=3, byrow=TRUE) #<0.05 is significant, so pixel values=1
+tic(); p.mask <- terra::classify(p, rclmat); toc()
+mask_fun<- function(x) {
+  x[x<1] <- NA; #if pixel =0, then make it NA to mask out non-significant p values
+  return(x)
+  }
+tic(); p.mask.NA<- terra:: app(p.mask, mask_fun); toc()
+
+trend.sig <- terra::mask(evi.slope, p.mask.NA)
+plot(trend.sig, main="significant NDVI change")
+
+```
+

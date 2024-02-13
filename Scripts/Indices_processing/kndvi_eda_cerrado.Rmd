@@ -1,0 +1,180 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I complete preprocessing and EDA of the temporal monthly kNDVI product (MODIS based). 
+
+##Data input
+Each imported raster has 12 bands, each being kNDVI for a month of that yearly raster
+```{r}
+ndvi_list <- list.files(path = here("Data", "Indices", "kNDVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+ndvi_list <-gtools::mixedsort(ndvi_list ) #arranging rasters chronologically
+ndvi_raster_list<-lapply(ndvi_list, rast)
+
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+plot(d_trans)
+d_trans<- st_transform(d_trans, crs = 4326)
+
+kndvi<- rast(ndvi_raster_list)
+names(kndvi) #all rasters are arranges chronologically
+res(kndvi) #0.0044 deg which is half that of aniso EVI because I exported kndvi with resolution 500m and aniso EVI with resolution=1000m 
+
+```
+
+##Extract mean kNDVI evi values in each cliamte zone across the time period (monthly kNDVI product 2000-2021)
+```{r}
+kNDVI<- rast(ndvi_raster_list)
+regions<- d_trans$region
+
+tic(); trial<- terra::zonal(kNDVI, vect(d_trans), func = "mean", na.rm= T); toc() #10.4 min
+
+trial<- trial %>% mutate(Region= d_trans$region)
+
+#plot
+kndvi_pivot<- pivot_longer(trial, cols= 1:274)
+kndvi_region_plot<- ggplot(kndvi_pivot, aes(name, value, group= Region, colour= Region)) +
+           geom_line(na.rm=TRUE) +
+  ylab("Mean kNDVI") + xlab("Time")+
+  scale_color_manual(values= c("#1b9e77", "#d95f02", "#7570b3"))+
+  theme_pubr()+theme(axis.text.x= element_blank(), axis.ticks.x = element_blank())
+ggsave(here("Outputs", "Indices", "kndvi_2000_2022_monthly_byclimatezone.png"),kndvi_region_plot, dpi=300)
+
+```
+
+##Monthly kNDVI time series map animation
+```{r}
+library(magick) #for animation
+library(tmaptools)
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+tic(); agg_kndvi<- terra::aggregate(kndvi, fact = 6 , fun= "median");toc() #aggregating factor double that of anisoEVI takes 1 hour 16 min
+
+tmap_mode("plot")
+kndvi_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape( agg_kndvi)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="kNDVI") + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+
+tic();tmap_animation(kndvi_map, filename = here("Outputs", "Indices", "monthly_kNDVI_map.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+
+remove(agg_kndvi, map_extent, neighbors)
+
+```
+
+##Coverage of monthly kNDVI across space
+```{r}
+##converting all pixels that have an kndvi value to be 1 and every other NA valued pixel to be 0
+tic(); coverage<- kndvi; toc()
+tic(); coverage[!is.na(coverage)]<-1;toc() #40 min
+tic(); coverage[is.na(coverage)]<-0; toc() #11 min
+coverage<- terra::mask(coverage, d_trans)
+tic(); coverage_sum<- terra::app(coverage, fun= "sum"); toc()
+
+#tmap_mode("plot")
+#coverage_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+#  tm_shape(d_trans)+ tm_fill()+
+#  tm_shape( coverage_sum)+
+#  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="Coverage") + 
+#              tm_layout (legend.position = c("left", "bottom"))
+#tmap_save(coverage_map, here("Outputs", "Indices", "kndvi_coverage.png"))
+
+
+total_cells<-length(terra::cells(coverage_sum)) #8532073
+tic(); coverage_df<- terra::as.data.frame(coverage_sum); toc()
+
+pixels_with_value_plot<- ggplot(coverage_df, aes(x=sum)) + 
+  geom_histogram(color= "black", fill= "lightblue")+
+  xlab("Temporal kNDVI sum")+ylab("Count")
+ggsave(here("Outputs", "Indices", "kndvi_count_histo.png"),pixels_with_value_plot, dpi=300) 
+```
+
+##kNDVI range across known veg types (savanna, dry forest and gallery forest from Cure et al., 2023)
+Marina's collegue Marcio Cure sent to me via email the GPS points of the three veg types in their EVI2 Coupling paper.  
+```{r}
+cure_points<- read.csv(here("Data", "Cureetal2023_EVI2Coupling_Chapada", "coordenadas_cure_et_al(2023).csv"))
+cure_points %>% group_by(Vegetation) %>% summarise(count=n()) #10 points of each vegetation type
+cure_points<- cure_points %>% mutate(PointID= 1:dim(cure_points)[1])
+cure_points_shp<- st_as_sf(cure_points, coords = c("x", "y"))
+cure_points_shp<- st_set_crs(cure_points_shp, 4326)
+
+tic();kndvi_cure<- terra::extract(kndvi, cure_points_shp, method = "simple", xy=TRUE); toc()
+kndvi_cure<- dplyr::inner_join(kndvi_cure, (cure_points_shp %>% st_drop_geometry()), by=join_by(ID==PointID) )
+
+kndvi_cure_pivot<- kndvi_cure %>% pivot_longer(cols=2:275)
+kndvi_cure_pivot<- kndvi_cure_pivot %>% dplyr::select(-c(x,y))
+## boxplot showing kNDVI (through the years) for each point in each in each of the vegetation types
+p<-ggplot(kndvi_cure %>% pivot_longer(cols=2:275), aes(x=factor(ID), y=value, fill= factor(Vegetation))) +
+  geom_boxplot() +
+  scale_fill_brewer(palette="Dark2") +
+  theme_classic() + 
+  theme(legend.title = element_blank()) + 
+  ylab("kNDVI 2000-2022") +xlab("Points from Cure et al., 2023")
+#ggsave(here("Outputs", "Indices", "kndvi_Cure_points.png"), p)  
+remove(p, kndvi_cure_pivot)
+
+#Making Fig 4 from anisoEVI paper i.e. time series of anisoEVI but instead of location, I have vegetation type
+# For this I will calcualte the mean anisoEVI value for each time period across all points for the three veg types 
+fig4_df<- kndvi_cure %>% dplyr::select(-c(x,y, ID)) %>%
+  group_by(Vegetation) %>% summarise(across(everything(), list(mean)))
+fig4_df_pivot<- pivot_longer(fig4_df, cols = 2:275)
+q<-ggplot(fig4_df_pivot, aes(x=name, y=value, group= Vegetation)) +
+  geom_line() + 
+  theme_classic()+ 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())+
+  facet_wrap(~Vegetation, ncol = 1, scales = "free")+ ylab("kNDVI") +xlab("Time in months (2000 - 2022)")
+#ggsave(here("Outputs", "Indices", "kNDVI_Cure_points_throughtime.png"), q)  
+remove(q, fig4_df, fig4_df_pivot)
+
+#Making Fig 5 from anisoEVI paper i.e. monthly time series but instead of phenoregions across Amazon, I have vegetation type
+# For this I will calculate mean anisoEVI for all Jans, all Febs etc for all points in each vegetation type (with 10 points I should be able to extract 95% CI)
+x<- kndvi_cure %>% pivot_longer(cols = contains("kndvi_2")) %>% separate_wider_delim(cols = name, delim = "_", names = c("kndvi","Year", "Month"))
+x<- x %>% dplyr::select(-kndvi)
+x_month_kndvi<- x %>% group_by(Vegetation, Month) %>% summarise(Mean_kndvi=mean(value, na.rm=T),
+                                                              SDkndvi= sd(value, na.rm=T),
+                                                              nkndvi= n())%>%
+  mutate(sekndvi= SDkndvi/sqrt(nkndvi),
+         lower.ci= Mean_kndvi - qt(1 - (0.05 / 2), nkndvi - 1) * sekndvi,
+         upper.ci= Mean_kndvi + qt(1 - (0.05 / 2), nkndvi - 1) * sekndvi)
+x_month_kndvi$Month<- as.integer(x_month_kndvi$Month)
+x_month_kndvi <- x_month_kndvi %>% arrange(Month)
+
+p<-ggplot(data=x_month_kndvi, aes(x=Month, y=Mean_kndvi, group=Vegetation, colour= Vegetation)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2")+
+  geom_ribbon(aes(ymin=x_month_kndvi$lower.ci, ymax=x_month_kndvi$upper.ci, fill= Vegetation), linetype=2, alpha=0.1)+
+  scale_x_continuous(breaks=seq(1, 12, 1)) +
+  scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())
+ggsave(here("Outputs", "Indices", "kndvi_Cure_points_month.png"), p) 
+remove(p, x, x_month_kndvi)
+
+
+```

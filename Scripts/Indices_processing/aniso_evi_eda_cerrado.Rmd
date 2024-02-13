@@ -1,0 +1,236 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I complete preprocessing and EDA of the temporal monthly anisoEVI product (MODIS based). 
+
+##Data input
+```{r}
+evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
+evi_raster_list<-lapply(evi_list, rast)
+aniso_evi<- rast(evi_raster_list)
+aniso_evi<- aniso_evi/10^5 #scaling factor mentioned on the description page of the GEE asset
+
+##changing band names to year and months
+colnames<- list()
+tic(); for ( i in 1:length(evi_list)){
+  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
+  colnames[[i]] <-x
+}; toc()
+colnames<- unlist(colnames)
+names(aniso_evi)<- colnames
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+```
+
+##Monthly anisoEVI time series map
+```{r}
+library(magick) #for animation
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+tic(); agg_anisoevi<- terra::aggregate(aniso_evi, fact = 3 , fun= "median");toc()
+
+tmap_mode("plot")
+aniso_evi_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape( agg_anisoevi)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="anisoEVI") + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+
+tic();tmap_animation(aniso_evi_map, filename = here("Outputs", "Indices", "monthly_anisoEVI_map.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+
+remove(agg_anisoevi, map_extent, neighbors)
+```
+
+
+##Extract mean aniso evi values in each cliamte zone across the time period (monthly aniso evi product 2000-2021)
+```{r}
+regions<- d_trans$region
+
+tic(); trial<- terra::zonal(aniso_evi, vect(d_trans), func = "mean", na.rm= T); toc() #2 min
+names(trial)<- colnames #colnames from 1st chunk
+trial<- trial %>% mutate(Region= d_trans$region)
+
+#plot
+aniso_evi_pivot<- pivot_longer(trial, cols= 1:261)
+anisoevi_region_plot<- ggplot(aniso_evi_pivot, aes(name, value, group= Region, colour= Region)) +
+           geom_line(na.rm=TRUE) +
+  ylab("Mean anisoEVI") + xlab("Time")+
+  scale_color_manual(values= c("#1b9e77", "#d95f02", "#7570b3"))+
+  theme_pubr()+theme(axis.text.x= element_blank(), axis.ticks.x = element_blank())
+ggsave(here("Outputs", "AnisoEVI", "anisoEVI_2000_2021_monthly_byclimatezone.png"),anisoevi_region_plot, dpi=300)
+
+```
+
+## Estimating how much of the three climate zones, there is anisoEVI information (because it anisoEVI is not wall to wall)
+```{r}
+##converting all pixels that have an anisoEVI value to be 1 and every other NA valued pixel to be 0
+tic(); coverage<- aniso_evi; toc()
+tic(); coverage[!is.na(coverage)]<-1;toc()# 7.5 min
+tic(); coverage[is.na(coverage)]<-0; toc() #6.3 min
+coverage<- terra::mask(coverage, d_trans)
+tic(); coverage_sum<- terra::app(coverage, fun= "sum"); toc()
+
+
+#tmap_mode("plot")
+#coverage_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+#  tm_shape(d_trans)+ tm_fill()+
+#  tm_shape( coverage_sum)+
+#  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="Coverage") + 
+#              tm_layout (legend.position = c("left", "bottom"))
+#tmap_save(coverage_map, here("Outputs", "Indices", "aniso_evi_coverage.png"))
+
+total_cells<-length(terra::cells(coverage_sum)) #2139977
+tic(); coverage_df<- terra::as.data.frame(coverage_sum); toc()
+
+pixels_with_value_plot<- ggplot(coverage_df, aes(x=sum)) + 
+  geom_histogram(color= "black", fill= "lightblue")+
+  xlab("Temporal anisoEVI sum")+ylab("Count")
+ggsave(here("Outputs", "Indices", "anisoEVI_count_histo.png"),pixels_with_value_plot, dpi=300)  
+
+```
+
+
+
+
+##anisoEVI range across known veg types (savanna, dry forest and gallery forest from Lewis et al., 2022 &  Cure et al., 2023)
+Marina's collegue Marcio Cure sent to me via email the GPS points of the three veg types in their EVI2 Coupling paper.  
+
+I combine/union lewis et al and cure et al points. 
+
+```{r}
+cure_points<- read.csv(here("Data", "Cureetal2023_EVI2Coupling_Chapada", "coordenadas_cure_et_al(2023).csv"))
+cure_points %>% group_by(Vegetation) %>% summarise(count=n()) #10 points of each vegetation type
+#cure_points<- cure_points %>% mutate(PointID= 1:dim(cure_points)[1])
+cure_points_shp<- st_as_sf(cure_points, coords = c("x", "y"))
+cure_points_shp<- st_set_crs(cure_points_shp, 4326)
+#st_write (cure_points_shp, here("Data", "Cureetal2023_EVI2Coupling_Chapada", "curepoints.shp"))
+
+#to match lewis et al., 2022, I rename the Vegetaion column as Formation with savanna as savanna and dry forests as Forest and Woodland
+cure_points_shp<- cure_points_shp %>% mutate(Name= case_when( Vegetation=="Savanna"~"Savanna",
+                                                              Vegetation=="Dry Forest"~"mata_seca",
+                                                              Vegetation=="Gallery Forest"~"mata_de_galeria"))
+
+cure_points_shp<- cure_points_shp %>% mutate(Vegetation= case_when(Vegetation=="Savanna"~"Savanna",
+                                                              Vegetation=="Dry Forest"~"Forest and Woodland",
+                                                              Vegetation=="Gallery Forest"~"Forest and Woodland"))
+  
+names(cure_points_shp)[1]<- "Formation"
+                                             
+
+lewis_points<- st_read(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "prepped_points.shp"))
+
+points<- bind_rows(cure_points_shp, lewis_points)
+points<- points %>% mutate(PointID= 1:dim(points)[1])
+
+remove(cure_points, cure_points_shp, lewis_points)
+```
+
+
+
+```{r}
+tic();anisoEVI_points<- terra::extract(aniso_evi, points, method = "simple", xy=TRUE); toc()
+anisoEVI_points<- dplyr::inner_join(anisoEVI_points, (points %>% st_drop_geometry()), by=join_by(ID==PointID) )
+
+anisoEVI_points_veg<- anisoEVI_points %>% filter(Formation != "Agriculture"& Formation != "Water"& Formation != "Plantation"& Formation!="Pasture"& Formation!="Non Veg")
+
+## boxplot showing anisoEVI (through the years) for each point in each in each point in Cure et al 2023
+#p<-ggplot(anisoEVI_points_pivot, aes(x=factor(ID), y=value, fill= factor(Formation))) +
+#  geom_boxplot() +
+#  scale_fill_brewer(palette="Dark2") +
+#  theme_classic() + 
+#  theme(legend.title = element_blank()) + 
+#  ylab("anisoEVI 2000-2021") +xlab("Points from Cure et al., 2023")
+#ggsave(here("Outputs", "Indices", "anisoEVI_points.png"), p)  
+#remove(p, anisoEVI_cure_pivot)
+
+#Making Fig 4 from anisoEVI paper i.e. time series of anisoEVI but instead of location, I have formation and name type
+# For this I will calcualte the mean anisoEVI value for each time period across all points for the three veg types 
+fig4_df<- anisoEVI_points_veg %>% dplyr::select(-c(x,y, ID)) %>%
+  group_by(Formation) %>% summarise(across(everything(), list(mean)))
+fig4_df_pivot<- pivot_longer(fig4_df, cols = 2:262)
+q<-ggplot(fig4_df_pivot, aes(x=name, y=value, group= Formation)) +
+  geom_line() + 
+  theme_classic()+ 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())+
+  facet_wrap(~Formation, ncol = 1, scales = "free")+ ylab("anisoEVI") +xlab("Time in months (2000-2021)")
+#ggsave(here("Outputs", "Indices", "anisoEVI_points_formation_throughtime.png"), q)  
+remove(q, fig4_df, fig4_df_pivot)
+fig4_df<- anisoEVI_points_veg %>% dplyr::select(-c(x,y, ID)) %>%
+  group_by(Name) %>% summarise(across(everything(), list(mean)))
+fig4_df_pivot<- pivot_longer(fig4_df, cols = 2:262)
+a<-ggplot(fig4_df_pivot, aes(x=name, y=value, group= Name)) +
+  geom_line() + 
+  theme_classic()+ 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())+
+  facet_wrap(~Name, ncol = 1, scales = "free")+ ylab("anisoEVI") +xlab("Time in months (2000-2021)")
+ggsave(here("Outputs", "Indices", "anisoEVI_points_physiognomy_throughtime.png"), a) 
+remove(fig4_df, fig4_df_pivot, a)
+
+#Making Fig 5 from anisoEVI paper i.e. monthly time series but instead of phenoregions across Amazon, I have formation and name type
+# For this I will calculate mean anisoEVI for all Jans, all Febs etc for all points in each vegetation type (with 10 points I should be able to extract 95% CI)
+x<- anisoEVI_points_veg %>% pivot_longer(cols = starts_with("20")) %>% separate_wider_delim(cols = name, delim = "_", names = c("Year", "Month"))
+formation_month_evi<- x %>% group_by(Formation, Month) %>% summarise(MeananisoEVI=mean(value, na.rm=T),
+                                                              SDEVI= sd(value, na.rm=T),
+                                                              nEVI= n())%>%
+  mutate(seEVI= SDEVI/sqrt(nEVI),
+         lower.ci= MeananisoEVI - qt(1 - (0.05 / 2), nEVI - 1) * seEVI,
+         upper.ci= MeananisoEVI + qt(1 - (0.05 / 2), nEVI - 1) * seEVI)
+
+p<-ggplot(data=formation_month_evi, aes(x=Month, y=MeananisoEVI, group=Formation, colour= Formation)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2")+
+  geom_ribbon(aes(ymin=formation_month_evi$lower.ci, ymax=formation_month_evi$upper.ci, fill= Formation), linetype=2, alpha=0.1)+
+  scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())
+#ggsave(here("Outputs", "Indices", "anisoEVI_formation_points_month.png"), p) 
+remove(p, formation_month_evi)
+
+name_month_evi<- x %>% group_by(Name, Month) %>% summarise(MeananisoEVI=mean(value, na.rm=T),
+                                                              SDEVI= sd(value, na.rm=T),
+                                                              nEVI= n())%>%
+  mutate(seEVI= SDEVI/sqrt(nEVI),
+         lower.ci= MeananisoEVI - qt(1 - (0.05 / 2), nEVI - 1) * seEVI,
+         upper.ci= MeananisoEVI + qt(1 - (0.05 / 2), nEVI - 1) * seEVI)
+
+p<-ggplot(data=name_month_evi, aes(x=Month, y=MeananisoEVI, group=Name, colour= Name)) + 
+  geom_line() + scale_color_brewer(palette = "Set3")+
+  geom_ribbon(aes(ymin=name_month_evi$lower.ci, ymax=name_month_evi$upper.ci, fill= Name), linetype=2, alpha=0.1)+
+  scale_fill_brewer(palette = "Set3") +theme_classic() +theme(legend.title = element_blank())
+#ggsave(here("Outputs", "Indices", "anisoEVI_name_points_month.png"), p) 
+remove(p, name_month_evi)
+
+
+```
+
+

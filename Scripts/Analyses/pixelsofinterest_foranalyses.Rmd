@@ -1,0 +1,61 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script, I processes different masks to finalize pixels of interest at various spatial scales. 
+
+#MODIS LULC mask
+The first mask I work on is to finalize pixels within which I analyse trends in anisoEVI. Since anisoEVI is a MODIS derived product, I use the MODIS 500m annual LULC product on GEE. And with this product, I chose the plant functional types classification (see GEE) and exclude all water, unclassified and urban areas in GEE. I exported the data as a multiband image (each band is each year of LULC) in the original MODIS sinusoidal projection and native resolution (~500m). So in this script I mask to the cerrado border and change projection to match anisoEVI crs and scale. 
+
+```{r}
+evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
+evi_raster_list<-lapply(evi_list, rast)
+aniso_evi<- rast(evi_raster_list)
+aniso_evi<- aniso_evi/10^5 #scaling factor mentioned on the description page of the GEE asset
+
+##changing band names to year and months
+colnames<- list()
+tic(); for ( i in 1:length(evi_list)){
+  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
+  colnames[[i]] <-x
+}; toc()
+colnames<- unlist(colnames)
+names(aniso_evi)<- colnames
+
+modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "pixels_for_analyses.tif"))
+modis_mask
+
+############################## Projection and resolution alignment
+tic(); modis_mask_proj<- terra::project(modis_mask, aniso_evi, method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
+tic(); modis_mask<- terra::resample(modis_mask_proj, aniso_evi, method = "near"); toc()
+
+
+############################## Masking 2001 anisoEVI with 2001 MODIS LULC.......... till 2022
+#anisoEVI is from March 2000 to Dec 2021. So to match MODIS annual product which starts at 2001, I will get rid of the 2000 anisoEVI products
+aniso_evi<- aniso_evi[[11:261]]
+
+
+
+
+```
