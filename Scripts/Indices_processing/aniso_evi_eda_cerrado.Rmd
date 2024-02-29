@@ -24,27 +24,37 @@ terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
 ```
 
 ##Introduction
-In this script I complete preprocessing and EDA of the temporal monthly anisoEVI product (MODIS based). 
+In this script I complete preprocessing and EDA of the temporal monthly anisoEVI product (MODIS based), which I processed in GEE. 
 
 ##Data input
 ```{r}
-evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
-evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
-evi_raster_list<-lapply(evi_list, rast)
-aniso_evi<- rast(evi_raster_list)
-aniso_evi<- aniso_evi/10^5 #scaling factor mentioned on the description page of the GEE asset
+#evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+#evi_raster_list<-lapply(evi_list, rast)
+#tic(); evi<- do.call(mosaic,evi_raster_list); toc() #4.2 hours
+#writeRaster(evi, here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+
+evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+tic();evi<- evi/10^5;toc() #scaling factor mentioned on the description page of the GEE asset
 
 ##changing band names to year and months
 colnames<- list()
-tic(); for ( i in 1:length(evi_list)){
-  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
-  colnames[[i]] <-x
+tic(); for ( i in 1:nlyr(evi)){
+  x<- names(evi)[[i]]
+  y<- paste0(strsplit(x, "_")[[1]][5], "_",strsplit(x, "_")[[1]][6] )
+  colnames[[i]] <-y
 }; toc()
 colnames<- unlist(colnames)
-names(aniso_evi)<- colnames
+names(evi)<- colnames
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
+
+cerrado<- d_trans %>% st_union()
+cerrado_area<- terra::expanse(vect(cerrado), unit= "km") #2040045 sqkm which is 204 Mha
+
+buffer<-st_read(here ("Data", "Cattelanetal_Clustering", "buffer_climate_zones.shp"))
+
+tic();evi<-terra::mask(evi, vect(buffer)); toc()
 ```
 
 ##Monthly anisoEVI time series map
@@ -56,17 +66,18 @@ neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
 map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
                        ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
 
-tic(); agg_anisoevi<- terra::aggregate(aniso_evi, fact = 3 , fun= "median");toc()
+tic(); agg_anisoevi<- terra::aggregate(evi, fact = 3 , fun= "median");toc()
 
 tmap_mode("plot")
 aniso_evi_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  tm_shape(d_trans)+ tm_fill()+
   tm_shape( agg_anisoevi)+
   tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="anisoEVI") + 
               tm_layout (legend.position = c("left", "bottom"))+
-              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(d_trans)+ tm_borders()
+  
 
-tic();tmap_animation(aniso_evi_map, filename = here("Outputs", "Indices", "monthly_anisoEVI_map.gif"),
+tic();tmap_animation(aniso_evi_map, filename = here("Outputs", "Indices","anisoEVI", "monthly_anisoEVI_map2.gif"),
                delay = 50, loop = TRUE, restart.delay = 500,
                width = 900, height = 900, dpi = 150) ;toc() 
 
@@ -94,11 +105,42 @@ ggsave(here("Outputs", "AnisoEVI", "anisoEVI_2000_2021_monthly_byclimatezone.png
 
 ```
 
-## Estimating how much of the three climate zones, there is anisoEVI information (because it anisoEVI is not wall to wall)
+## Area estimates- for each month in the time period, calculating how much of 204 Mha has an anisoEVI value. 
+Estimating how much of the three climate zones, there is anisoEVI information (because anisoEVI is not wall to wall)
 ```{r}
-##converting all pixels that have an anisoEVI value to be 1 and every other NA valued pixel to be 0
+##converting all pixels that have an anisoEVI value to be 1 (only area needed, we do not need to know the actual anisoEVI value)
 tic(); coverage<- aniso_evi; toc()
 tic(); coverage[!is.na(coverage)]<-1;toc()# 7.5 min
+##getting area of all pixel values=1
+tic(); area<- terra::cellSize(coverage, mask=T, lyrs=T, unit= "km"); toc()
+names(area)<- colnames
+
+area_df<- as.tibble(colnames)
+area_df<- area_df %>% separate_wider_delim(cols = value, delim = "_", names = c("Year","Month"))
+area_df<- area_df %>% mutate(Year_Month=colnames)
+
+area_stack<- function (Year_Month){
+  terra::subset(area, grep(Year_Month, names (area)))
+}
+tic(); area_df<-area_df %>% mutate(monthlyarea = map(Year_Month, area_stack)); toc()
+
+sum_area<- function (area_raster){
+  sum(terra::values(area_raster), na.rm=T)
+}
+tic(); area_df<-area_df %>% mutate(EVI_area_sqkm = map(monthlyarea, sum_area)); toc() #25 min
+
+area_df<- area_df %>% mutate(TotalCerradoArea_sqkm= cerrado_area)
+area_df<- area_df %>% dplyr::select(-monthlyarea)
+area_df <- area_df %>% mutate(EVI_area_sqkm=unlist(EVI_area_sqkm))
+area_df<- area_df %>% mutate(proportion= (EVI_area_sqkm/TotalCerradoArea_sqkm)*100)
+
+x<-ggplot(data=area_df, aes(x=Year_Month, y=proportion)) +
+  geom_bar(stat="identity")+  theme_minimal()+
+  xlab("Time Step") + ylab("Percentage of total area of Cerrado/n for which there is anisoEVI information")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+ggsave(here("Outputs", "Indices","anisoEVI", "anisoEVI_cerrado_area_proportion.png"),x, dpi=300) 
+
+
 tic(); coverage[is.na(coverage)]<-0; toc() #6.3 min
 coverage<- terra::mask(coverage, d_trans)
 tic(); coverage_sum<- terra::app(coverage, fun= "sum"); toc()
@@ -234,3 +276,10 @@ remove(p, name_month_evi)
 ```
 
 
+```{r}
+
+
+
+
+
+```

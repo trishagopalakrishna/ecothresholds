@@ -142,6 +142,50 @@ remove(nbr.NA)
 
 
 ```
+Using the time series anisoEVI data in the random points above, I do some EDA with linear regression to understand how lm() in R treats time series data with NA. 
+
+```{r}
+pivot_all_random_points<- pivot_longer(anisoEVI_random_points, cols = 2:262)
+
+no_NA<- pivot_all_random_points %>% dplyr::select(-c(x,y)) %>%
+  group_by(ID) %>%  summarise(sum_na = sum(is.na(value)))
+
+
+absent_NA<- pivot_all_random_points %>% filter(ID==60)
+absent_NA<- absent_NA %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+absent_NA<- absent_NA %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+absent_NA<- absent_NA %>% mutate(Date= lubridate::as_date(Date))
+median_3NA<- pivot_all_random_points %>% filter(ID==147)
+median_3NA<- median_3NA %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+median_3NA<- median_3NA %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+median_3NA<- median_3NA %>% mutate(Date= lubridate::as_date(Date))
+max_46NA<- pivot_all_random_points %>% filter(ID==7)
+max_46NA<- max_46NA %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+max_46NA<- max_46NA %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+max_46NA<- max_46NA %>% mutate(Date= lubridate::as_date(Date))
+#absent_NA<- ts(absent_NA %>% dplyr::select(value),
+#                start=c(2000,3), end=c(2021,12), frequency=12)
+m = lm(value ~ Date, data = absent_NA)
+m1 = lm(value ~ Date, data = median_3NA)
+m2 = lm(value ~ Date, data = max_46NA)
+
+
+```
+Basically, lm() can handle NA. It excludes the NA points completely. As NAs increase, the lm still runs but the residual error increases and there is cost of losing degrees of freedom
+
+I was reading about this article about removing seasonal trend from data. It says that 'differencing' is an alternative to decomposition. So I try that in the chunk below
+https://atsa-es.github.io/atsa-labs/sec-tslab-differencing-to-remove-a-trend-or-seasonal-effects.html
+
+Specifically look at last sentence under 4.3.1
+" In addition, first-differencing a time series at a lag equal to the period will remove a seasonal trend (e.g., set lag = 12 for monthly data)."
+
+```{r}
+
+absentNA_d1_lag12 <- timeseries::diff(absent_NA$value, differences = 1, lag = 12)
+median_3NA_d1_lag12 <- timeseries::diff(median_3NA$value, differences = 1, lag = 12)
+```
+
+
 
 
 #1- No trend lm
