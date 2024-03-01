@@ -29,31 +29,33 @@ In this script, I processes different masks to finalize pixels of interest at va
 The first mask I work on is to finalize pixels within which I analyse trends in anisoEVI. Since anisoEVI is a MODIS derived product, I use the MODIS 500m annual LULC product on GEE. And with this product, I chose the plant functional types classification (see GEE) and exclude all water, unclassified and urban areas in GEE. I exported the data as a multiband image (each band is each year of LULC) in the original MODIS sinusoidal projection and native resolution (~500m). So in this script I mask to the cerrado border and change projection to match anisoEVI crs and scale. 
 
 ```{r}
-evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
-evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
-evi_raster_list<-lapply(evi_list, rast)
-aniso_evi<- rast(evi_raster_list)
-tic(); aniso_evi<- aniso_evi/10^5; toc() #scaling factor mentioned on the description page of the GEE asset
+evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+tic();evi<- evi/10^5;toc() #scaling factor mentioned on the description page of the GEE asset
 
 ##changing band names to year and months
 colnames<- list()
-tic(); for ( i in 1:length(evi_list)){
-  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
-  colnames[[i]] <-x
+tic(); for ( i in 1:nlyr(evi)){
+  x<- names(evi)[[i]]
+  y<- paste0(strsplit(x, "_")[[1]][5], "_",strsplit(x, "_")[[1]][6] )
+  colnames[[i]] <-y
 }; toc()
 colnames<- unlist(colnames)
-names(aniso_evi)<- colnames
+names(evi)<- colnames
 
-modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "MODIS_LULC_mask.tif"))
-modis_mask # all NA pixels i.e LULC excluded got exported as 0 from GEE. Also since I used a 'region' in the export to drive function, 
+########################################## BELOW PROJECTION ANALYSES IS COMPLETE, DO NOT REPEAT
+#modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "MODIS_LULC_mask.tif"))
+#modis_mask # all NA pixels i.e LULC excluded got exported as 0 from GEE. Also since I used a 'region' in the export to drive function, 
 # there are 0 pixel values outside the cerrado boundary which need to be masked. 
 # Also I am interested in using this only as a mask i.e. I do not need to know which LULC I have kept i.e do not need to keep pixel values 
 # of LULC retained. SO I reclassify all 0 values to NA and all non 0 values to 1. 
-tic(); modis_mask<- terra::classify(modis_mask, cbind(0,NA), others = 1); toc()
+#tic(); modis_mask<- terra::classify(modis_mask, cbind(0,NA), others = 1); toc()
 
-############################## Projection and resolution alignment
-tic(); modis_mask_proj<- terra::project(modis_mask, aniso_evi, method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
-tic(); modis_mask<- terra::resample(modis_mask_proj, aniso_evi, method = "near"); toc()
+#tic(); modis_mask_proj<- terra::project(modis_mask, evi, method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
+#tic(); modis_mask_proj2<- terra::crop(modis_mask_proj, evi)
+#writeRaster(modis_mask_proj2, here("Data", "Masks_to_define_pixelsofinterest", "proj_MODIS_LULC_mask.tif"))
+########################################## ABOVE PROJECTION ANALYSES IS COMPLETE, DO NOT REPEAT
+modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "proj_MODIS_LULC_mask.tif"))
+
 modis_mask_names<- seq(from = 2001, to=2022, by=1)
 tic(); for ( i in 1:length(modis_mask_names)){
   x<- paste0("mask_", modis_mask_names[[i]])
@@ -63,7 +65,7 @@ names(modis_mask)<- modis_mask_names
 
 ############################## Masking 2001 anisoEVI with 2001 MODIS LULC.......... till 2022
 #anisoEVI is from March 2000 to Dec 2021. So to match MODIS annual product which starts at 2001, I will get rid of the 2000 anisoEVI products
-aniso_evi<- aniso_evi[[11:261]]
+evi<- evi[[11:261]]
 colnames<- colnames[11:261]
 
 #Also, I have only annual masks, so all monthly anisoEVI for 2001, 2002 (12 rasters each) need to be masked by one mask
@@ -72,7 +74,7 @@ mask_df<- mask_df %>% separate_wider_delim(cols = value, delim = "_", names = c(
 mask_df<- mask_df %>% mutate(Year_Month=colnames)
 
 evi_stack<- function (Year_Month){
-  terra::subset(aniso_evi, grep(Year_Month, names (aniso_evi)))
+  terra::subset(evi, grep(Year_Month, names (evi)))
 }
 tic(); mask_df<-mask_df %>% mutate(monthlyanisoEVI = map(Year_Month, evi_stack)); toc()
 
@@ -84,7 +86,7 @@ tic(); mask_df<-mask_df %>% mutate(mask = map(Year, mask_stack)); toc() #12 sec
 masking_function<- function (anisoEVI_raster, mask_raster){
   terra::cover(mask_raster, anisoEVI_raster, values=1)
 }
-tic(); mask_df<-mask_df %>% mutate(masked_EVI = purrr::map2(monthlyanisoEVI, mask, masking_function)); toc() #71 min
+tic(); mask_df<-mask_df %>% mutate(masked_EVI = purrr::map2(monthlyanisoEVI, mask, masking_function)); toc() #took a long time 65183.45 seconds which is 18 hours!!
 
 writeRaster_function<- function (masked_evi_raster, name){
   terra::writeRaster(masked_evi_raster, here("Outputs", "Indices", "Masked_anisoEVI", paste0(name, "_maskedanisoEVI.tif")))

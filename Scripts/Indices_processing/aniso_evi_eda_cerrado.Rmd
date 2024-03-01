@@ -275,11 +275,3 @@ remove(p, name_month_evi)
 
 ```
 
-
-```{r}
-
-
-
-
-
-```
