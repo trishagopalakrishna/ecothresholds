@@ -98,7 +98,7 @@ tic(); mask_df<-mask_df %>% mutate(write_put = purrr::map2(masked_EVI, Year_Mont
 ```
 ------- ABOVE CHUNK IS COMPLETE AND WRITTEN OUT, START WITH NEXT CHUNK 
 
-Then I find the amount of area remaining i.e total area of pixels within which trends will be anlaysed. I present this a s a proportion of the total cerrado area
+Then I find the amount of area remaining i.e total area of pixels within which trends will be anlaysed. I present this as a proportion of the total cerrado area
 ```{r}
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -116,19 +116,24 @@ tic(); coverage[!is.na(coverage)]<-1;toc()# 2.3 min
 tic(); area<- terra::cellSize(coverage, mask=T, lyrs=T, unit= "km"); toc() ##2 min getting area of all pixel values=1
 names(area)<- colnames
 
+tic(); area2<- terra::crop(area, vect(d_trans), ); toc()
+tic(); area2<- terra::mask(area2, vect(d_trans), ); toc()
+names(area2)<- colnames
+
+
 area_mask_df<- as.tibble(colnames)
 area_mask_df<- area_mask_df %>% separate_wider_delim(cols = value, delim = "_", names = c("Year","Month"))
 area_mask_df<- area_mask_df %>% mutate(Year_Month=colnames)
 
 area_stack<- function (Year_Month){
-  terra::subset(area, grep(Year_Month, names (area)))
+  terra::subset(area2, grep(Year_Month, names (area2)))
 }
 tic(); area_mask_df<-area_mask_df %>% mutate(monthlyarea = map(Year_Month, area_stack)); toc()
 
 sum_area<- function (area_raster){
   sum(terra::values(area_raster), na.rm=T)
 }
-tic(); area_mask_df<-area_mask_df %>% mutate(masked_EVI_area_sqkm = map(monthlyarea, sum_area)); toc() #21 min
+tic(); area_mask_df<-area_mask_df %>% mutate(masked_EVI_area_sqkm = map(monthlyarea, sum_area)); toc() #20 min
 area_mask_df<- area_mask_df %>% mutate(TotalCerradoArea_sqkm= cerrado_area)
 area_mask_df<- area_mask_df %>% dplyr::select(-monthlyarea)
 area_mask_df <- area_mask_df %>% mutate(masked_EVI_area_sqkm=unlist(masked_EVI_area_sqkm))
@@ -139,7 +144,9 @@ mean_monthly_area<- mean_monthly_area %>% mutate(TotalCerradoArea_sqkm= cerrado_
 mean_monthly_area<- mean_monthly_area %>% mutate(proportions= (mean_monthly_masked_area/TotalCerradoArea_sqkm)*100)
 
 x_mean_monthly<-ggplot(data=mean_monthly_area, aes(x=Month, y=proportions)) +
-  geom_bar(stat="identity")+  theme_minimal()+
+  geom_bar(stat="identity")+
+  ylim(0,100) +
+  theme_minimal()+
   xlab("Month") + ylab("Percentage of total area of Cerrado included")+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
 ggsave(here("Outputs", "Indices","Masked_anisoEVI", "mean_monthly_studyarea_proportion.png"),x_mean_monthly, dpi=300) 
@@ -180,7 +187,7 @@ coverage_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape( (coverage_sum/251)*100)+
   tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="%of time series with anisoEVI value") + 
               tm_layout (legend.position = c("left", "bottom"))
-tmap_save(coverage_map, here("Outputs", "Indices","Masked_anisoEVI", "map_coverage_after_maskingLULC.png"))
+tmap_save(coverage_map, here("Outputs", "Indices","Masked_anisoEVI", "map_masked_anisoEVI_count.png"))
 
 remove(coverage, coverage_df, coverage_map, coverage_sum, pixels_with_value_plot)
 
@@ -189,15 +196,19 @@ remove(coverage, coverage_df, coverage_map, coverage_sum, pixels_with_value_plot
 
 In order to remove any seasonality using any method (bfast or a stratight STL decomposition), I cannot have too many NAs (which was the point of the previous chunk i.e. to find how many pixels have nonNA values through the time series). Obviously I will remove all pixels that have no anisoEVI value in any of the years 
 
-I dig into the NAs more in the next chunk. Based on conversation with Josh on 21st Feb- I will find (1) in each year, ho wmany months of consecutive NAs are present for a pixel. 
+I dig into the NAs more in the next chunk. Based on conversation with Josh on 21st Feb- I will find (1) in each year, how many consecutive months have NAs for every pixel. 
 
 ```{r}
 masked_evi
 
+tic(); masked_evi2<- terra::crop(masked_evi, vect(cerrado));toc()
+tic(); masked_evi2<- terra::mask(masked_evi2, vect(cerrado)); toc()
+
+
 years<- seq(from=2001, to=2021, by=1)
 annual_masked_evi_stack_list<- list() #making a list of spatrasters, where each spatrasters is annual with 12 months rasters in the stack
 for(i in 1:length(years)){
-  x<- subset(masked_evi, grep(years[i], names(masked_evi)))
+  x<- subset(masked_evi2, grep(years[i], names(masked_evi2)))
   annual_masked_evi_stack_list[[i]]<-x
 }
 
@@ -236,8 +247,8 @@ above_raster_list<-lapply(above_list, rast)
 annual_consecutive_NA<- rast(above_raster_list)
 
 #I am not interested in pixels that have NO CONSECUTIVE NAs.I am not interested in pixels that have all NAs. So reclassifying pixels with value 0 and 12 as NA and then making maps
-m<- rbind(c(0,NA), c(12, NA))
-annual_consecutive_NA<- terra::classify(annual_consecutive_NA,m)
+#m<- rbind(c(0,NA), c(12, NA))
+#annual_consecutive_NA<- terra::classify(annual_consecutive_NA,m)
 
 #plot above rasters
 tmap_mode("plot")
@@ -251,8 +262,9 @@ tic();for (i in 1:nlyr(annual_consecutive_NA)){
               tm_layout (legend.position = c("left", "bottom"))
   number_consecutive_map_list[[i]]<- number_consecutive_map
 }; toc()
-x<-tmap_arrange(number_consecutive_map_list[[21]])
-tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "year_consecutiveNA21.png"), width = 1000, height = 750, dpi = 300)
+x<-tmap_arrange(number_consecutive_map_list[[17]],number_consecutive_map_list[[18]], number_consecutive_map_list[[19]], 
+                number_consecutive_map_list[[20]],number_consecutive_map_list[[21]],  nrow=3, ncol=2)
+tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "year_consecutiveNA17_21.png"), width = 1000, height = 750, dpi = 300)
 #NA_month<- function(x){#in each annual stackrasters, finding which month anisoEVI data is missing and reclassifying that anisoEVI value to be the month number while remaining months are reclassified to be 0
 #  na_x<- is.na(x)
 #  y<- na_x*(1:length(x))
