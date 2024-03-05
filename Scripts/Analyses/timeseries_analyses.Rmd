@@ -68,54 +68,24 @@ plot(random_points)
 random_points_cerrado<- terra::crop(random_points, vect(d_trans))
 random_points_cerrado<- terra::mask(random_points_cerrado, vect(d_trans)) #197 points out of 350 total points
 
+random_points_cerrado<- st_as_sf(random_points_cerrado) %>% mutate(PointID= 1:dim(random_points_cerrado)[1])
+random_points_cerrado<- random_points_cerrado %>% st_join(d_trans)
+random_points_cerrado$region
+st_write(random_points_cerrado, here("Outputs","bfastTrials", "randompoints_generated_bfast_trial.shp"))
+remove(random_points)
 
-#Selecting a couple of random pixels (50) in each of the three zones 
-r<- aniso_evi[[251]] #take last raster of anisoevi stack
-empty<- rast(ext(r), resolution = res(r))
-crs(empty) <- crs(r)
-values(empty)<-1
+#neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
 
+#map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+#ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
 
-
-
-empty_zones<- list()
-tic(); for (i in 1:length(d_trans)){
-  geom<- d_trans$geometry[[i]]
-  rsample<- terra::crop(empty, vect(geom))
-  rsample<- terra::mask (rsample, vect(geom))
-  empty_zones[[i]]<- rsample
-}; toc()
-
-random_points_zones<- list()
-tic(); for (i in 1:length(empty_zones)){
-  x<- terra::spatSample(empty_zones[[i]], size = 50, method = "random", replace = FALSE, as.points= TRUE, na.rm=T)
-  random_points_zones[[i]]<- x
-}; toc()
-
-all_random_points<- do.call(rbind,random_points_zones)
-all_random_points<- st_as_sf(all_random_points) %>% mutate(PointID= 1:dim(all_random_points)[1])
-all_random_points<- all_random_points %>% st_join(d_trans)
-
-
-
-
-all_random_points$region #there are 2 points with NA region. I checked in QGIS. These two points are on the border of the southern region
-all_random_points<- all_random_points %>% mutate(region = ifelse(is.na(region), "Southern", region))
-st_write(all_random_points, here("Outputs","bfastTrials", "randompoints_generated_bfast_trial.shp"))
-remove(r, empty, empty_zones, random_points_zones)
-
-neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
-
-map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
-                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
-
-random_points_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  tm_shape(d_trans)+ tm_fill()+
-  tm_shape( st_as_sf(all_random_points))+ tm_dots()+
-              tm_layout (legend.position = c("left", "bottom"))+
-              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
-tmap_save(random_points_map, here("Outputs", "bfastTrials","random_points_map.png") )
-remove(neighbors, map_extent, random_points_map)
+#random_points_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+#  tm_shape(d_trans)+ tm_fill()+
+#  tm_shape( st_as_sf(random_points_cerrado))+ tm_dots()+
+#              tm_layout (legend.position = c("left", "bottom"))+
+#              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+#tmap_save(random_points_map, here("Outputs", "bfastTrials","random_points_map.png") )
+#remove(neighbors, map_extent, random_points_map)
 ```
 (DO NOT RUN ABOVE, ALREADY WRITTEN OUT)
 
@@ -123,8 +93,12 @@ remove(neighbors, map_extent, random_points_map)
 ```{r}
 library(bfast)
 #Sampling anisoEVI through time in the random pixels
-all_random_points<- st_read(here("Outputs", "BFAST_Decomposition", "randompoints_generated_bfast_trial.shp"))
-tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, method= "simple", xy=TRUE); toc()
+all_random_points<- st_read(here("Outputs", "bfastTrials", "randompoints_generated_bfast_trial.shp"))
+tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, method= "simple", xy=TRUE, bind=T); toc()
+anisoEVI_random_points<- as.data.frame(anisoEVI_random_points)
+
+anisoEVI_random_points<- anisoEVI_random_points %>% mutate(na_count= rowSums(is.na(select(.,-c(id, PointID, ID_1, region, x, y))))) %>% filter(na_count!=251) %>% dplyr::select(-na_count) 
+#removing points that have all anisoEVI missing i.e. na_count=251 #185 values left
 
 # Trial BFAST across above points
 #The main parameter to be input is h. h is calculated as the minimal segment size between potentially detected breaks in the trend model given as fraction relative to the sample size (i.e. the minimal number of observations in each segment divided by the total length of the timeseries). 
@@ -132,26 +106,23 @@ tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, met
 #which means h= (2*21)/261 (because h is a proportion). So trying this out for all random points below
 
 
-for (i in 1:length(all_random_points$PointID)){
+for (i in 1:dim(anisoEVI_random_points)[1]){
   print (paste0("Point number ", i))
-  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y"))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y))
   print ("Creating time series object")
   x.ts <- ts(unlist(one_point), frequency = 12) 
-  tic(); trial<- bfast::bfast(x.ts, h=(2*21)/261, season = "harmonic", max.iter = 20); toc()
+  tic(); trial<- bfast::bfast(x.ts, h= 0.47, season = "harmonic", max.iter = 20); toc()
   print ("Completed bfast decomposition")
-  dev.off()
-  jpeg(here("Outputs", "BFAST_Decomposition", paste0("decomposition_point_",all_random_points$PointID[i], ".jpg")))
+  dev.new()
+  jpeg(here("Outputs", "bfastTrials","bfast","h_0.47", paste0("decomposition_point_", anisoEVI_random_points$PointID[i], ".jpg")))
   plot(trial)
-  dev.off()
+  graphics.off()
   print ("Check jpeg file on disk")
 }
 
-one_point<- anisoEVI_random_points[1,] %>% dplyr::select(-c("ID", "x", "y"))
-nbr.NA <- sum(!is.na(as.vector(one_point))) #Of 261 month steps, there are 257 with values i.e. 4 NA values
-x.ts <- ts(unlist(one_point), frequency = 12) 
-tic(); trial<- bfast::bfast(x.ts, h=(2*21)/261, season = "harmonic", max.iter = 20); toc()
-remove(nbr.NA)
-#Consider all points
+#PointID=99 did not go through because over half of the series is NA
+#reran above for h=0.159 ((2*21)/251), h=0.25, h=0.318 ((4*21)/251), h=0.47 ((6*21)/251)
+
 
 
 ```
@@ -167,37 +138,37 @@ I do a couple of trials below. For the default trial1 I follow the example in th
 
 ```{r}
 #default order=3
-one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y")) #has only 1 NA in Jan 2003
-x.ts <- ts(unlist(one_point), frequency = 12) 
-tic(); trial1<- bfast::bfastlite(x.ts, order=3, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
+#one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y")) #has only 1 NA in Jan 2003
+#x.ts <- ts(unlist(one_point), frequency = 12) 
+#tic(); trial1<- bfast::bfastlite(x.ts, order=3, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
 #NA breakpoints
-plot(trial1) # blue line is the breakpoint, green line is the fitted model
+#plot(trial1) # blue line is the breakpoint, green line is the fitted model
 
 #default order=7
-tic(); trial2<- bfast::bfastlite(x.ts, order=7, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
+#tic(); trial2<- bfast::bfastlite(x.ts, order=7, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
 #Again NA breakpoints
 
-breakpoints<-all_random_points
+breakpoints<-anisoEVI_random_points
 breakpoints<- breakpoints %>% mutate(ObservationBreakpoint=NA)
-tic(); for (i in 135:length(all_random_points$PointID)){
+tic(); for (i in 162:dim(anisoEVI_random_points)[1]){
   print (paste0("Point number ", i))
-  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y"))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y))
   print ("Creating time series object")
   x.ts <- ts(unlist(one_point), frequency = 12) 
-  tic(); trial<- bfast::bfastlite(x.ts, order=3, breaks="LWZ", lag=NULL, slag=NULL, na.action= na.omit, stl="none")
+  tic(); trial<- bfast::bfastlite(x.ts, order=5, breaks="LWZ", lag=NULL, slag=NULL, na.action= na.omit, stl="none")
   print ("Completed bfastlite analyses")
   breakpoint<- trial$breakpoints$breakpoints
   print (breakpoint)
   breakpoints$ObservationBreakpoint[i]<- breakpoint
   print ("Breakpoint observation number saved")
   dev.new()
-  jpeg(here("Outputs", "bfastlite", "Order3", paste0("bfastlite_point_",all_random_points$PointID[i], ".jpg")))
+  jpeg(here("Outputs","bfastTrials", "bfastlite", "Order5", paste0("bfastlite_point_",anisoEVI_random_points$PointID[i], ".jpg")))
   plot(trial)
   graphics.off()
   print ("Check jpeg file on disk")
 }; tic()
 
-#32,50,51,55,60,61,87,97,105,134 points could not be run in analyses because all time series is NA
+#PointID=36, 38, 99, 115, 170- these have more than half of their anisoEVI values as NA in different stretches of the time series
 
 ```
 
