@@ -138,9 +138,9 @@ I do a couple of trials below. For the default trial1 I follow the example in th
 
 ```{r}
 #default order=3
-#one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y")) #has only 1 NA in Jan 2003
+#one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y)) #has only 1 NA in Jan 2003
 #x.ts <- ts(unlist(one_point), frequency = 12) 
-#tic(); trial1<- bfast::bfastlite(x.ts, order=3, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
+#tic(); trial1<- bfast::bfastlite(x.ts, order=3, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "trend"); toc()
 #NA breakpoints
 #plot(trial1) # blue line is the breakpoint, green line is the fitted model
 
@@ -173,7 +173,7 @@ tic(); for (i in 162:dim(anisoEVI_random_points)[1]){
 ```
 
 
-
+#4. Trying to understand how piecewise linear regression deals with NA
 Using the time series anisoEVI data in the random points above, I do some EDA with linear regression to understand how lm() in R treats time series data with NA. 
 
 ```{r}
@@ -205,6 +205,7 @@ m2 = lm(value ~ Date, data = max_46NA)
 ```
 Basically, lm() can handle NA. It excludes the NA points completely. As NAs increase, the lm still runs but the residual error increases and there is cost of losing degrees of freedom
 
+#5. Differencing as an alternative to decomposition
 I was reading about this article about removing seasonal trend from data. It says that 'differencing' is an alternative to decomposition. So I try that in the chunk below
 https://atsa-es.github.io/atsa-labs/sec-tslab-differencing-to-remove-a-trend-or-seasonal-effects.html
 
@@ -212,9 +213,18 @@ Specifically look at last sentence under 4.3.1
 " In addition, first-differencing a time series at a lag equal to the period will remove a seasonal trend (e.g., set lag = 12 for monthly data)."
 
 ```{r}
+#I have to change the format of the df to do differencing
+anisoEVI_random_points
+pivot_anisoEVI_random_points<- pivot_longer(anisoEVI_random_points, cols = 5:255)#5:255 are the cols with anisoEVI values
 
-absentNA_d1_lag12 <- timeseries::diff(absent_NA$value, differences = 1, lag = 12)
-median_3NA_d1_lag12 <- timeseries::diff(median_3NA$value, differences = 1, lag = 12)
+newformat<- pivot_anisoEVI_random_points %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+newformat<- newformat %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+newformat<- newformat %>% mutate(Date= lubridate::as_date(Date))
+
+x <- newformat %>% dplyr::filter(PointID==1) #trial
+
+x_d1_lag12<- timeSeries::diff(x$value,differences = 1, lag = 12)
+
 ```
 
 
