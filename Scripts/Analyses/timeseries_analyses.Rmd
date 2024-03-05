@@ -28,16 +28,15 @@ In this script I explore the time series decomposition and then regression analy
 
 ##Data input
 ```{r}
-evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
-evi_list<-gtools::mixedsort(evi_list) #arranging rasters chronologically
-evi_raster_list<-lapply(evi_list, rast)
-aniso_evi<- rast(evi_raster_list)
-aniso_evi<- aniso_evi/10^5 #scaling factor mentioned on the description page of the GEE asset
+masked_evi_list <- list.files(path = here("Outputs", "Indices", "Masked_anisoEVI"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+masked_evi_list<-gtools::mixedsort(masked_evi_list) #arranging rasters chronologically
+masked_evi_raster_list<-lapply(masked_evi_list, rast)
+aniso_evi<- rast(masked_evi_raster_list)
 
 ##changing band names to year and months
 colnames<- list()
-tic(); for ( i in 1:length(evi_list)){
-  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
+tic(); for ( i in 1:length(masked_evi_list)){
+  x<- paste0(strsplit(strsplit(masked_evi_list[i], "/")[[1]][10], "_")[[1]][1], "_", strsplit(strsplit(masked_evi_list[i], "/")[[1]][10], "_")[[1]][2])
   colnames[[i]] <-x
 }; toc()
 colnames<- unlist(colnames)
@@ -46,33 +45,38 @@ names(aniso_evi)<- colnames
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 
-```
-##Analyses
+buffer<- st_read(here ("Data", "Cattelanetal_Clustering", "buffer_climate_zones.shp"))
 
-##Decomposition analyses
+```
+
+################################## UNDERSTANDING SEASONAL CYCLE INCLUDING DECOMPOSITION (using BFAST and BFASTLite) & DIFFERENCING
+
+##Decomposition analyses using Bfast
 Marina and I discussed decomposing the trend into seasonal and long term trend using the BFAST (Breaks For Additive Seasonal and Trend) algorithm (Verbesselt et al., 2010). I read the Jong et al., 2012 GCB paper about global greening and browning and found it pretty solid. So here I try it out. There is a R package and here I try to better understand it. https://bfast.r-forge.r-project.org/
 
-Also see this post comparing bfast and Rbeast- https://stackoverflow.com/questions/52708697/detect-changes-in-the-seasonal-component-using-bfast. First trying bfast and then Rbeast
+Also see this post comparing bfast and Rbeast- https://stackoverflow.com/questions/52708697/detect-changes-in-the-seasonal-component-using-bfast. First trying bfast 
+
+#1. First, I select 50 random pixels (points) across the buffered climate zones i.e only one big area across the entire buffer
+
 ```{r}
 #install.packages(c("Rbeast", "bfast"))
-library(Rbeast)
-library(bfast)
 
-ts_fun <- function(x) { 
- x.ts = ts(x, start=c(2000,3), end=c(2021,12), frequency=12)
- }
+buffer
+random_points<-terra::spatSample(vect(buffer), size = 350, method = "random") #350 random points to get good coverage within the actual cerrado boundary
+plot(random_points)
 
-tic(); evi_ts<- terra::app(aniso_evi, ts_fun); toc() #this is no different from the original aniso_evi stack 
-#because the original aniso_evi stack is neatly arranged in chronological order
+random_points_cerrado<- terra::crop(random_points, vect(d_trans))
+random_points_cerrado<- terra::mask(random_points_cerrado, vect(d_trans)) #197 points out of 350 total points
 
-################## 1. Selecting a couple of random pixels (50) in each of the three zones 
-r<- aniso_evi[[1]] #take first raster of anisoevi stack
+
+#Selecting a couple of random pixels (50) in each of the three zones 
+r<- aniso_evi[[251]] #take last raster of anisoevi stack
 empty<- rast(ext(r), resolution = res(r))
 crs(empty) <- crs(r)
 values(empty)<-1
 
-empty<- terra::crop(empty, d_trans)
-empty<- terra::mask(empty, d_trans)
+
+
 
 empty_zones<- list()
 tic(); for (i in 1:length(d_trans)){
@@ -91,29 +95,38 @@ tic(); for (i in 1:length(empty_zones)){
 all_random_points<- do.call(rbind,random_points_zones)
 all_random_points<- st_as_sf(all_random_points) %>% mutate(PointID= 1:dim(all_random_points)[1])
 all_random_points<- all_random_points %>% st_join(d_trans)
+
+
+
+
 all_random_points$region #there are 2 points with NA region. I checked in QGIS. These two points are on the border of the southern region
 all_random_points<- all_random_points %>% mutate(region = ifelse(is.na(region), "Southern", region))
-st_write(all_random_points, here("Outputs","BFAST_Decomposition", "randompoints_generated_bfast_trial.shp"))
+st_write(all_random_points, here("Outputs","bfastTrials", "randompoints_generated_bfast_trial.shp"))
 remove(r, empty, empty_zones, random_points_zones)
 
-#neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
 
-#map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
-#                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
 
-#random_points_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-#  tm_shape(d_trans)+ tm_fill()+
-#  tm_shape( st_as_sf(all_random_points))+ tm_dots()+
-#              tm_layout (legend.position = c("left", "bottom"))+
-#              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
-#tmap_save(random_points_map, here("Outputs", "BFAST_Decomposition", "random_points_map.png") )
-#remove(neighbors, map_extent, random_points_map)
+random_points_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape( st_as_sf(all_random_points))+ tm_dots()+
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)
+tmap_save(random_points_map, here("Outputs", "bfastTrials","random_points_map.png") )
+remove(neighbors, map_extent, random_points_map)
+```
+(DO NOT RUN ABOVE, ALREADY WRITTEN OUT)
 
-################## 2. Sampling anisoEVI through time in the random pixels
+#2. Trial BFAST
+```{r}
+library(bfast)
+#Sampling anisoEVI through time in the random pixels
 all_random_points<- st_read(here("Outputs", "BFAST_Decomposition", "randompoints_generated_bfast_trial.shp"))
 tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, method= "simple", xy=TRUE); toc()
 
-################## 3. Trial BFAST across above points
+# Trial BFAST across above points
 #The main parameter to be input is h. h is calculated as the minimal segment size between potentially detected breaks in the trend model given as fraction relative to the sample size (i.e. the minimal number of observations in each segment divided by the total length of the timeseries). 
 #So I understand in terms of number of points of season switches i.e 2 a year which is 2*21 across the entire time-series 
 #which means h= (2*21)/261 (because h is a proportion). So trying this out for all random points below
@@ -142,6 +155,54 @@ remove(nbr.NA)
 
 
 ```
+
+#3. Trial BFASTLite
+The main thing about bfast lite I do not 'like' or do not understand is the 'order' which is a 'harmonic term' and defaults to 3. So I dug deeper and found this article https://lpsa.swarthmore.edu/Fourier/Series/WhyFS.html
+
+So order is basically the harmonic term in a fourier series. And higher the order, the better the approximation to the i.e. sum of average+ season gets closest to original observations. I think higher the term, greater the frequency of the 'season' and shorter the time period within which the season happens. 
+
+I do not include/think about lag, slag and na.action terms for now. For breaks, I let the algorithm automatically determine the optimal number of breaks based on LWZ metric (see bfastlite original paper). I also do not do any STL adjustment so stl="none"
+
+I do a couple of trials below. For the default trial1 I follow the example in the R help for bfastlite. In the example, the break is at the 99th observation (out of 199). And then the example uses strucchangeRcpp::breakpoints with number of breaks specified as 2. I do not understand why. Same with plotting the bfastlite model, the example says breaks=2. I do not know why!  
+
+```{r}
+#default order=3
+one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y")) #has only 1 NA in Jan 2003
+x.ts <- ts(unlist(one_point), frequency = 12) 
+tic(); trial1<- bfast::bfastlite(x.ts, order=3, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
+#NA breakpoints
+plot(trial1) # blue line is the breakpoint, green line is the fitted model
+
+#default order=7
+tic(); trial2<- bfast::bfastlite(x.ts, order=7, breaks = "LWZ", lag = NULL, slag = NULL, na.action = na.omit, stl = "none"); toc()
+#Again NA breakpoints
+
+breakpoints<-all_random_points
+breakpoints<- breakpoints %>% mutate(ObservationBreakpoint=NA)
+tic(); for (i in 135:length(all_random_points$PointID)){
+  print (paste0("Point number ", i))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c("ID", "x", "y"))
+  print ("Creating time series object")
+  x.ts <- ts(unlist(one_point), frequency = 12) 
+  tic(); trial<- bfast::bfastlite(x.ts, order=3, breaks="LWZ", lag=NULL, slag=NULL, na.action= na.omit, stl="none")
+  print ("Completed bfastlite analyses")
+  breakpoint<- trial$breakpoints$breakpoints
+  print (breakpoint)
+  breakpoints$ObservationBreakpoint[i]<- breakpoint
+  print ("Breakpoint observation number saved")
+  dev.new()
+  jpeg(here("Outputs", "bfastlite", "Order3", paste0("bfastlite_point_",all_random_points$PointID[i], ".jpg")))
+  plot(trial)
+  graphics.off()
+  print ("Check jpeg file on disk")
+}; tic()
+
+#32,50,51,55,60,61,87,97,105,134 points could not be run in analyses because all time series is NA
+
+```
+
+
+
 Using the time series anisoEVI data in the random points above, I do some EDA with linear regression to understand how lm() in R treats time series data with NA. 
 
 ```{r}
@@ -184,6 +245,8 @@ Specifically look at last sentence under 4.3.1
 absentNA_d1_lag12 <- timeseries::diff(absent_NA$value, differences = 1, lag = 12)
 median_3NA_d1_lag12 <- timeseries::diff(median_3NA$value, differences = 1, lag = 12)
 ```
+
+
 
 
 
@@ -232,6 +295,7 @@ tic(); p.mask.NA<- terra:: app(p.mask, mask_fun); toc()
 
 trend.sig <- terra::mask(evi.slope, p.mask.NA)
 plot(trend.sig, main="significant NDVI change")
+
 
 ```
 
