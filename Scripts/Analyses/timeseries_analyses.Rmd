@@ -97,7 +97,10 @@ all_random_points<- st_read(here("Outputs", "bfastTrials", "randompoints_generat
 tic(); anisoEVI_random_points<- terra::extract(aniso_evi, all_random_points, method= "simple", xy=TRUE, bind=T); toc()
 anisoEVI_random_points<- as.data.frame(anisoEVI_random_points)
 
-anisoEVI_random_points<- anisoEVI_random_points %>% mutate(na_count= rowSums(is.na(select(.,-c(id, PointID, ID_1, region, x, y))))) %>% filter(na_count!=251) %>% dplyr::select(-na_count) 
+anisoEVI_random_points<- anisoEVI_random_points %>% 
+  mutate(na_count= rowSums(is.na(select(.,-c(id, PointID, ID_1, region, x, y))))) 
+anisoEVI_random_points<- anisoEVI_random_points %>%
+                          dplyr::filter(na_count!=251) #%>% 
 #removing points that have all anisoEVI missing i.e. na_count=251 #185 values left
 
 # Trial BFAST across above points
@@ -108,7 +111,7 @@ anisoEVI_random_points<- anisoEVI_random_points %>% mutate(na_count= rowSums(is.
 
 for (i in 1:dim(anisoEVI_random_points)[1]){
   print (paste0("Point number ", i))
-  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y, na_count))
   print ("Creating time series object")
   x.ts <- ts(unlist(one_point), frequency = 12) 
   tic(); trial<- bfast::bfast(x.ts, h= 0.47, season = "harmonic", max.iter = 20); toc()
@@ -152,7 +155,7 @@ breakpoints<-anisoEVI_random_points
 breakpoints<- breakpoints %>% mutate(ObservationBreakpoint=NA)
 tic(); for (i in 162:dim(anisoEVI_random_points)[1]){
   print (paste0("Point number ", i))
-  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y))
+  one_point<- anisoEVI_random_points[i,] %>% dplyr::select(-c(id, PointID, ID_1, region, x, y, na_count))
   print ("Creating time series object")
   x.ts <- ts(unlist(one_point), frequency = 12) 
   tic(); trial<- bfast::bfastlite(x.ts, order=5, breaks="LWZ", lag=NULL, slag=NULL, na.action= na.omit, stl="none")
@@ -221,9 +224,25 @@ newformat<- pivot_anisoEVI_random_points %>% separate_wider_delim(cols = name, d
 newformat<- newformat %>% mutate(Date= paste0(Year,"_", Month, "_01"))
 newformat<- newformat %>% mutate(Date= lubridate::as_date(Date))
 
-x <- newformat %>% dplyr::filter(PointID==1) #trial
+pointid_vector<- unique(anisoEVI_random_points$PointID)
 
-x_d1_lag12<- timeSeries::diff(x$value,differences = 1, lag = 12)
+tic(); for (i in 1:length(pointid_vector)){
+  x <- newformat %>% dplyr::filter(PointID==pointid_vector[i]) #trial
+  x_d1_lag12<- timeSeries::diff(x$value,differences = 1, lag = 12)
+  print ("Plot original values")
+  original<- ggplot(data=x, aes(x=(Date), y= value))+
+    geom_line() + theme_bw() + ylab("Original anisoEVI at point")+
+    ggtitle(paste0("n=",length(x$value),";NA-count (out of 251)", x$na_count))
+  x_d1_lag12<- as.data.frame(x_d1_lag12)
+  x_d1_lag12$index <- 1:nrow(x_d1_lag12)
+  print ("Plot differenced values")
+  difference<-  ggplot(data=x_d1_lag12, aes(x=index, y=x_d1_lag12))+
+    geom_line() + theme_bw() + ylab("Differenced anisoEVI")+
+    ggtitle(paste0("n=",dim(x_d1_lag12)[1],";NA-count (out of 251)", sum(is.na(x_d1_lag12)))) 
+  print ("Saving image")
+  both<-ggarrange(original, difference, nrow=2)
+  ggsave(here("Outputs", "differencingTrials", paste0("difference_", pointid_vector[i], ".png")), plot=both)
+}; toc()
 
 ```
 
