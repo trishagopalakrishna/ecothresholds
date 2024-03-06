@@ -247,8 +247,8 @@ above_raster_list<-lapply(above_list, rast)
 annual_consecutive_NA<- rast(above_raster_list)
 
 #I am not interested in pixels that have NO CONSECUTIVE NAs.I am not interested in pixels that have all NAs. So reclassifying pixels with value 0 and 12 as NA and then making maps
-#m<- rbind(c(0,NA), c(12, NA))
-#annual_consecutive_NA<- terra::classify(annual_consecutive_NA,m)
+m<- rbind(c(0,NA), c(12, NA))
+annual_consecutive_NA<- terra::classify(annual_consecutive_NA,m)
 
 #plot above rasters
 tmap_mode("plot")
@@ -263,8 +263,8 @@ tic();for (i in 1:nlyr(annual_consecutive_NA)){
   number_consecutive_map_list[[i]]<- number_consecutive_map
 }; toc()
 x<-tmap_arrange(number_consecutive_map_list[[17]],number_consecutive_map_list[[18]], number_consecutive_map_list[[19]], 
-                number_consecutive_map_list[[20]],number_consecutive_map_list[[21]],  nrow=3, ncol=2)
-tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "year_consecutiveNA17_21.png"), width = 1000, height = 750, dpi = 300)
+                number_consecutive_map_list[[20]], number_consecutive_map_list[[21]],  nrow=3, ncol=2)
+tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "reclass_year_consecutiveNA17_21.png"), width = 1000, height = 750, dpi = 300)
 #NA_month<- function(x){#in each annual stackrasters, finding which month anisoEVI data is missing and reclassifying that anisoEVI value to be the month number while remaining months are reclassified to be 0
 #  na_x<- is.na(x)
 #  y<- na_x*(1:length(x))
@@ -285,8 +285,8 @@ Then I look at the time series considering consecutive years but same month i.e.
 ```{r}
 masked_evi
 month_colnames<- list()
-tic(); for ( i in 1:length(evi_list)){
-  x<- paste0(strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][6], "_", strsplit(strsplit(evi_list[i], "/")[[1]][10], "_")[[1]][7])
+tic(); for ( i in 1:length(masked_list)){
+  x<- strsplit(masked_list[i], "/")[[1]][10]
   year_number<- as.integer((strsplit(x, "_"))[[1]][1])
   month_number<- as.integer((strsplit(x, "_"))[[1]][2])
   if (month_number==1){
@@ -316,7 +316,6 @@ tic(); for ( i in 1:length(evi_list)){
   }
 }; toc()
 month_colnames<- unlist(month_colnames)
-month_colnames<- month_colnames[11:261]
 names(masked_evi)<- month_colnames
 
 months<- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
@@ -332,7 +331,7 @@ tic(); for (i in 1:length(month_masked_evi_stack_list)){
   y<- terra::mask(x, vect(cerrado))
   consecutive_NA_through_month_list[i]<-y
   remove(x,y)
-}; toc() #1.5 hours
+}; toc() #26 min
 
 for (i in 1:length(consecutive_NA_through_month_list)){
   names(consecutive_NA_through_month_list[[i]])<- months[[i]]
@@ -363,8 +362,8 @@ tic();for (i in 1:nlyr(month_consecutive_NA)){
               tm_layout (legend.position = c("left", "bottom"))
   time_number_consecutive_map_list[[i]]<- number_consecutive_map
 }; toc()
-x<-tmap_arrange(time_number_consecutive_map_list[[11]],time_number_consecutive_map_list[[12]])
-tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inmonth_throughyear", "month_consecutiveNA11_12.png"), width = 1000, height = 750, dpi = 300)
+x<-tmap_arrange(time_number_consecutive_map_list[[12]])
+tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inmonth_throughyear", "reclass_month_consecutiveNA_Sep.png"), width = 1000, height = 750, dpi = 300)
 
 ```
 
