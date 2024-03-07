@@ -247,9 +247,35 @@ tic(); for (i in 1:length(pointid_vector)){
 ```
 
 
+I consider points that I have been testing out, but points that have 0 NAs in the time series. This way I can compare the results of the stl decomposition with the differencing results and see what is happening. 
+
+```{r}
+no_NA<- anisoEVI_random_points %>% dplyr::filter(na_count==0) #33 points
+pivot_no_NA<- pivot_longer(no_NA, cols = 5:255)#5:255 are the cols with anisoEVI values
+
+library(stlplus)
+no_NA_id<- unique(pivot_no_NA$PointID)
+for (i in 1:length(no_NA_id)){
+  x<- no_NA %>% dplyr::filter(PointID==no_NA_id[i]) %>% dplyr::select(-c(id, PointID, ID_1, region, x, y, na_count))
+  x_ts<- ts(unlist(x), frequency = 12) 
+  stl_decompose<- stlplus::stlplus(x_ts, s.window="periodic")
+  x_prep<- pivot_longer(x, cols = 1:251)  
+  differencing<- timeSeries::diff(x_prep$value, differences = 1, lag = 12)
+  dev.new()
+  jpeg(here("Outputs", "differencingTrials", "Differencing_vs_Decomposition", paste0("compare_",no_NA_id[i], ".jpg")), width = 30, height = 30, units="cm", res=72)
+  par(mfrow = c(5, 1))
+  plot(stl_decompose$data$raw, type="l")
+  plot(stl_decompose$data$seasonal, type="l")
+  plot(stl_decompose$data$trend, type="l")
+  plot(stl_decompose$data$remainder, type="l")
+  plot(differencing, type="l")
+  graphics.off()
+}
 
 
+```
 
+Basically the results of the differencing and the decomposition does not match up at all! At first I thought that the differencing results matches the residuals after removing trend and season in the decomposition analyses. It slightly matches, but not exactly. Firstly, the residuals from decomposition and differencing are off by couple of decimal place. Second, the differencing results literally has lesser number of resulting values i.e. for example with 251 non NA values, the differencing results in 239 values. The decomposition residuals still has 251 values.
 
 #1- No trend lm
 ```{r}
