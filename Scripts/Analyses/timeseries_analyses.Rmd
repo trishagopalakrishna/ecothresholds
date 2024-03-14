@@ -277,18 +277,49 @@ for (i in 1:length(no_NA_id)){
 
 Basically the results of the differencing and the decomposition does not match up at all! At first I thought that the differencing results matches the residuals after removing trend and season in the decomposition analyses. It slightly matches, but not exactly. Firstly, the residuals from decomposition and differencing are off by couple of decimal place. Second, the differencing results literally has lesser number of resulting values i.e. for example with 251 non NA values, the differencing results in 239 values. The decomposition residuals still has 251 values.
 
-#1- No trend lm
+#6. Regression type analyses ie not doing any sort of decomposition/differencing for removal of seasonality. All data is included (irrespective of seasons) and let regression type of analyses get the trend
+
+#####(i)- No trend lm- this is from Berdugo et al., 2022. This means that the result of the regression will be the mean of the anisoEVI values. It means that the model only fits an intercept at the mean without a slope (straight horizontal line across). 
+The point of doing this is to then compare other models to this model and proceed with model selection. 
 ```{r}
-no_trend_coef_fun <- function(x) { 
-  if (is.na(x[1])){ NA } 
-  else { m = lm(x ~ 1); #no trend means, the resulting x will be the mean of all the time series NDVI
-  summary(m)$coefficients[1] 
-  }}
-tic(); no_trend.slope<- terra::app(aniso_evi, no_trend_coef_fun); toc()
-plot(no_trend.slope, main="slope")
+#no_trend_coef_fun <- function(x) { 
+#  if (is.na(x[1])){ NA } 
+#  else { m = lm(x ~ 1); #no trend means, the resulting x will be the mean of all the time series NDVI i.e. i
+#  summary(m)$coefficients[1] 
+#  }}
+
+pivot_no_NA
+pivot_no_NA<- pivot_no_NA %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+pivot_no_NA<- pivot_no_NA %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+pivot_no_NA<- pivot_no_NA %>% mutate(Date= lubridate::as_date(Date))
+
+#trial
+trial_point<- pivot_no_NA %>% dplyr::filter(PointID==2) %>% dplyr::select(value)
+m<- lm(trial_point$value~1)
+summary(m) #significant pvalue next to intercept only means that the mean is significantly different from 0
+
+remove(m, trial_point)
 ```
 
 
+#####(ii) chngpt package trials with points that have full time series (ie no NA anisoEVI values)
+```{r}
+library(chngpt)
+
+pivot_no_NA
+trial_point<- pivot_no_NA %>% dplyr::filter(PointID==2) %>% mutate(timestep= 1:dim(trial_point)[1])
+
+fit<- chngpt::chngptm(formula.1=value~1, formula.2=~timestep, family="gaussian", data=trial_point,
+type="step", var.type="bootstrap", weights=NULL)
+test<-chngpt.test(formula.null=value~1, formula.chngpt=~timestep, trial_point, type="step", family="gaussian")
+
+
+```
+
+
+
+
+##################### Additional model building trial and error
 
 #2- Trying out linear regression curve fitting as per
 https://matinbrandt.wordpress.com/2013/11/15/pixel-wise-time-series-trend-anaylsis-with-ndvi-gimms-and-r/
