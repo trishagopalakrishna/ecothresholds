@@ -382,6 +382,7 @@ consecutiveNAmonth_sameyear_raster_list<-lapply(consecutiveNAmonth_sameyear_list
 consecutiveNAmonth_sameyear<- rast(consecutiveNAmonth_sameyear_raster_list) #21 
 
 tic(); max_consecutiveNAs<- terra::app(consecutiveNAmonth_sameyear, fun= "max"); toc()
+writeRaster(max_consecutiveNAs,here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "maxconsecutiveNA.tif"))
 
 map_maxconsecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape(d_trans)+ tm_fill()+
@@ -449,6 +450,8 @@ tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_through
 
 
 tic(); max_NAs<- terra::app(annual_NA, fun= "max"); toc()
+writeRaster(max_NAs,here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "maxNA.tif"))
+
 map_maxNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape(d_trans)+ tm_fill()+
   tm_shape(max_NAs)+
@@ -473,6 +476,79 @@ tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear
 
 ```
 
+It looks like a lot of the NAs, specifically the total number of NAs in a year in a pixel, is because of the year 2001. 2001-2002 waws when Terra and Aqua of MODIS were being launched; only Terra launched in 2001, so the reflectance data was not very complete and hence the anisoEVI calcualted for 2001 might show a lot of NAs. So excluding year 2001 and calculating max consecutive and non-consecutive NAs and for each pixels 2002-2021.
+
+```{r}
+#rerun lines 378-382
+consecutiveNAmonth_sameyear
+consecutiveNAmonth_sameyear<- consecutiveNAmonth_sameyear[[2:21]]#excluding 1st raster from stack which is the 2001 consecutive months NA raster
+
+tic(); no2001_max_consecutiveNAs<- terra::app(consecutiveNAmonth_sameyear, fun= "max"); toc()
+writeRaster(no2021_max_consecutiveNAs,here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
+
+map_no2001_maxconsecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape(no2001_max_consecutiveNAs)+
+  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max consecutive NA (in each year, excluding 2001)") + 
+              tm_layout (legend.position = c("left", "bottom"))
+
+#reclassifying such that all pixels that have all months of the year NA, those pixels are excluded completely 
+no2001_allNAremove_max_consecutiveNAs<- terra::classify(no2001_max_consecutiveNAs,cbind(12,NA))
+map_no2001_allNAremove_max_consecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape(no2001_allNAremove_max_consecutiveNAs)+
+  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max consecutive NA (in each year, excluding 2001)") + 
+              tm_layout (legend.position = c("left", "bottom"))
+
+x_arrange<- tmap_arrange(map_no2001_maxconsecutiveNAs,map_no2001_allNAremove_max_consecutiveNAs)
+tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "map_no2001_maxconsecutiveNA.png"), width = 1000, height = 750, dpi = 300)
+
+#rerun lines 430-433
+annual_NA<- annual_NA[[2:21]]
+
+tic(); no2001_max_NAs<- terra::app(annual_NA, fun= "max"); toc()
+writeRaster(no2001_max_NAs,here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
+
+map_no2001_maxNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape(no2001_max_NAs)+
+  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max NA (in each year, excluding 2001)") + 
+              tm_layout (legend.position = c("left", "bottom"))
+
+#reclassifying such that all pixels that have all months of the year NA, those pixels are excluded completely 
+no2001_allNAremove_max_NAs<- terra::classify(no2001_max_NAs,cbind(12,NA))
+map_no2001_allNAremove_max_NAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape(no2001_allNAremove_max_NAs)+
+  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max NA (in each year, excluding 2001)") + 
+              tm_layout (legend.position = c("left", "bottom"))
+
+x_arrange<- tmap_arrange(map_no2001_maxNAs,map_no2001_allNAremove_max_NAs)
+tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "map_no2001_maxNA.png"), width = 1000, height = 750, dpi = 300)
+
+x_arrange<- tmap_arrange(map_no2001_allNAremove_max_consecutiveNAs, map_no2001_allNAremove_max_NAs)
+tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "comparison_consecutiveNA_totalNA_no2001.png"), width = 1000, height = 750, dpi = 300)
+
+tic();df_no2001_allNAremove_max_NAs<- as.data.frame(no2001_allNAremove_max_NAs);toc()
+percent_no2001_allNAremove_max_NAs<- df_no2001_allNAremove_max_NAs %>% group_by(max) %>% summarise(count=n())
+percent_no2001_allNAremove_max_NAs<- percent_no2001_allNAremove_max_NAs %>% mutate(percent=(count/sum(count))*100)
+names(percent_no2001_allNAremove_max_NAs)<- c("NACount", "Count_Max","PercentMax")
+
+tic();df_no2001_allNAremove_max_consecutiveNAs<- as.data.frame(no2001_allNAremove_max_consecutiveNAs);toc()
+percent_no2001_allNAremove_consecutive_NAs<- df_no2001_allNAremove_max_consecutiveNAs %>% group_by(max) %>% summarise(count=n())
+percent_no2001_allNAremove_consecutive_NAs<- percent_no2001_allNAremove_consecutive_NAs %>% mutate(percent=(count/sum(count))*100)
+names(percent_no2001_allNAremove_consecutive_NAs)<- c("NACount", "Count_MaxConsecutive","PercentMaxConsecutive")
+
+both_df<- full_join(percent_no2001_allNAremove_max_NAs,percent_no2001_allNAremove_consecutive_NAs)
+both_df<- both_df %>% dplyr::select(c(NACount, PercentMax, PercentMaxConsecutive))
+both_df<- pivot_longer(both_df, 2:3)
+
+ggplot_both<- ggplot(both_df, aes(x=as.factor(NACount), y=value, fill=name)) + geom_bar(stat="identity",position=position_dodge())+
+  theme_minimal() +ylab("Percentage of total pixels")+ xlab("Number of NAs")+scale_fill_manual(values=c('#999999','#E69F00'))
+
+ggsave(here("Outputs", "Indices","Masked_anisoEVI","TotalNA_inyear_throughmonths", "comparison_consecutiveNA_totalNA_percentarea_no2001.png"),ggplot_both, dpi=300) 
+
+```
 
 
 
