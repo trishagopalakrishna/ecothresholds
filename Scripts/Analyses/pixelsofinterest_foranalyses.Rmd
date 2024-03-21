@@ -30,7 +30,7 @@ The first mask I work on is to finalize pixels within which I analyse trends in 
 
 ```{r}
 evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
-tic();evi<- evi/10^5;toc() #scaling factor mentioned on the description page of the GEE asset
+tic();evi_scaled<- evi/10^5;toc() #scaling factor mentioned on the description page of the GEE asset
 
 ##changing band names to year and months
 colnames<- list()
@@ -40,7 +40,14 @@ tic(); for ( i in 1:nlyr(evi)){
   colnames[[i]] <-y
 }; toc()
 colnames<- unlist(colnames)
-names(evi)<- colnames
+names(evi_scaled)<- colnames
+
+tic();for (i in 1:nlyr(evi_scaled)){
+  print (paste0("Counter =",i))
+  writeRaster(evi_scaled[[i]], here("Data", "Indices","AnisoEVI_Cerrado_GEE", paste0(colnames[[i]], "_scaled.tif")))
+};toc()
+
+
 
 ########################################## BELOW PROJECTION ANALYSES IS COMPLETE, DO NOT REPEAT
 #modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "MODIS_LULC_mask.tif"))
@@ -62,6 +69,11 @@ tic(); for ( i in 1:length(modis_mask_names)){
   modis_mask_names[[i]] <-x
 }; toc()
 names(modis_mask)<- modis_mask_names
+
+for (i in 1:nlyr(modis_mask)){
+  writeRaster(modis_mask[[i]], here("Data", "Masks_to_define_pixelsofinterest", paste0(modis_mask_names[[i]], ".tif")))
+}
+
 
 ############################## Masking 2001 anisoEVI with 2001 MODIS LULC.......... till 2022
 #anisoEVI is from March 2000 to Dec 2021. So to match MODIS annual product which starts at 2001, I will get rid of the 2000 anisoEVI products
@@ -99,8 +111,8 @@ tic(); mask_df<-mask_df %>% mutate(write_put = purrr::map2(masked_EVI, Year_Mont
 ```
 ------- ABOVE CHUNK IS COMPLETE AND WRITTEN OUT, START WITH NEXT CHUNK 
 
-#EDA
-Then I find the amount of area remaining i.e total area of pixels within which trends will be anlaysed. I present this as a proportion of the total cerrado area
+######################EDA
+1. Then I find the amount of area remaining i.e total area of pixels within which trends will be anlaysed. I present this as a proportion of the total cerrado area
 ```{r}
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -164,7 +176,7 @@ ggsave(here("Outputs", "Indices","Masked_anisoEVI", "annual_studyarea_proportion
 
 ```
 
-Then I determine for each pixels how much % (of 251 time steps) there is data for the pixels after masking. The pixels that have been excluded are NA
+2. Then I determine for each pixels how much % (of 251 time steps) there is data for the pixels after masking. The pixels that have been excluded are NA
 ```{r}
 sum_function<- function (i){
   sum(i, na.rm=T)
@@ -196,11 +208,12 @@ remove(coverage, coverage_df, coverage_map, coverage_sum, pixels_with_value_plot
 ```
 
 
-In order to remove any seasonality using any method (bfast or a stratight STL decomposition), I cannot have too many NAs (which was the point of the previous chunk i.e. to find how many pixels have nonNA values through the time series). Obviously I will remove all pixels that have no anisoEVI value in any of the years 
+3. In order to remove any seasonality using any method (bfast or a stratight STL decomposition), I cannot have too many NAs (which was the point of the previous chunk i.e. to find how many pixels have nonNA values through the time series). Obviously I will remove all pixels that have no anisoEVI value in any of the years 
 
 I dig into the NAs more in the next chunk. Based on conversation with Josh on 21st Feb- I will find (1) in each year, how many consecutive months have NAs for every pixel. 
 
 ```{r}
+#run lines 117-127
 masked_evi
 
 tic(); masked_evi2<- terra::crop(masked_evi, vect(cerrado));toc()
@@ -226,6 +239,7 @@ no_consecutive_NA<- function (x){
   } else {
     x<- max(rle(y)$lengths[rle(y)$values])
   }
+  x
 }
 
 consecutive_NA_through_year_list<- list()
@@ -265,8 +279,8 @@ tic();for (i in 1:nlyr(annual_consecutive_NA)){
   number_consecutive_map_list[[i]]<- number_consecutive_map
 }; toc()
 x<-tmap_arrange(number_consecutive_map_list[[17]],number_consecutive_map_list[[18]], number_consecutive_map_list[[19]], 
-                number_consecutive_map_list[[20]], number_consecutive_map_list[[21]],  nrow=3, ncol=2)
-tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "reclass_year_consecutiveNA17_21.png"), width = 1000, height = 750, dpi = 300)
+                number_consecutive_map_list[[20]],number_consecutive_map_list[[21]],  nrow=3, ncol=2)
+tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "reclass_year_consecutiveNA2017_2021.png"), width = 1000, height = 750, dpi = 300)
 #NA_month<- function(x){#in each annual stackrasters, finding which month anisoEVI data is missing and reclassifying that anisoEVI value to be the month number while remaining months are reclassified to be 0
 #  na_x<- is.na(x)
 #  y<- na_x*(1:length(x))
@@ -283,7 +297,7 @@ tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_t
 ```
 
 
-Then I look at the time series considering consecutive years but same month i.e. are there consecutive NA anisoEVI values for the month of Jan for 2 (3 or 4....) consecutive years. It is repeat of previous chunk except that the way the rasters are organized in a stack is such that the stack is a month
+4. Then I look at the time series considering consecutive years but same month i.e. are there consecutive NA anisoEVI values for the month of Jan for 2 (3 or 4....) consecutive years. It is repeat of previous chunk except that the way the rasters are organized in a stack is such that the stack is a month
 ```{r}
 masked_evi
 month_colnames<- list()
@@ -404,12 +418,13 @@ tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_
 ```
 
 
-Apart from consecutive NAs across months in year, I also want to know how many NA months exist in a year (non-concecutive) and what is the highest number of NA months across years.
+6. Apart from consecutive NAs across months in year, I also want to know how many NA months exist in a year (non-concecutive) and what is the highest number of NA months across years.
 ```{r}
-#reran lines 32, 36-42, 69, 111-115, 206-207, 210-215
+#reran lines 32, 36-42, 81, 123-127, 217-228
 no_NA<- function (x){
   y<- is.na(x)
-  x<- sum(y)
+  no_NA<- sum(y)
+  no_NA
 }
 
 NA_through_year_list<- list()
@@ -445,8 +460,8 @@ tic();for (i in 1:nlyr(annual_NA)){
   NA_map_list[[i]]<- NA_map
 }; toc()
 x<-tmap_arrange(NA_map_list[[17]],NA_map_list[[18]], NA_map_list[[19]], 
-                NA_map_list[[20]],NA_map_list[[21]],  nrow=3, ncol=2)
-tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "NAyear17_21.png"), width = 1000, height = 750, dpi = 300)
+                NA_map_list[[20]],NA_map_list[[21]], nrow=3, ncol=2)
+tmap_save(x, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "NAyear2017_2021.png"), width = 1000, height = 750, dpi = 300)
 
 
 tic(); max_NAs<- terra::app(annual_NA, fun= "max"); toc()
@@ -484,24 +499,13 @@ consecutiveNAmonth_sameyear
 consecutiveNAmonth_sameyear<- consecutiveNAmonth_sameyear[[2:21]]#excluding 1st raster from stack which is the 2001 consecutive months NA raster
 
 tic(); no2001_max_consecutiveNAs<- terra::app(consecutiveNAmonth_sameyear, fun= "max"); toc()
-writeRaster(no2021_max_consecutiveNAs,here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
+writeRaster(no2001_max_consecutiveNAs,here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
 
 map_no2001_maxconsecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape(d_trans)+ tm_fill()+
   tm_shape(no2001_max_consecutiveNAs)+
   tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max consecutive NA (in each year, excluding 2001)") + 
               tm_layout (legend.position = c("left", "bottom"))
-
-#reclassifying such that all pixels that have all months of the year NA, those pixels are excluded completely 
-no2001_allNAremove_max_consecutiveNAs<- terra::classify(no2001_max_consecutiveNAs,cbind(12,NA))
-map_no2001_allNAremove_max_consecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  tm_shape(d_trans)+ tm_fill()+
-  tm_shape(no2001_allNAremove_max_consecutiveNAs)+
-  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max consecutive NA (in each year, excluding 2001)") + 
-              tm_layout (legend.position = c("left", "bottom"))
-
-x_arrange<- tmap_arrange(map_no2001_maxconsecutiveNAs,map_no2001_allNAremove_max_consecutiveNAs)
-tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "map_no2001_maxconsecutiveNA.png"), width = 1000, height = 750, dpi = 300)
 
 #rerun lines 430-433
 annual_NA<- annual_NA[[2:21]]
@@ -515,31 +519,20 @@ map_no2001_maxNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max NA (in each year, excluding 2001)") + 
               tm_layout (legend.position = c("left", "bottom"))
 
-#reclassifying such that all pixels that have all months of the year NA, those pixels are excluded completely 
-no2001_allNAremove_max_NAs<- terra::classify(no2001_max_NAs,cbind(12,NA))
-map_no2001_allNAremove_max_NAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  tm_shape(d_trans)+ tm_fill()+
-  tm_shape(no2001_allNAremove_max_NAs)+
-  tm_raster(style = 'cat',palette= get_brewer_pal("Set3"), title="Max NA (in each year, excluding 2001)") + 
-              tm_layout (legend.position = c("left", "bottom"))
-
-x_arrange<- tmap_arrange(map_no2001_maxNAs,map_no2001_allNAremove_max_NAs)
-tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "map_no2001_maxNA.png"), width = 1000, height = 750, dpi = 300)
-
-x_arrange<- tmap_arrange(map_no2001_allNAremove_max_consecutiveNAs, map_no2001_allNAremove_max_NAs)
+x_arrange<- tmap_arrange(map_no2001_maxconsecutiveNAs,map_no2001_maxNAs)
 tmap_save(x_arrange, here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "comparison_consecutiveNA_totalNA_no2001.png"), width = 1000, height = 750, dpi = 300)
 
-tic();df_no2001_allNAremove_max_NAs<- as.data.frame(no2001_allNAremove_max_NAs);toc()
-percent_no2001_allNAremove_max_NAs<- df_no2001_allNAremove_max_NAs %>% group_by(max) %>% summarise(count=n())
-percent_no2001_allNAremove_max_NAs<- percent_no2001_allNAremove_max_NAs %>% mutate(percent=(count/sum(count))*100)
-names(percent_no2001_allNAremove_max_NAs)<- c("NACount", "Count_Max","PercentMax")
+tic();df_no2001_max_NAs<- as.data.frame(no2001_max_NAs);toc()
+percent_no2001_max_NAs<- df_no2001_max_NAs %>% group_by(max) %>% summarise(count=n())
+percent_no2001_max_NAs<- percent_no2001_max_NAs %>% mutate(percent=(count/sum(count))*100)
+names(percent_no2001_max_NAs)<- c("NACount", "Count_Max","PercentMax")
 
-tic();df_no2001_allNAremove_max_consecutiveNAs<- as.data.frame(no2001_allNAremove_max_consecutiveNAs);toc()
-percent_no2001_allNAremove_consecutive_NAs<- df_no2001_allNAremove_max_consecutiveNAs %>% group_by(max) %>% summarise(count=n())
-percent_no2001_allNAremove_consecutive_NAs<- percent_no2001_allNAremove_consecutive_NAs %>% mutate(percent=(count/sum(count))*100)
-names(percent_no2001_allNAremove_consecutive_NAs)<- c("NACount", "Count_MaxConsecutive","PercentMaxConsecutive")
+tic();df_no2001_max_consecutiveNAs<- as.data.frame(no2001_max_consecutiveNAs);toc()
+percent_no2001_consecutive_NAs<- df_no2001_max_consecutiveNAs %>% group_by(max) %>% summarise(count=n())
+percent_no2001_consecutive_NAs<- percent_no2001_consecutive_NAs %>% mutate(percent=(count/sum(count))*100)
+names(percent_no2001_consecutive_NAs)<- c("NACount", "Count_MaxConsecutive","PercentMaxConsecutive")
 
-both_df<- full_join(percent_no2001_allNAremove_max_NAs,percent_no2001_allNAremove_consecutive_NAs)
+both_df<- full_join(percent_no2001_max_NAs,percent_no2001_consecutive_NAs)
 both_df<- both_df %>% dplyr::select(c(NACount, PercentMax, PercentMaxConsecutive))
 both_df<- pivot_longer(both_df, 2:3)
 
@@ -550,14 +543,69 @@ ggsave(here("Outputs", "Indices","Masked_anisoEVI","TotalNA_inyear_throughmonths
 
 ```
 
+From above analyses of total area with max consecutive NAs in a year- percent_no2001_consecutive_NAs df, all pixels with 5- 11 missing consecutive anisoEVI values is 0.16% of the total pixels which is nothing. Also all pixels with 12 consecutive missing values in a year is 11.6% of the total area. Together 11.76% of area is reasonable to exclude from trend analyses. 
+Also all pixels that have only 1 consecutive missing anisoEVI values can work because we can linearly interpolate or infill using values from either side of the time series. So only pixels with 2-4 consecutive missing anisoEVI values are problematic. If there are 4 missing consecutive anisoEVI values, that would mean approximately majority of a season has no data which is problematic. 1.63% of the total pixels have 4 consectuive missing values, which again can be excluded i.e. 11.76+1.63= 13.39% of area excluded. However, 22.12% of pixels have 2 or 3 consecutive missing values which I need to do something about
+
+
+###################### Testing of in filling methods
+First, creating random points in pixels wiith a full time series
+```{r}
+no2001_max_consecutiveNAs<- rast(here("Outputs", "Indices", "Masked_anisoEVI", "ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
+
+#reclassifying above to keep pixels=0 and everything else NA
+m<- rbind(c(0,1))
+reclassify_maxconsecutiveNA<- terra::classify(no2001_max_consecutiveNAs,m, others= NA)
+
+NA_sample<- terra::spatSample(reclassify_maxconsecutiveNA, size = 150, method= "stratified", replace= F, as.points=T)
+NA_sample<- terra::crop(NA_sample, d_trans)
+NA_sample<- st_as_sf(NA_sample)
+NA_sample<- NA_sample %>% dplyr::mutate(ID=1: dim(NA_sample)[1])
+st_write(NA_sample, here("Outputs", "Pixels_of_interest","NA_sample_0NAanisoEVI.shp"))
+
+masked_evi2 #run above lines
+
+timeseries_NA_sample<- terra::extract(masked_evi2, NA_sample, method= "simple", xy=T )
+
+```
+
+Second, inducing NA into the full time series
+```{r}
+df_timeseries_NA_sample<- pivot_longer(timeseries_NA_sample,2:253 )
+df_timeseries_NA_sample<-df_timeseries_NA_sample %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+df_timeseries_NA_sample2<- df_timeseries_NA_sample
+df_timeseries_NA_sample2$Year<- as.numeric(df_timeseries_NA_sample2$Year)
+df_timeseries_NA_sample2$Month<- as.numeric(df_timeseries_NA_sample2$Month)
+
+
+#(i) 2 consecutive NA values introduced in the same positions in every year for every point
+# For now I chose April & May to be missing which is the beginning of the dry season. 4th & 5th month
+
+scenario1<- df_timeseries_NA_sample2 %>% group_by(Year) %>% mutate(value= ifelse(Month=="4" | Month=="5", NA, value)) 
+
+#(ii) 2 consecutive NA values introduced in random positions in every year for every point (i.e. NA value position in 2001 for point ID 1 will be the same positions that are NA for year 2001 for point ID 83). There are 20 years (2001-2021), so I need 20 random sets of consecutive numbers
+
+NA_position<- data.frame(Year=2001:2021)
+NA_position<- NA_position %>% mutate(index1=NA)
+set.seed(1000)
+for (i in 1:dim(NA_position)[1]){
+  first_value<- sample(x=1:11, size=1, replace=F)
+  NA_position[i,2]<- first_value
+}
+NA_position<- NA_position %>% mutate(index2=index1+1)
+
+scenario2<- df_timeseries_NA_sample2
+for (i in 1:(dim(NA_position)[1])){
+  scenario2<- scenario2 %>% mutate(value= ifelse(Year==NA_position[i,1] & (Month==NA_position[i,2] | Month== NA_position[i,3]),NA, value))
+  
+}
+
+
+```
 
 
 
-
-
-#################### Final criteria to retain pixels of interest
-
-#Decision 1- Exclude all pixels that have ALL anisoEVI values through time are missing/are NA
+##Decision 1- Exclude 2001 anisoEVI data
+##Decision 2- Exclude all pixels that have ALL anisoEVI values through time are missing/are NA
 ```{r}
 #rerun lines 32, 36-42, 111-115
 
@@ -579,5 +627,6 @@ writeRaster(exclude_all_NA_pixels, here("Outputs", "Pixels_of_interest", "allNAs
 remove(numberoflayers)
 tic(); excludeallNA_evi<- terra::mask(masked_evi, exclude_all_NA_pixels); toc()
 ```
+
 
 
