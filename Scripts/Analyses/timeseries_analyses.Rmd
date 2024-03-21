@@ -100,7 +100,7 @@ anisoEVI_random_points<- as.data.frame(anisoEVI_random_points)
 anisoEVI_random_points<- anisoEVI_random_points %>% 
   mutate(na_count= rowSums(is.na(select(.,-c(id, PointID, ID_1, region, x, y))))) 
 anisoEVI_random_points<- anisoEVI_random_points %>%
-                          dplyr::filter(na_count!=251) #%>% 
+                          dplyr::filter(na_count!=252) #%>% 
 #removing points that have all anisoEVI missing i.e. na_count=251 #185 values left
 
 # Trial BFAST across above points
@@ -250,8 +250,8 @@ tic(); for (i in 1:length(pointid_vector)){
 I consider points that I have been testing out, but points that have 0 NAs in the time series. This way I can compare the results of the stl decomposition with the differencing results and see what is happening. 
 
 ```{r}
-no_NA<- anisoEVI_random_points %>% dplyr::filter(na_count==0) #33 points
-pivot_no_NA<- pivot_longer(no_NA, cols = 5:255)#5:255 are the cols with anisoEVI values
+no_NA<- anisoEVI_random_points %>% dplyr::filter(na_count==0) #32 points
+pivot_no_NA<- pivot_longer(no_NA, cols = 5:256)#5:256 are the cols with anisoEVI values
 
 library(stlplus)
 no_NA_id<- unique(pivot_no_NA$PointID)
@@ -307,7 +307,8 @@ remove(m, trial_point)
 library(chngpt)
 
 pivot_no_NA
-trial_point<- pivot_no_NA %>% dplyr::filter(PointID==2) %>% mutate(timestep= 1:dim(trial_point)[1])
+trial_point<- pivot_no_NA %>% dplyr::filter(PointID==2) 
+trial_point<- trial_point %>% mutate(timestep= 1:dim(trial_point)[1])
 
 fit<- chngpt::chngptm(formula.1=value~1, formula.2=~timestep, family="gaussian", data=trial_point,
 type="step", var.type="bootstrap", weights=NULL)
