@@ -500,6 +500,7 @@ consecutiveNAmonth_sameyear<- consecutiveNAmonth_sameyear[[2:21]]#excluding 1st 
 
 tic(); no2001_max_consecutiveNAs<- terra::app(consecutiveNAmonth_sameyear, fun= "max"); toc()
 writeRaster(no2001_max_consecutiveNAs,here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
+no2001_max_consecutiveNAs<- rast(here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
 
 map_no2001_maxconsecutiveNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape(d_trans)+ tm_fill()+
@@ -512,6 +513,7 @@ annual_NA<- annual_NA[[2:21]]
 
 tic(); no2001_max_NAs<- terra::app(annual_NA, fun= "max"); toc()
 writeRaster(no2001_max_NAs,here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
+no2001_max_NAs<- rast(here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
 
 map_no2001_maxNAs<- tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape(d_trans)+ tm_fill()+
@@ -548,7 +550,11 @@ Also all pixels that have only 1 consecutive missing anisoEVI values can work be
 
 
 ###################### Testing of in filling methods
-First, creating random points in pixels wiith a full time series
+I have decided to go with the Savistzky Golay filter for now as I can reference it well. To use this infilling method, I need to determine two parameters- m the width of the smoothing window and d the order of the polynomial function used to fit a curve and hence find the value to be infilled. This is because the original paper provides some values, but other papers that use this infilling method basically use other values for these two parameters. 
+
+I have decided to find the best combination of the two values which give the lowest RMSE between the infilled value and the original value (when using a full time series at points i.e all values exist, we deliberately make 2 or 3 values NA and then check RMSE).
+
+First, creating random points in pixels with a full time series
 ```{r}
 no2001_max_consecutiveNAs<- rast(here("Outputs", "Indices", "Masked_anisoEVI", "ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
 
@@ -580,7 +586,7 @@ df_timeseries_NA_sample2$Month<- as.numeric(df_timeseries_NA_sample2$Month)
 #(i) 2 consecutive NA values introduced in the same positions in every year for every point
 # For now I chose April & May to be missing which is the beginning of the dry season. 4th & 5th month
 
-scenario1<- df_timeseries_NA_sample2 %>% group_by(Year) %>% mutate(value= ifelse(Month=="4" | Month=="5", NA, value)) 
+scenario1<- df_timeseries_NA_sample2 %>% group_by(Year) %>% mutate(value_NA= ifelse(Month=="4" | Month=="5", NA, value)) 
 
 #(ii) 2 consecutive NA values introduced in random positions in every year for every point (i.e. NA value position in 2001 for point ID 1 will be the same positions that are NA for year 2001 for point ID 83). There are 20 years (2001-2021), so I need 20 random sets of consecutive numbers
 
@@ -595,38 +601,180 @@ NA_position<- NA_position %>% mutate(index2=index1+1)
 
 scenario2<- df_timeseries_NA_sample2
 for (i in 1:(dim(NA_position)[1])){
-  scenario2<- scenario2 %>% mutate(value= ifelse(Year==NA_position[i,1] & (Month==NA_position[i,2] | Month== NA_position[i,3]),NA, value))
+  scenario2<- scenario2 %>% mutate(value_NA= ifelse(Year==NA_position[i,1] & (Month==NA_position[i,2] | Month== NA_position[i,3]),NA, value))
   
 }
+```
+
+
+Third, adapt Guy's Savitzky- Golay filter code 
+```{r}
+library(imputeTS)
+library(signal)
+
+# First, I only do the linear interpolation step i.e. I do not exclude points 
+# with subsequent increase of > 0.1 in 5 days (assume cloud) 
+tpw_all_int <- scenario1 %>%
+  group_by(ID) %>%
+  mutate(value_int = imputeTS::na_interpolation(value_NA))
+
+# Apply Savitzky-Golay filter to smooth signal
+# Chen et al., 2004 recommends m=4 to 7 which means choose 4 values before and 
+# after the value to be infilled, 5 values before and after... until 7. 
+# Considering I have monthly data, I wouldn't want to go beyond 4 values before
+# and after the NA value as I want to stay within a season (dry or wet). 
+# So I test the range m= 1-4 (or 3 to 9 when implemented)
+# Secondly, Chen et al., 2004 recommends d= 2 to 4, which I keep. 
+
+
+sg_params <- tibble(p = rep(2:4, 4),
+                    m = rep(2:5, each = 3))
+
+# Iterative approach to upper ndvi envelope
+# Generate new time series by replacing "noisy" NDVI values with filtered ones
+# Second, shorter-period SG filter
+
+iterative_fit <- function(ndvi_1, ndvi_0, weight, p, n) {
+  
+  initial_fit <- 1000
+  new_fit <- sum(abs(ndvi_1 - ndvi_0) * weight)
+  ndvi_new <- ndvi_1
+
+  while(initial_fit > new_fit) {
+    initial_fit <- new_fit
+    
+    ndvi_new <- ifelse(ndvi_new >= ndvi_0, ndvi_new, ndvi_0) %>%
+    sgolayfilt(p = p, n = n)
+  
+  new_fit <- sum(abs(ndvi_new - ndvi_0) * weight)
+  }
+  ndvi_new
+} 
+
+# Find optimal smoothing values for time series in each point
+ find_least_error <- function(time_series_df) {
+   # Calculate sum of squared errors for each combination of parameters
+   sse <- numeric(length = nrow(sg_params))
+   
+   for (i in seq_len(nrow(sg_params))) {
+     p <- sg_params$p[i]
+     n <- 2 * sg_params$m[i] + 1
+     
+     time_series_df <- time_series_df%>% mutate(value_filtered= sgolayfilt(value_int, p = p, n = n))
+    
+    # Assign weights in the interpolated series based on whether the values
+    # fall above or below the trend curve 
+     time_series_df <- time_series_df %>%
+        mutate(dist = value_filtered - value_int,
+         max_dist = max(dist),
+         weight = ifelse(dist > 0, 1 - (dist / max_dist), 1))
+    
+    # Call iterative function outside the loop 
+     time_series_df <- time_series_df %>%
+        mutate(value_new = iterative_fit(value_filtered, value_int, weight, p, n))
+     
+     sse[i] <- sum((time_series_df$value - time_series_df$value_new) ^ 2)
+     
+     time_series_df<- time_series_df %>% dplyr::select(-c(value_filtered, dist, max_dist, weight, value_new))
+   }
+   
+   # Choose iteration which has minimum sse
+   opt <- which.min(sse) #opt is the row of the sg_params df
+   
+   time_series_df<- time_series_df %>% mutate(p=sg_params$p[opt],m=sg_params$m[opt])
+   time_series_df<- time_series_df%>% mutate(value_final= sgolayfilt(time_series_df$value_int, p = sg_params$p[opt], n = (2 * sg_params$m[opt] + 1)))
+   time_series_df
+ }
+
+time_series_df<- tpw_all_int %>% dplyr::filter(ID==1) 
+x<- find_least_error(time_series_df)
+
+x_plot<-x %>%
+  mutate(Date= paste0(Year, "_", Month, "_01")) %>%
+  mutate(Date= ymd(Date)) %>%
+  pivot_longer(cols = c("value","value_NA", "value_final"),
+               names_to = "var", values_to = "value") %>%
+  ggplot() +
+  geom_line(aes(x = Date, y = value, colour = var)) +
+  theme_bw() +
+  scale_x_date(breaks = "6 months", minor_breaks = "3 month") +
+  theme(axis.text.x = element_text(angle = 60, vjust = 0.5, hjust=1))
+ 
+
+
+ 
+
+ 
+  
+# Combine all points by taking average, median sse
+
+# tpw_sg1_opt <- tpw_all_int %>%
+#   group_by(plot_id) %>%
+#   mutate(opt = find_least_error(ndvi_int))
+
 
 
 ```
+Above code did not work! The final gap filled values are exactly the same as those obtained using linear interpolation. 
 
+After speaking to Marina on Mar 27th 2024, we decided to abandon the Savitzky - Golay filter. We have decided to use mean anisoEVI values from remaining time steps of pixels that have 2 and 3 consecutive missing values. 
+
+
+###################### Final pixels of interest 
+```{r}
+
+masked_evi2 #run lines 219-220
+
+remove(evi, masked_evi, masked_raster_list, colnames, i, masked_list, x, y)
+
+```
 
 
 ##Decision 1- Exclude 2001 anisoEVI data
-##Decision 2- Exclude all pixels that have ALL anisoEVI values through time are missing/are NA
 ```{r}
-#rerun lines 32, 36-42, 111-115
+no2001_masked_evi2<- masked_evi2[[13:252]] 
 
-#trial
-#trial<- c(NA, NA, NA, NA, NA)
+no2001_max_consecutiveNAs<-rast(here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
+no2001_max_NAs<- rast(here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
 
-numberoflayers<- nlyr(masked_evi)
-exclude_NA<- function (x){
-  y<- is.na(x)
-  if (sum(y)==numberoflayers){ 
-    x<-NA
-  } else {
-    x<- 1
-  }
-}
-tic(); exclude_all_NA_pixels<- terra::app(masked_evi, fun= exclude_NA);toc()
-writeRaster(exclude_all_NA_pixels, here("Outputs", "Pixels_of_interest", "allNAs_excluded_mask.tif"))
-
-remove(numberoflayers)
-tic(); excludeallNA_evi<- terra::mask(masked_evi, exclude_all_NA_pixels); toc()
 ```
 
+##Decision 2- Exclude all pixels in which the maximum number of consecutive NA anisoEVI values in a year is greater than 4
+```{r}
+m <- rbind(c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 4))
 
+tic(); rcx1 <- classify(no2001_max_consecutiveNAs, m, others= NA);toc()
+#writeRaster(rcx1, here("Outputs", "Pixels_of_Interest", "0_4_maxconsecutiveNA.tif"))
+
+tic(); no2001_0_4maxconsecutiveNA_masked_evi2<- terra::mask (no2001_masked_evi2, rcx1);toc()
+
+remove(m)
+```
+
+##Decision 3- Linear interpolation using neighboring time steps for pixels with max one consecutive NA anisoEVI values
+```{r}
+all_rasters<- c(no2001_0_4maxconsecutiveNA_masked_evi2, rcx1)
+  
+tic(); df_no2001_0_4maxconsecutiveNA<- as.data.frame(all_rasters, xy=T, cell=T); toc()  
+#write_rds(df_no2001_max_consecutiveNAs, here("Outputs", "Pixels_of_Interest", "df_no2001_0_4maxconsecutiveNA.rds"))
+names(df_no2001_max_consecutiveNAs)
+
+tic(); pivot_df_trial<- pivot_longer(df_no2001_0_4maxconsecutiveNA, 4:243); toc()
+#write_rds(df_no2001_max_consecutiveNAs, here("Outputs", "Pixels_of_Interest", "pivot_df_no2001_0_4maxconsecutiveNA.rds"))
+
+
+tic(); linear_int_no2001_0_4maxconsecutiveNA<- pivot_df_trial %>%
+  group_by(cell) %>% filter(max==1); toc()  #NAs :2115246 in value column
+
+
+library(imputeTS)
+tic(); linear_int_no2001_0_4maxconsecutiveNA <- linear_int_no2001_0_4maxconsecutiveNA %>%
+  group_by(cell) %>%
+  mutate(value_int = imputeTS::na_interpolation(value, option = "linear", maxgap = 1));toc()
+#tic(); write_rds(linear_int_no2001_0_4maxconsecutiveNA, here("Outputs", "Pixels_of_Interest", "linear_int_no2001_0_4maxconsecutiveNA.rds"));toc()
+
+nomax1_pivot_df_trial<- pivot_df_trial %>% group_by(cell) %>% filter(max!=1)
+tic(); write_rds(nomax1_pivot_df_trial, here("Outputs", "Pixels_of_Interest", "nomax1_pivot_df_trial.rds"));toc()
+
+```
 
