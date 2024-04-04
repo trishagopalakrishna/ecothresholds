@@ -19,7 +19,7 @@ library(tmaptools)
 library(RColorBrewer)
 library(viridis)
 
-terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 
 ##Introduction
@@ -735,16 +735,16 @@ remove(evi, masked_evi, masked_raster_list, colnames, i, masked_list, x, y)
 no2001_masked_evi2<- masked_evi2[[13:252]] 
 
 no2001_max_consecutiveNAs<-rast(here("Outputs","Indices", "Masked_anisoEVI","ConsecutiveNA_inyear_throughmonths", "no2001_maxconsecutiveNA.tif"))
-no2001_max_NAs<- rast(here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
+#no2001_max_NAs<- rast(here("Outputs","Indices", "Masked_anisoEVI","TotalNA_inyear_throughmonths", "no2001_maxNA.tif"))
 
 ```
 
 ##Decision 2- Exclude all pixels in which the maximum number of consecutive NA anisoEVI values in a year is greater than 4
 ```{r}
-m <- rbind(c(0, 0), c(1, 1), c(2, 2), c(3, 3), c(4, 4))
+m <- rbind(c(0, 0), c(1, 1), c(2, 2), c(3, 3))
 
 tic(); rcx1 <- classify(no2001_max_consecutiveNAs, m, others= NA);toc()
-#writeRaster(rcx1, here("Outputs", "Pixels_of_Interest", "0_4_maxconsecutiveNA.tif"))
+writeRaster(rcx1, here("Outputs", "Pixels_of_Interest", "0_4_maxconsecutiveNA.tif"))
 
 tic(); no2001_0_4maxconsecutiveNA_masked_evi2<- terra::mask (no2001_masked_evi2, rcx1);toc()
 
@@ -755,26 +755,55 @@ remove(m)
 ```{r}
 all_rasters<- c(no2001_0_4maxconsecutiveNA_masked_evi2, rcx1)
   
-tic(); df_no2001_0_4maxconsecutiveNA<- as.data.frame(all_rasters, xy=T, cell=T); toc()  
-#write_rds(df_no2001_max_consecutiveNAs, here("Outputs", "Pixels_of_Interest", "df_no2001_0_4maxconsecutiveNA.rds"))
-names(df_no2001_max_consecutiveNAs)
+tic(); df_no2001_0_4maxconsecutiveNA<- terra::as.data.frame(all_rasters, xy=T, cell=T); toc()  
+#tic(); write_rds(df_no2001_0_4maxconsecutiveNA, here("Outputs", "Pixels_of_Interest", "df_no2001_0_3maxconsecutiveNA_1.rds"));toc()
+names(df_no2001_0_4maxconsecutiveNA)
 
+tic(); df_no2001_0_4maxconsecutiveNA<- read_rds(here("Outputs", "Pixels_of_Interest", "df_no2001_0_3maxconsecutiveNA.rds"));toc()
 tic(); pivot_df_trial<- pivot_longer(df_no2001_0_4maxconsecutiveNA, 4:243); toc()
-#write_rds(df_no2001_max_consecutiveNAs, here("Outputs", "Pixels_of_Interest", "pivot_df_no2001_0_4maxconsecutiveNA.rds"))
-
-
-tic(); linear_int_no2001_0_4maxconsecutiveNA<- pivot_df_trial %>%
-  group_by(cell) %>% filter(max==1); toc()  #NAs :2115246 in value column
+names(pivot_df_trial)
+tic();pivot_df_trial<- pivot_df_trial %>% 
+  mutate(
+  Year = substring (name,1, 4),
+  Month = substring (name, 6)
+); toc()
+#write_rds( pivot_df_trial, here("Outputs", "Pixels_of_Interest", "pivot_df_no2001_0_3maxconsecutiveNA_2.rds"))
 
 
 library(imputeTS)
-tic(); linear_int_no2001_0_4maxconsecutiveNA <- linear_int_no2001_0_4maxconsecutiveNA %>%
+tic(); pivot_df_trial<- pivot_df_trial %>%
   group_by(cell) %>%
   mutate(value_int = imputeTS::na_interpolation(value, option = "linear", maxgap = 1));toc()
-#tic(); write_rds(linear_int_no2001_0_4maxconsecutiveNA, here("Outputs", "Pixels_of_Interest", "linear_int_no2001_0_4maxconsecutiveNA.rds"));toc()
+#tic(); write_rds(pivot_df_trial, here("Outputs", "Pixels_of_Interest", "linear_int_no2001_0_3maxconsecutiveNA_3.rds"));toc()
 
-nomax1_pivot_df_trial<- pivot_df_trial %>% group_by(cell) %>% filter(max!=1)
-tic(); write_rds(nomax1_pivot_df_trial, here("Outputs", "Pixels_of_Interest", "nomax1_pivot_df_trial.rds"));toc()
+#summary(pivot_df_trial) NAs in value: 6447887 and NAs in value_int: 1910090. This means that (1910090/6447887)*100=29.6% of total NA values remain
 
+remove(df_no2001_0_4maxconsecutiveNA)
+remove(no2001_0_4maxconsecutiveNA_masked_evi2,no2001_max_consecutiveNAs,no2001_max_NAs,no2001_masked_evi2 )
+remove(rcx1)
+gc()
 ```
 
+##Decision 4- For values with max=2 and 3, fill NA values with mean anisoEVI values for that pixel from other months for which the month is missing. For example is April 2005 is NA for pixel A, then for that pixel use mean of remaining Aprils to fill the NA value
+```{r}
+tic(); pivot_df_trial <- pivot_df_trial %>%
+  group_by(cell, Month) %>%
+  mutate(value_mean = mean(value, na.rm=T)) %>%
+  mutate(value_int= ifelse(is.na(value), value_mean, value)); toc() #11 min
+#tic(); write_rds(pivot_df_trial, here("Outputs", "Pixels_of_Interest", "value_int_4.rds"));toc() 5 min
+
+tic(); pivot_df_trial<- read_rds(here("Outputs", "Pixels_of_Interest", "value_int_4.rds"));toc() #432849840 rows
+
+#tic(); summary(pivot_df_trial); toc() #NAs in value_int: 120 same as value_mean. Investigating these 120 missing values
+tic(); NA_value_int<- pivot_df_trial %>% filter(is.na(value_int));toc()
+# 6 pixels have all Febs missing. So the problem is that I cannot fill the month of Feb with mean values from remaining Febs
+# 6 pixels have cell number- 2326704 2338943 2459103 2465224 2483539 2483541
+
+pixels_exclude<- c(2326704, 2338943, 2459103, 2465224, 2483539, 2483541)
+# I have decided to completely remove these 6 pixels from further analyses. But the object is too big, so deleting unecessary columns
+pivot_df_trial <- pivot_df_trial %>% ungroup()
+tic(); pivot_df_trial<- pivot_df_trial %>% dplyr::select(-c("Year", "Month", "max", "value_mean")); toc()
+tic(); pivot_df_trial <- pivot_df_trial[!(pivot_df_trial$cell %in% pixels_exclude),]; toc()
+tic(); write_rds(pivot_df_trial, here("Outputs", "Pixels_of_Interest", "final_int_df_5.rds"));toc() 
+
+```
