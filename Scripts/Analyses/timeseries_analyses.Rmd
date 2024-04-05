@@ -20,7 +20,7 @@ library(tmaptools)
 library(RColorBrewer)
 library(viridis)
 
-terraOptions(memfrac=0.5, tempdir = here("Scratch"), progress=10)
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 
 ##Introduction
@@ -277,7 +277,48 @@ for (i in 1:length(no_NA_id)){
 
 Basically the results of the differencing and the decomposition does not match up at all! At first I thought that the differencing results matches the residuals after removing trend and season in the decomposition analyses. It slightly matches, but not exactly. Firstly, the residuals from decomposition and differencing are off by couple of decimal place. Second, the differencing results literally has lesser number of resulting values i.e. for example with 251 non NA values, the differencing results in 239 values. The decomposition residuals still has 251 values.
 
-#6. Regression type analyses ie not doing any sort of decomposition/differencing for removal of seasonality. All data is included (irrespective of seasons) and let regression type of analyses get the trend
+
+
+
+##############################################1. Decomposition Analyses
+```{r}
+tic();pivot_df_trial<- read_rds(here("Outputs", "Pixels_of_Interest", "final_int_df_5.rds"));toc() 
+#length(unique(pivot_df_trial$cell)) 1803535 pixels being considered
+
+trial<- pivot_df_trial %>% filter(cell == 9979)
+
+###################### BELOW NOT WORKING #######################
+library(tsibble)
+library(feasts)
+library(fabletools)
+
+trial_tsibble <- trial %>% dplyr::select(c("name", "value_int")) %>%
+  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month")) %>% 
+  mutate(Date= paste0(Year,"_", Month, "_01")) %>%
+  mutate(Date= lubridate::as_date(Date)) %>%
+  as_tsibble(index = Date) %>% 
+  dplyr::select(-c("Year", "Month"))
+
+trial_tsibble %>%
+ model(STL(value_int ~ trend(window = 7) +
+                   season(window = "periodic"),
+    robust = TRUE)) %>%
+  components() %>%
+  autoplot();toc()
+###################### ABOVE NOT WORKING ####################### Cannot figure out why
+
+###################### ALTERNATIVE BELOW WORKING #######################
+trial_ts<- ts(trial$value_int, start=c(2001,1), end=c(2021,12), frequency=12)
+ plot(stl(trial_ts, s.window = "periodic", t.window = 7, t.jump = 1))
+tic(); trial_tsibble %>% 
+
+```
+
+
+
+
+
+##############################################7. Regression type analyses ie not doing any sort of decomposition/differencing for removal of seasonality. All data is included (irrespective of seasons) and let regression type of analyses get the trend
 
 #####(i)- No trend lm- this is from Berdugo et al., 2022. This means that the result of the regression will be the mean of the anisoEVI values. It means that the model only fits an intercept at the mean without a slope (straight horizontal line across). 
 The point of doing this is to then compare other models to this model and proceed with model selection. 
