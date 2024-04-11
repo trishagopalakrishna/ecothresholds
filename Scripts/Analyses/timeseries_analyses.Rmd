@@ -281,36 +281,159 @@ Basically the results of the differencing and the decomposition does not match u
 
 
 ##############################################1. Decomposition Analyses
+From this article- https://otexts.com/fpp3/stl.html, I learn that the two main parameters to be chosen when using STL are the trend-cycle window trend(window = ?) and the seasonal window season(window = ?). These control how rapidly the trend-cycle and seasonal components can change. Smaller values allow for more rapid changes. Both trend and seasonal windows should be odd numbers; trend window is the number of consecutive observations to be used when estimating the trend-cycle; season window is the number of consecutive years to be used in estimating each value in the seasonal component. Setting the seasonal window to be infinite is equivalent to forcing the seasonal component to be periodic season(window='periodic') (i.e., identical across years).
+
+By default, the STL() function provides a convenient automated STL decomposition using a seasonal window of season(window=11) when there is a single seasonal period, and the trend window chosen automatically from the seasonal period. The default setting for monthly data is trend(window=21). For multiple seasonal periods, the default seasonal windows are 11, 15, 19, etc., with larger windows corresponding to larger seasonal periods. This usually gives a good balance between overfitting the seasonality and allowing it to slowly change over time. But, as with any automated procedure, the default settings will need adjusting for some time series. Too small of an s.window value will lead to overfitting. 
+
+stlplus package has a function that is a diagnostic plot to help figure out s.window. If t.window is not provided, it is calculated as nextodd(ceiling((1.5*period) / (1-(1.5/s.window)))).
+
 ```{r}
 tic();pivot_df_trial<- read_rds(here("Outputs", "Pixels_of_Interest", "final_int_df_5.rds"));toc() 
 #length(unique(pivot_df_trial$cell)) 1803535 pixels being considered
 
-trial<- pivot_df_trial %>% filter(cell == 9979)
+#trial<- pivot_df_trial %>% filter(cell == 9979)
 
 ###################### BELOW NOT WORKING #######################
-library(tsibble)
-library(feasts)
-library(fabletools)
+#library(tsibble)
+#library(feasts)
+#library(fabletools)
+#library(fable)
 
-trial_tsibble <- trial %>% dplyr::select(c("name", "value_int")) %>%
-  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month")) %>% 
-  mutate(Date= paste0(Year,"_", Month, "_01")) %>%
-  mutate(Date= lubridate::as_date(Date)) %>%
-  as_tsibble(index = Date) %>% 
-  dplyr::select(-c("Year", "Month"))
+#trial_tsibble <- trial %>% dplyr::select(c("name", "value_int")) %>%
+#  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month")) %>% 
+#  mutate(Date= paste0(Year,"_", Month, "_01")) %>%
+#  mutate(Date= lubridate::as_date(Date)) %>%
+#  as_tsibble(index = Date) %>% 
+#  dplyr::select(-c("Year", "Month"))
 
-trial_tsibble %>%
- model(STL(value_int ~ trend(window = 7) +
-                   season(window = "periodic"),
-    robust = TRUE)) %>%
-  components() %>%
-  autoplot();toc()
-###################### ABOVE NOT WORKING ####################### Cannot figure out why
+#trial_tsibble %>%
+# model(STL(value_int ~ trend(window = 7) +
+#                   season(window = "periodic"),
+#    robust = TRUE)) %>%
+#  components() %>%
+#  autoplot()
+#Error says that there are time gaps (STL cannot be done with NA values). But this is not true! 
+###################### ABOVE NOT WORKING ####################### 
 
-###################### ALTERNATIVE BELOW WORKING #######################
-trial_ts<- ts(trial$value_int, start=c(2001,1), end=c(2021,12), frequency=12)
- plot(stl(trial_ts, s.window = "periodic", t.window = 7, t.jump = 1))
-tic(); trial_tsibble %>% 
+###################### ALTERNATIVE BELOW IS WORKING #######################
+#trial_ts<- ts(trial$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+
+#But now we need to figure out how to tune s.window and t.window
+library(stlplus)
+#stl_trial2<- stlplus(trial_ts, s.window = 11, s.degree = 1, t.degree = 1)
+#plot_seasonal(stl_trial2)
+#plot_seasonal() from the stlplus package is very difficult to interpret! For example, this stackexchange post
+#https://stats.stackexchange.com/questions/307477/how-to-choose-the-best-time-window-using-structural-times-series-with-loess 
+#has no responses! From the fig, it seems like I have to choose the s.window for the horizontal 
+#line in the subseries (each subseries is all Jans, all Febs, hence there are 12) 
+#that does not overly fit the hollow points i.e. when s.window is really small like=5. Also,
+#I should not pick an s.window where the horizontal line is flat through the cloud of points 
+#i.e. s.window="periodic". Also, I read the guidance and tested when s.window="periodic".
+#What I have understood is that if the s.window is set to periodic (and t.window defaults to 21), the algorithm
+#sets the seasonal mean (mean of all values in Jan, mean of all values in Feb) as the seasonal component, trend is then calculated
+#and remainder is the residual. 
+
+#I do not think that s.window="periodic" because it means that there is the same
+#seasonal cycle every year. This would mean that a big component of the 
+#original data will go into the residuals. But I need to ask others for their
+#opinion about this.
+
+#df_needed<- (stl_trial2$data)
+#df_needed<- df_needed %>% full_join(trial, by= join_by(raw == value_int))
+#head(df_needed)
+#df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+#df_needed<- df_needed %>% dplyr::select(c(cell, x,y, name, value, raw, seasonal, trend, remainder ))
+#names(df_needed)<- c("cell", "x", "y", "date", "og_anisoEVI", "int_anisoEVI", "seasonal", "trend","remainder")
+
+#################### For now I am writing code for s.window=11 and accordingly the t.window of 21 is used
+
+#1. Break up og df into multiple dfs, such that each resulting df is a unique cell.
+#Hence, 1000 unique cells in one df, next 1000 in next df
+
+#tic();unique_cell_ids<- unique(pivot_df_trial); toc() does not work! crashes computer
+
+tic(); unique_cell<- pivot_df_trial %>%
+    group_by(cell) %>% summarise(mean_value_int= mean(value_int)); toc() #23 seconds!
+tic(); unique_cell<- unique_cell %>% dplyr::select(cell)
+#tic(); write_rds(unique_cell, here("Outputs", "STL_Decomposition", "unique_cell_id.rds")); toc()
+unique_cell<- read_rds(here("Outputs", "STL_Decomposition", "unique_cell_id.rds")); toc()
+
+chunk <- 1000
+n <- nrow(unique_cell)
+r  <- rep(1:ceiling(n/chunk),each=chunk)[1:(n)]
+tic(); split_unique_cell <- split(unique_cell,r); toc()# 0.19 seconds- this is a list of 1804 objects, where each object consists of 1000 unique cell ids/pixels
+remove(chunk, n,r)
+
+chunk2 <- 240*1000
+n2 <- nrow(pivot_df_trial)
+r2  <- rep(1:ceiling(n2/chunk2),each=chunk2)[1:(n2)]
+tic(); split_pivot_df <- split(pivot_df_trial, r2); toc()# 0.19 seconds- this is a list of 1804 objects, where each object consists of 1000 unique cell ids/pixels
+remove(chunk2, n2,r2)
+
+remove(pivot_df_trial)
+#2. Loop through each of the above unique cell dataframes with the stl decomposition
+
+#stl_df_list<- list()
+#stl_decomposition_function <- function (unique_cell_df){
+#  for (i in 1:dim(unique_cell_df)[[1]]){
+#    one_pixel_df<- pivot_df_trial %>% filter(cell == unique_cell_df$cell[i])
+#    one_pixel_ts<- ts(one_pixel_df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+#    stl_df<- stlplus(one_pixel_ts, s.window = 11, s.degree = 1, t.degree = 1)
+#    df_needed<- (stl_df$data)
+#    df_needed<- df_needed %>% bind_cols(one_pixel_df)
+#    df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+#    df_needed<- df_needed %>% dplyr::select(c(cell, x,y, name, value, raw, seasonal, trend, remainder ))
+#    names(df_needed)<- c("cell", "x", "y", "date", "og_anisoEVI", "int_anisoEVI", "seasonal", "trend","remainder")
+#    stl_df_list[[i]]<-df_needed
+#    print (paste0("Pixel number = ",i))
+#    remove(df_needed, one_pixel_df, one_pixel_ts,stl_df)
+#  }
+#  stl_df_list
+#}
+
+#tic(); x<- stl_decomposition_function(split_unique_cell[[2]]); toc() 
+
+
+#not splitting into multiple dfs
+library(parallel)
+numCores<- detectCores() - 2 #12
+
+
+
+
+
+library(furrr)
+library(future)
+
+Sys.time(); for ( i in 1:length(split_unique_cell)){
+  trial_data_df<- split_pivot_df[[i]]
+  stl_decomposition_function<- function (unique_cell_id){
+    one_pixel_df<- trial_data_df %>% filter(cell == unique_cell_id)
+    one_pixel_ts<- ts(one_pixel_df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+    stl_df<- stlplus(one_pixel_ts, s.window = 11, s.degree = 1, t.degree = 1)
+    df_needed<- (stl_df$data)
+    df_needed<- df_needed %>% bind_cols(one_pixel_df)
+    df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+    df_needed<- df_needed %>% dplyr::select(c(cell, x,y, name, value, raw, seasonal, trend, remainder ))
+    names(df_needed)<- c("cell", "x", "y", "date", "og_anisoEVI", "int_anisoEVI", "seasonal", "trend","remainder")
+    df_needed
+}
+  print ("stl decomposition function edited")
+  trial_cellid_df<- split_unique_cell[[i]]
+  plan(multisession, workers = numCores)
+  tic(); trial_results<- future_map(trial_cellid_df$cell, stl_decomposition_function, .options = furrr_options(seed = TRUE)); toc()
+  compile_results<- bind_rows(trial_results)
+  write_rds(compile_results, here("Outputs", "STL_Decomposition", "Split_datagroups", paste0("stldecomposition", i,".rds")))
+  print ("Results written, check")
+  remove(trial_data_df, trial_cellid_df, trial_results, compile_results)
+  print (paste0("Dataframe # ",i))
+}; Sys.time() #4.5 hours
+
+
+
+
+
+
 
 ```
 
