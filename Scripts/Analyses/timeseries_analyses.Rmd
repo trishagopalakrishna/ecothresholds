@@ -623,14 +623,6 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                                              classification$acceleration[i],
                                              sep="_")
     }  
-  linear.model.summary <- summary(linear_mod)
-
-  classification$linear_slope <- linear.model.summary$coefficients[2, 1]
-  classification$linear_slope_pvalue <- linear.model.summary$coefficients[2, 4]
-  classification$linear_intercept <- linear.model.summary$coefficients[1, 1]
-
-  classification$first_X_value <- X[1]
-  classification$last_X_value <- X[length(X)]
 
   row.names(classification) <- c("Y_pol","Y_lin", "Y_nch")
 
