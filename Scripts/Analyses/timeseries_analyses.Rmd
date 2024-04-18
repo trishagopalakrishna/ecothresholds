@@ -545,14 +545,6 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                aic = aic_null,
                nrmse = nmrs_null)
 
-  # # Significance of coeeficients  
-  # if(summary(orth_poly_mod)$coefficients[3, 4] <= 0.05){
-  #   classification$best_model <- c("best", NA, NA) # quadratic model
-  # } else if(summary(orth_poly_mod)$coefficients[2, 4]<=0.05){
-  #   classification$best_model <- c(NA, "best", NA) # linear model
-  # } else {
-  #   classification$best_model <- c(NA, NA, "best") # no change model
-  # }
 
   # Classification of each model fitted:
   for (i in 1:3){
