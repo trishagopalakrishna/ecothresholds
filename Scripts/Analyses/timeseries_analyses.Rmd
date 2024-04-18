@@ -509,7 +509,13 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                p3 = (-polynomial_orthonormal_basis[2]-1)/
                  (2*polynomial_orthonormal_basis[3]),
                aic = aic_quad,
-               nrmse = nmrs_quad)
+               nrmse = nmrs_quad,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
   
   # Linear model output:
   classification[2,] <-
@@ -526,7 +532,13 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                p2 = NA,
                p3 = NA,
                aic = aic_lin,
-               nrmse = nmrs_lin)
+               nrmse = nmrs_lin,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
 
   # No change model output:
   classification[3,] <-
@@ -543,7 +555,13 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
                p2 = NA,
                p3 = NA,
                aic = aic_null,
-               nrmse = nmrs_null)
+               nrmse = nmrs_null,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
 
 
   # Classification of each model fitted:
@@ -622,9 +640,42 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
       classification$shape_class[i] <- paste(classification$direction[i],
                                              classification$acceleration[i],
                                              sep="_")
-    }  
+  }
+  
+  # Abrupt breakpoint analyses
+  chng_fit<- chngpt::chngptm(formula.1=trend~1,
+                      formula.2=~Months,
+                      family="gaussian", data=dataset,
+                      type="step",
+                      var.type="bootstrap", weights=NULL)
 
-  row.names(classification) <- c("Y_pol","Y_lin", "Y_nch")
+  pred_chg <- data.frame(timestep = X,
+                         bp = chng_fit$best.fit$fitted.values)
+
+  chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$trend))/sd(dataset$trend)
+
+  classification[4, 13] <- chng_fit$chngpt
+  classification[4, 11] <- MuMIn::AICc(chng_fit)
+  classification[4, 12] <- chng_nrmse
+  classification[4, 14] <- ifelse(pred_chg$bp[1] >
+                                       pred_chg$bp[length(pred_chg$bp)],
+                                     "decrease", "increase")
+  classification[4, 15] <-  pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]
+  classification[4, 16] <-  (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
+                        max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1]))
+  classification[4, 17] <-  dataset %>%
+                                  dplyr::filter(Months<=chng_fit$chngpt) %>%
+                                  dplyr::pull(trend) %>%
+                                  sd()
+  classification[4, 18] <- dataset %>%
+                        dplyr::filter(Months>=chng_fit$chngpt) %>%
+                        dplyr::pull(trend) %>%
+                        sd()
+
+    
+  
+  
+  row.names(classification) <- c("Y_pol","Y_lin", "Y_nch", "Y_abpt")
 
   return(classification)
 }
@@ -633,7 +684,7 @@ class_trajectory_mod <- function (Y = NULL, X = NULL, dataset = NULL,
 
 ```
 
-#Trial above classification function (null, linear, quadratic model)
+#Trial above classification function (null, linear, quadratic model, abrupt)
 ```{r}
 #Data input
 decomposed_dftrial<- read_rds(here("Outputs", "STL_Decomposition", "Split_datagroups", "stldecomposition331.rds"))
@@ -653,47 +704,6 @@ tic(); x<- class_trajectory_mod(trial_df$trend, trial_df$Months, trial_df); toc(
 ```
 
 
-#####(ii) chngpt package trials with points that have full time series (ie no NA anisoEVI values)
-```{r}
-library(chngpt)
-
-chng_fit<- chngpt::chngptm(formula.1=trend~1, 
-                      formula.2=~Months, 
-                      family="gaussian", data=trial_df,
-                      type="step", 
-                      var.type="bootstrap", weights=NULL)
-
-pred_chg <- data.frame(year = trial_df$Months,
-                         bp = chng_fit$best.fit$fitted.values)
-
-nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(trial_df$trend))/sd(trial_df$trend)
-
-# Summarize chngt outputs in one line:
-chg_out <- data.frame(abbr = "chg",
-                        mtd = "chgnpt",
-                        n_brk = 1,
-                        loc_brk = chng_fit$chngpt,
-                        aic = MuMIn::AICc(chng_fit),
-                        trend = ifelse(pred_chg$bp[1] >
-                                         pred_chg$bp[length(pred_chg$bp)],
-                                       "decrease", "increase"),
-                        mag = pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1],
-                        rel_chg =
-                          (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
-                          max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1])),
-                        SDbef = trial_df %>%
-                          dplyr::filter(Months<=chng_fit$chngpt) %>%
-                          dplyr::pull(trend) %>%
-                          sd(),
-                        SDaft = trial_df %>%
-                          dplyr::filter(Months>=chng_fit$chngpt) %>%
-                          dplyr::pull(trend) %>%
-                          sd(),
-                        nrmse = nrmse
-  )
-  chg_out <- chg_out %>% mutate(abruptness = mag/((SDbef+SDaft)/2))
-
-```
 
 
 
