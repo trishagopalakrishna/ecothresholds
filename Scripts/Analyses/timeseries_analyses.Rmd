@@ -445,6 +445,7 @@ In the chunk below I write the code for above models and trial with one pixel
 library(MuMIn)
 
 class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
+  dataset<- dataset %>% mutate(Months= 1:nrow(dataset))
   #Trajectory fitting
   null_mod<- lm(trend ~ 1, data = dataset) ##1. No intercept
   summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
@@ -672,7 +673,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
   
   row.names(classification) <- c("Y_pol","Y_lin", "Y_nch", "Y_abpt")
   
-  classification$cell <- unique(dataset$cell)
+  # classification$cell <- unique(dataset$cell)
   classification$x <- unique(dataset$x)
   classification$y <- unique(dataset$y)
 
@@ -686,88 +687,43 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
 Running across all points with parallelizing
 ```{r}
 #Data input
-decomposed_dftrial<- read_rds(here("Outputs", "STL_Decomposition", "Split_datagroups", "stldecomposition331.rds"))
-head(decomposed_dftrial)
+#decomposed_dftrial<- read_rds(here("Outputs", "STL_Decomposition", "Split_datagroups", "stldecomposition331.rds"))
+#head(decomposed_dftrial)
 
-trial_df<- decomposed_dftrial %>% filter(cell==1679729)
-head(trial_df)
-trial_df<- trial_df %>% dplyr::select(-c(og_anisoEVI, int_anisoEVI, seasonal, remainder))
+#trial_df<- decomposed_dftrial %>% filter(cell==1679729)
+#head(trial_df)
+#trial_df<- trial_df %>% dplyr::select(-c(og_anisoEVI, int_anisoEVI, seasonal, remainder))
 #trial_df<- trial_df %>% separate_wider_delim(cols = date, delim = "_", names = c("Year","Month"))
 #trial_df<- trial_df %>% mutate(Date= paste0(Year,"_", Month, "_01"))
 #trial_df<- trial_df %>% mutate(Date= lubridate::as_date(Date))
-trial_df<- trial_df %>% mutate(Months= 1:nrow(trial_df))
-plot(trial_df$trend, type= "l")
+#trial_df<- trial_df %>% mutate(Months= 1:nrow(trial_df))
+#plot(trial_df$trend, type= "l")
 
-tic(); x<- class_trajectory_mod (trial_df); toc()
+#tic(); x<- class_trajectory_mod (trial_df); toc()
 
 
 rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), pattern='.rds$', all.files=TRUE, full.names=TRUE)
 rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
-tic(); above_rds_list<-lapply(rds_list, read_rds); toc() #2 min 
 
-for (i in 1:length(above_rds_list)){
-  unique_cell<- above_rds_list[[i]] %>%
-    group_by(cell) %>% summarise(mean_value_og= mean(og_anisoEVI)); toc() #23 seconds!
-  unique_cell<- unique_cell %>% dplyr::select(cell)
-  print ("Unique cell ids from current .rds extracted")
-  classification_list<- list()
-  print ("Trajectory classification started")
-  tic(); for ( j in 1:dim(unique_cell)[1]){
-    trial_df<- above_rds_list[[i]] %>% filter(cell==unique_cell[[1]][j])
-    trial_df<- trial_df %>% dplyr::select(-c(og_anisoEVI, int_anisoEVI, seasonal, remainder))
-    trial_df<- trial_df %>% mutate(Months= 1:nrow(trial_df))
-    x<- class_trajectory_mod (trial_df)
-    print ("Trajectory classification completed")
-    classification_list[[i]]<- x
-    print (paste0("Cell id=", j, "/1000"))
-  }; toc()
-  write_rds(classification, here("Outputs", "Trajectory_Classification", "Classification_df", paste0("classification", i, ".rds")))
-  print ("Classification df list written out")
-}
-
+tic(); for (i in 1:length(rds_list)){
+  test_df<- read_rds(rds_list[[1]])
+  plan(multisession, workers = numCores)
+  tic()
+  x <- test_df %>%
+    group_by(cell) %>%
+    nest() %>%
+    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, .options = furrr_options(seed = TRUE))) %>%
+    select(-data) %>%
+    unnest(classification_data)
+  toc()
+  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", paste0("classification",i,".rds")))
+  remove(test_df, x)
+  print (paste0(i, "-Complete. Check"))
+  gc()
+}; toc()
 
 
 ```
 
-
-
-
-
-
-##################### Additional model building trial and error
-
-#2- Trying out linear regression curve fitting as per
-https://matinbrandt.wordpress.com/2013/11/15/pixel-wise-time-series-trend-anaylsis-with-ndvi-gimms-and-r/
-```{r}
-time <- 1:nlyr(aniso_evi) 
-lm_coef_fun <- function(x) { 
-  if (is.na(x[1])){ NA } #if all pixels in the first column (ie same pixels through time) are NA, then result is NA
-  else { m = lm(x ~ time); 
-  summary(m)$coefficients[2] 
-  }}
-tic(); evi.slope<- terra::app(aniso_evi, lm_coef_fun); toc()
-plot(evi.slope, main="slope")
-
-lm_p_fun<- function(x) { 
-  if (is.na(x[1])){ NA } #if all pixels in the first column (ie same pixels through time) are NA, then result is NA
-  else { m = lm(x ~ time); 
-  summary(m)$coefficients[8] 
-  }}
-tic(); p <- terra::app(aniso_evi, fun=lm_p_fun); toc()
-plot(p, main="p-Value")
-
-m = c(0, 0.05, 1, 0.05, 1, 0) 
-rclmat <- matrix(m, ncol=3, byrow=TRUE) #<0.05 is significant, so pixel values=1
-tic(); p.mask <- terra::classify(p, rclmat); toc()
-mask_fun<- function(x) {
-  x[x<1] <- NA; #if pixel =0, then make it NA to mask out non-significant p values
-  return(x)
-  }
-tic(); p.mask.NA<- terra:: app(p.mask, mask_fun); toc()
-
-trend.sig <- terra::mask(evi.slope, p.mask.NA)
-plot(trend.sig, main="significant NDVI change")
-
-
-```
+##############################################3. Model selection
 
