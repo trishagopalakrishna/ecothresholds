@@ -439,7 +439,8 @@ As per Pelisse et al., 2024, I have decided to fit four statistical models for
 each pixel and then use AIC for model selection. The four types of models are-
 no intercept, linear, quadratic and step 
 
-In the chunk below I write the code for above models and trial with one pixel
+In the chunk below I write the code of the classification function to be applied
+to each pixel time series
 
 ```{r}
 library(MuMIn)
@@ -702,21 +703,24 @@ Running across all points with parallelizing
 #tic(); x<- class_trajectory_mod (trial_df); toc()
 
 
-rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
 rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
 
-tic(); for (i in 1:length(rds_list)){
-  test_df<- read_rds(rds_list[[1]])
+tic(); for (i in 259:length(rds_list)){
+  test_df<- read_rds(rds_list[[i]])
   plan(multisession, workers = numCores)
   tic()
   x <- test_df %>%
     group_by(cell) %>%
     nest() %>%
-    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, .options = furrr_options(seed = TRUE))) %>%
+    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, 
+                                                   .options = furrr_options(seed = TRUE))) %>%
     select(-data) %>%
     unnest(classification_data)
   toc()
-  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", paste0("classification",i,".rds")))
+  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", 
+                    paste0("classification",i,".rds")))
   remove(test_df, x)
   print (paste0(i, "-Complete. Check"))
   gc()
@@ -726,4 +730,150 @@ tic(); for (i in 1:length(rds_list)){
 ```
 
 ##############################################3. Model selection
+As per Berdugo et al., 2022 (PNAS), I do model selection by comparing AIC of the 
+4 models per pixel. But if the AIC difference between two models <2, then both
+models are similar. In this case, simplest model is selected. Null model is
+simplest, then linear, then step and last quadratic. Although step and quadratic
+models have the same number of parameters (three), step regressions are 
+considered simpler because the mathematical operations used only involve
+summation
 
+In the chunk below I write the code for above rules of model selection using
+one .rds file of 4 models (i.e. for 1000 unique pixels that have 4 models fit).
+I also parallelize and loop through all 1804 rds files in the same chunk.
+
+```{r}
+#trial_rds<- read_rds(here("Outputs", "Trajectory_Classification", "Classification_df", "classification8.rds"))
+#models_pixel_df<- test_df %>% filter(cell==40544)
+
+model_levels <- c("Null", "Lin", "Step", "Quad")
+
+model_select<- function(models_pixel_df){
+  #adding model name which did not get exported out in the classification function( row.names)
+  models_pixel_df <- models_pixel_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
+                                                                    levels = model_levels))
+  # #adding model simplicity for selection in next few steps
+  # models_pixel_df<- models_pixel_df %>% mutate(modelorder= case_when( model_type=="Null"~1,
+  #                                   model_type=="Lin"~2,
+  #                                   model_type=="Step"~3,
+  #                                   model_type=="Quad"~4))
+  #least AIC model selection
+  models_pixel_df <- models_pixel_df %>%
+    mutate(aic_diff= abs(aic) - min(abs(aic))) #wrt model with least AIC
+  
+  condition_less2<- models_pixel_df %>% filter(aic_diff<=2)
+  
+  if (dim(condition_less2)[1]==1){
+    models_pixel_df<- condition_less2 
+  } else{
+    models_pixel_df<- condition_less2 %>% 
+      filter(model_order==min(model_order))
+  }
+  models_pixel_df 
+}
+
+rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
+
+
+stl_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+stl_list <- gtools::mixedsort(stl_list) #arranging chronologically
+
+
+Sys.time(); for (i in 36:230){
+  test_df<- read_rds(rds_list[[i]])
+  names(test_df)[15]<- "trend_name"
+  plan(multisession, workers = numCores)
+  tic()
+  x <- test_df %>%
+    group_by(cell) %>%
+    nest() %>%
+    mutate(modelselect_data = furrr::future_map(data, model_select, 
+                                                   .options = furrr_options(seed = TRUE))) %>%
+    select(-data) %>%
+    unnest(modelselect_data)
+  toc()
+  write_rds(x, here("Outputs", "Trajectory_Classification", "Final_model_df", 
+                    paste0("modelselect",i,".rds")))
+  
+  
+  stl_test_df <- read_rds(stl_list[[i]])
+  tic()
+  y<- stl_test_df %>% left_join(x, relationship = "many-to-one", by= join_by(cell == cell)); toc()
+  toc()
+  write_rds(y, here("Outputs", "Trajectory_Classification", "Final_model_combined_ogdata_df", 
+                    paste0("ogdata_model",i,".rds")))
+  
+  remove(test_df, x, y, stl_test_df)
+  print (paste0(i, "-Complete. Check"))
+  gc()
+}; Sys.time()
+
+
+############################################## CHECKING ABOVE RESULTS
+rds_list2 <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_combined_ogdata_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list2<-gtools::mixedsort(rds_list2)
+df_list<- list()
+for ( i in 1:length(rds_list2)){
+  selectedmodel_df<- read_rds(rds_list2[[i]])
+  df_list[[i]]<- selectedmodel_df
+  remove(selectedmodel_df)
+  gc()
+}
+
+selectmodel_df<- do.call(rbind,df_list)
+
+selectmodel_df%>% group_by(model_order) %>% 
+  summarise(count= n()/240) %>% 
+  mutate(percentage= (count/5000)*100)
+
+map_df<- selectmodel_df %>% 
+  dplyr::select(c(x.x, y.x, model_order)) %>% 
+  distinct(x.x, y.x, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("x.x", "y.x"))
+map_df<- map_df %>% mutate(pixelvalue= case_when(model_order=="Null"~1,
+                                                 model_order=="Lin"~2,
+                                                 model_order=="Quad"~3))
+plot(map_df["pixelvalue"])
+
+#Map of above in terms of percentage
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+tmap_mode("plot")
+modelselect_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape (map_df)+
+  tm_dots(col = "pixelvalue", palette = c(Null= "red", Lin= "blue", Quad="black"))
+
+remove(map_df, neighbors, map_extent, d_trans, modelselect_map)
+
+
+#Quad pixels
+quad_pixels<- selectmodel_df %>% filter(model_order=="Quad") 
+
+eg_quad_pixel<- quad_pixels %>% 
+  filter(cell==113954)
+plot(eg_quad_pixel$og_anisoEVI, type="l")
+
+#Lin pixels
+lin_pixels<- selectmodel_df %>% filter(model_order=="Lin") 
+
+eg_lin_pixel<- lin_pixels %>% 
+  filter(cell==124023)
+plot(eg_lin_pixel$trend, type="l")
+
+#Null pixels
+null_pixels<- selectmodel_df %>% filter(model_order=="Null") 
+
+eg_null_pixel<- null_pixels %>% 
+  filter(cell==126268)
+plot(eg_null_pixel$trend, type="l")
+
+```
