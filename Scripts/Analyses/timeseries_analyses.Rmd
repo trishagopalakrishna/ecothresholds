@@ -830,20 +830,20 @@ Sys.time(); for ( i in 1:length(rds_list2)){
 selectmodel_df<- do.call(rbind,df_list)
 
 ### Bar plot
-prop_traj<-selectmodel_df%>% group_by(model_order, shape_class) %>% 
+prop_traj<-selectmodel_df%>% group_by(model_order, shape_class, trend_name) %>% 
   summarise(count= n()) %>%
   mutate(percentage= (count/nrow(selectmodel_df))*100) %>%
-  unite(Model_Shape, c("model_order", "shape_class"))
+  unite(Model_Shape_Trend, c("model_order", "shape_class", "trend_name"))
 
-MyPalette <- c(Null_stable_constant ="#CCCCCC", 
-               Lin_decrease_constant= "#332288", 
-               Lin_increase_constant= "#117733", 
-               Lin_stable_constant= "#CC6677",
-               Quad_stable_concave="#AA4499",
-               Quad_stable_convex="#882255")
+MyPalette <- c(Null_stable_constant_NA ="#CCCCCC", 
+               Lin_decrease_constant_NA = "#332288", 
+               Lin_increase_constant_NA = "#117733", 
+               Lin_stable_constant_NA = "#CC6677",
+               Quad_stable_concave_NA ="#AA4499",
+               Quad_stable_convex_NA ="#882255")
 
 plot_prop_traj<- 
-  ggplot(prop_traj, aes(x=Model_Shape, y= percentage, fill=Model_Shape)) +
+  ggplot(prop_traj, aes(x=Model_Shape_Trend, y= percentage, fill=Model_Shape_Trend)) +
   geom_bar(stat="identity") +
   scale_fill_manual(values = MyPalette) +
   theme_classic()+
@@ -1147,7 +1147,7 @@ class_oganisoEVI_mod <- function (dataset = NULL, interval_size = 0.5) {
 }
 ```
 
-
+In the chunk below I reran the classification and selection for the og anisoEVI
 ```{r}
 #run lines 706- 708 to read in the split dfs
 #run above altered classification funciton using code below
@@ -1180,7 +1180,7 @@ rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Class
                        pattern='.rds$', all.files=TRUE, full.names=TRUE)
 rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
 
-Sys.time(); for (i in 1:10){ #2 hours
+Sys.time(); for (i in 1:10){ 
   test_df<- read_rds(rds_list[[i]])
   names(test_df)[15]<- "trend_name"
   plan(multisession, workers = numCores)
@@ -1239,29 +1239,120 @@ plot_prop_traj<-
   scale_fill_manual(values = MyPalette) +
   theme_classic()+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")
-ggsave(here("Outputs", "Trajectory_Classification", "Final_model_combined_ogdata_df", "oganisoEVI_trajectory_prop_plot.png"), plot = plot_prop_traj,
+ggsave(here("Outputs", "Trajectory_Classification", "Final_model_og_anisoEVI_df", "oganisoEVI_trajectory_prop_plot.png"), plot = plot_prop_traj,
        height = 30, width = 30, units = "cm", dpi=700)  
 
 
-# #Quad pixels
-# quad_pixels<- selectmodel_df %>% filter(model_order=="Quad") 
-# 
-# eg_quad_pixel<- quad_pixels %>% 
-#   filter(cell==113954)
-# plot(eg_quad_pixel$og_anisoEVI, type="l")
-# 
-# #Lin pixels
-# lin_pixels<- selectmodel_df %>% filter(model_order=="Lin") 
-# 
-# eg_lin_pixel<- lin_pixels %>% 
-#   filter(cell==124023)
-# plot(eg_lin_pixel$trend, type="l")
-# 
-# #Null pixels
-# null_pixels<- selectmodel_df %>% filter(model_order=="Null") 
-# 
-# eg_null_pixel<- null_pixels %>% 
-#   filter(cell==126268)
-# plot(eg_null_pixel$trend, type="l")
+##reran lines 818- 850 but with only i= 1 to 10 to compare to results from using og anisoEVI
+ggsave(here("Outputs", "Trajectory_Classification", "Final_model_og_anisoEVI_df", "stl_trend_trajectory_prop_plot.png"), plot = plot_prop_traj,
+       height = 10, width = 10, units = "cm", dpi=700) 
+```
+
+As suspected for the same set of pixels, the results of trajectory shape analyses 
+are different. When analysing the og anisoEVI values through time, there are a
+couple of pixels (<1%) where there are step changes (according to the model selection)
+Looking into example pixels of each trajectory shape/model/trend (only Step models)
+
+```{r}
+
+og_trajectory_df_list<- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_og_anisoEVI_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+og_trajectory_df_list<-gtools::mixedsort(og_trajectory_df_list)
+
+
+stl_trajectory_df_list<- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+stl_trajectory_df_list<-gtools::mixedsort(stl_trajectory_df_list)
+
+og_list<-list()
+Sys.time(); for ( i in 1:length(og_trajectory_df_list)){
+  print (paste0("Counter= ",i))
+  selectedmodel_df<- read_rds(og_trajectory_df_list[[i]])
+  og_list[[i]]<- selectedmodel_df
+  remove(selectedmodel_df)
+  gc()
+}; Sys.time()
+
+og_df<- do.call(rbind,og_list)
+remove(i, og_list, og_trajectory_df_list)
+
+stl_list<-list()
+Sys.time(); for ( i in 1:10){
+  print (paste0("Counter= ",i))
+  selectedmodel_df<- read_rds(stl_trajectory_df_list[[i]])
+  stl_list[[i]]<- selectedmodel_df
+  remove(selectedmodel_df)
+  gc()
+}; Sys.time()
+
+stl_df<- do.call(rbind,stl_list)
+remove(i, stl_list,stl_trajectory_df_list)
+
+og_df_summary<- og_df %>% group_by(cell) %>%
+  dplyr::select(model_order, shape_class, trend_name) %>%
+  unite(OG_Model_Shape_Trend, c("model_order", "shape_class", "trend_name"))
+
+stl_df_summary<- stl_df %>% group_by(cell) %>%
+  dplyr::select(model_order, shape_class, trend_name) %>%
+  unite(STL_Model_Shape_Trend, c("model_order", "shape_class", "trend_name"))
+
+
+df<- full_join(og_df_summary, stl_df_summary, by= join_by("cell"=="cell"))
+df<- df %>% mutate(Difference = ifelse(OG_Model_Shape_Trend==STL_Model_Shape_Trend,0,1))
+sum(df$Difference)/nrow(df) #19.92% of pixels have different trajectory classification
+#when using og anisoEVI and STL decomposed trend
+
+df_difference<- df %>% filter(Difference==1)
+combination_diff<-df_difference %>% group_by(OG_Model_Shape_Trend,STL_Model_Shape_Trend) %>%
+  summarise(count=n()) %>% arrange(count)
+
+
+#Visualizing time series of original and trend data for example pixels for above 
+#combinations
+
+alldata_df_list<- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_combined_ogdata_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+alldata_df_list<-gtools::mixedsort(alldata_df_list)
+
+alldata_list<- list()
+Sys.time(); for ( i in 1:10){
+  print (paste0("Counter= ",i))
+  selectedmodel_df<- read_rds(alldata_df_list[[i]])
+  alldata_list[[i]]<- selectedmodel_df
+  remove(selectedmodel_df)
+  gc()
+}; Sys.time()
+alldata_df<- do.call(rbind,alldata_list)
+
+remove(alldata_list, i, alldata_df_list )
+
+#Function to make line plot
+lineplot_func<- function(cellvalue){
+  lp_fig<- alldata_df %>% filter(cell==cellvalue) %>% 
+  dplyr::select(c(og_anisoEVI, trend)) %>%
+  mutate(index= 1:240) %>%
+    ggplot(aes(x=index)) + 
+      geom_line(aes(y = og_anisoEVI), color = "darkred") + 
+      geom_line(aes(y = trend), color="black", linetype="longdash")+
+      ylab("anisoEVI related value")+
+      theme_classic()
+  lp_fig
+}
+
+#1. OG data= Step decrease, STL data= Linear stable constant
+eg1<- lineplot_func(134428)
+
+#2. OG data= Step decrease, STL data= Null stable constant
+eg2<- lineplot_func(142490)
+
+#3. OG data= Step increase, STL data= Linear stable constant
+eg3<- lineplot_func(120165)
+
+#4. OG data= Step increase, STL data= Null stable constant
+eg4<- lineplot_func(142358)
+
+
+
+
 
 ```
