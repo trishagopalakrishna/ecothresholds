@@ -478,33 +478,6 @@
       ],
       "Hash": "f61dbaec772ccd2e17705c1e872e9e7c"
     },
-    "chewie": {
-      "Package": "chewie",
-      "Version": "0.0.1.0",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "chewie",
-      "RemoteUsername": "Permian-Global-Research",
-      "RemotePkgRef": "Permian-Global-Research/chewie",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "c17a89ae7466297f1515c0c185782b619f5cc2fc",
-      "Requirements": [
-        "R",
-        "RcppSimdJson",
-        "arrow",
-        "cli",
-        "curl",
-        "data.table",
-        "dplyr",
-        "getPass",
-        "lubridate",
-        "purrr",
-        "rlang",
-        "sf"
-      ],
-      "Hash": "23d70fbf67dd21de7736d3d453b1e359"
-    },
     "chngpt": {
       "Package": "chngpt",
       "Version": "2023.11-29",
@@ -1749,18 +1722,6 @@
         "units"
       ],
       "Hash": "9804362cc0267990ac61a85edeca73ed"
-    },
-    "magick": {
-      "Package": "magick",
-      "Version": "2.8.2",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "Rcpp",
-        "curl",
-        "magrittr"
-      ],
-      "Hash": "87da0066dd0d7b1a95c461abfbf10411"
     },
     "magrittr": {
       "Package": "magrittr",
