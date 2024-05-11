@@ -396,7 +396,7 @@ remove(pivot_df_trial)
 
 #not splitting into multiple dfs
 library(parallel)
-numCores<- detectCores() - 2 #12
+numCores<- detectCores() - 64 #12
 
 library(furrr)
 library(future)
@@ -707,25 +707,59 @@ rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagro
                        pattern='.rds$', all.files=TRUE, full.names=TRUE)
 rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
 
-tic(); for (i in 795:length(rds_list)){
-  test_df<- read_rds(rds_list[[i]])
-  plan(multisession, workers = numCores)
-  tic()
-  x <- test_df %>%
-    group_by(cell) %>%
-    nest() %>%
-    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, 
-                                                   .options = furrr_options(seed = TRUE))) %>%
-    select(-data) %>%
-    unnest(classification_data)
-  toc()
-  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", 
-                    paste0("classification",i,".rds")))
-  remove(test_df, x)
-  print (paste0(i, "-Complete. Check"))
-  gc()
-}; toc()
+name_i<- c(1704:1804)
 
+numCores<- 32
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+# ## Plain nested for loop
+# for ( i in 1:length(rds_list)){
+#   print (i)
+#   test_df<- read.rds(rds_list[[i]])
+#   x1000cell<- list()
+#   cell_id<- unique(test_df$cell)
+#     for (j in 1:length(cell_id)){
+#       one_cell<- test_df %>% filter(cell==cell_if[j])
+#       one_cell_results<- class_trajectory_mod(one_cell)
+#       x1000cell[j]<- one_cell_results
+#       remove(one_cell_results, one_cell)
+#       gc()
+#     }
+#   x1000cell_df<- do.call(rbind, x1000cell)
+#   write_rds(x1000cell_df, here("Outputs", "Trajectory_Classification", "Classification_df", 
+#                     paste0("classification",name_i[i],".rds")))
+#   remove(x1000cell,x1000cell_df, test_df, cell_id)
+#   print ("Next rds file")
+#   gc()
+# }
+
+data_rds_list<- list()
+for (i in 1:length(rds_list)){
+  data_rds_list[[i]]<- read_rds(rds_list[i])
+}
+
+##Converting above to nested parallelized foreach loop
+Sys.time(); x<- foreach(
+  i= 1:length(data_rds_list),
+  .combine= "rbind") %dopar%
+    (data_rds_list[[i]] %>%
+      group_by(cell) %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, class_trajectory_mod)) %>%
+      select(-data) %>%
+      unnest(classification_data)
+       ); Sys.time()
 
 ```
 
