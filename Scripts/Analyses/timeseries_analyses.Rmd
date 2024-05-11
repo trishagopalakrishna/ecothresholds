@@ -707,7 +707,28 @@ rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagro
                        pattern='.rds$', all.files=TRUE, full.names=TRUE)
 rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
 
+<<<<<<< HEAD
 name_i<- c(1704:1804)
+=======
+tic(); for (i in 1296:length(rds_list)){
+  test_df<- read_rds(rds_list[[i]])
+  plan(multisession, workers = numCores)
+  tic()
+  x <- test_df %>%
+    group_by(cell) %>%
+    nest() %>%
+    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, 
+                                                   .options = furrr_options(seed = TRUE))) %>%
+    select(-data) %>%
+    unnest(classification_data)
+  toc()
+  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", 
+                    paste0("classification",i,".rds")))
+  remove(test_df, x)
+  print (paste0(i, "-Complete. Check"))
+  gc()
+}; toc()
+>>>>>>> 6fe5b3e2295b1fef10200a022a45f676c51b92b6
 
 numCores<- 32
 library(foreach)
@@ -816,7 +837,7 @@ stl_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagro
 stl_list <- gtools::mixedsort(stl_list) #arranging chronologically
 
 
-Sys.time(); for (i in 101:200){ #2 hours
+Sys.time(); for (i in 1675:length(rds_list)){ 
   test_df<- read_rds(rds_list[[i]])
   names(test_df)[15]<- "trend_name"
   plan(multisession, workers = numCores)
@@ -932,7 +953,7 @@ remove(df_list, selectmodel_df,i)
 
 
 ##############################################5. Results interpretation
-Here I look under the hood of the results. basically the resutls are that there
+1. Here I look under the hood of the results. basically the resutls are that there
 are no change sin anisoEVI (decomponsed trend) with <10% showing a linear or
 quad trajectory and there are no abrupt shifts at all. So I want to look at 
 example pixels of each of these models and look at the original anisoEVI (interpolated
@@ -1361,7 +1382,7 @@ alldata_df<- do.call(rbind,alldata_list)
 remove(alldata_list, i, alldata_df_list )
 
 #Function to make line plot
-lineplot_func<- function(cellvalue){
+lineplot_func<- function(cellvalue, title_name){
   lp_fig<- alldata_df %>% filter(cell==cellvalue) %>% 
   dplyr::select(c(og_anisoEVI, trend)) %>%
   mutate(index= 1:240) %>%
@@ -1369,24 +1390,63 @@ lineplot_func<- function(cellvalue){
       geom_line(aes(y = og_anisoEVI), color = "darkred") + 
       geom_line(aes(y = trend), color="black", linetype="longdash")+
       ylab("anisoEVI related value")+
+      ggtitle(title_name)+
       theme_classic()
   lp_fig
 }
 
 #1. OG data= Step decrease, STL data= Linear stable constant
-eg1<- lineplot_func(134428)
+eg1<- lineplot_func(134428,"OG=Step-Dec; STL=Linear-Stable-Constant")
 
 #2. OG data= Step decrease, STL data= Null stable constant
-eg2<- lineplot_func(142490)
+eg2<- lineplot_func(142490, "OG=Step-Dec;STL=Null-Stable-Constant")
 
 #3. OG data= Step increase, STL data= Linear stable constant
-eg3<- lineplot_func(120165)
+eg3<- lineplot_func(120165, "OG=Step-Inc;STL=Linear-Stable-Constant")
 
 #4. OG data= Step increase, STL data= Null stable constant
-eg4<- lineplot_func(142358)
+eg4<- lineplot_func(142358,"OG=Step-Inc;STL=Null-Stable-Constant")
+
+library(ggpubr)
+xfig<- ggarrange(eg1, eg2, eg3, eg4, ncol=2, nrow=2)
+ggsave(here("Outputs", "Trajectory_Classification","Final_model_og_anisoEVI_df", "example_pixel_trend_oganisoEVI.png"), plot = xfig,
+       height = 40, width = 40, units = "cm", dpi=700)  
 
 
+```
+
+Basically the results slightly change when analysing trajectories using og anisoEVI
+data. When using og anisoEVI data, there are pixels with abrupt shifts- very few
+but they are still there, which are characterized as null models when using the 
+STL decomposed trend. 
+
+2. Another problem is that there is a trajectory called Linear Stable Constant
+which does not make sense. A linear model can only have linear increase constant
+and linear decrease constant. Linear stable constant is just a null stable constant
+model. So troubleshooting this issue in the next chunk
+
+```{r}
+#rerun lines 818-830 but only for i=1
+lin_stable_constant_pixels<-selectedmodel_df %>% filter(model_order=="Lin" & 
+                            shape_class=="stable_constant") #27 pixels
+unique(lin_stable_constant_pixels$cell)
+
+rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
+  
+allmodels_df<-read_rds(rds_list[[i]])
+
+eg1_allmodels<- allmodels_df %>% filter(cell==14065)
 
 
+rds_list3 <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list3<-gtools::mixedsort(rds_list3) #arranging chronologically
+
+rawdata_df<- read_rds(rds_list3[[i]])
+rawdata_df<- rawdata_df %>% filter(cell==14065)
+dataset<- rawdata_df
+#rerunning classification function above with dataset
 
 ```

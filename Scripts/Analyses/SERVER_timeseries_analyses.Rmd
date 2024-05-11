@@ -1100,7 +1100,7 @@ stl_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagro
 stl_list <- gtools::mixedsort(stl_list) #arranging chronologically
 
 
-Sys.time(); for (i in 101:200){ #2 hours
+Sys.time(); for (i in 101:200){ 
   test_df<- read_rds(rds_list[[i]])
   names(test_df)[15]<- "trend_name"
   plan(multisession, workers = numCores)
