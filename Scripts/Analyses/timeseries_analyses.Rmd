@@ -868,59 +868,84 @@ Sys.time(); for (i in 1675:length(rds_list)){
 ```
 
 ##############################################4. Results compilation
+For now I compile results for whole of Cerrado using the final models selected
+for eahc pixels using detrended and original anisoEVI timeseries
 ```{r}
-
-rds_list2 <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
+#1. Data Input
+detrended_rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
                        pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list2<-gtools::mixedsort(rds_list2)
+detrended_rds_list<-gtools::mixedsort(detrended_rds_list)
 df_list<- list()
-Sys.time(); for ( i in 1:length(rds_list2)){
+Sys.time(); for ( i in 1:length(detrended_rds_list)){
   print (paste0("Counter= ",i))
-  selectedmodel_df<- read_rds(rds_list2[[i]])
+  selectedmodel_df<- read_rds(detrended_rds_list[[i]])
   df_list[[i]]<- selectedmodel_df
   remove(selectedmodel_df)
   gc()
-}; Sys.time()
+}; Sys.time() #5-6 min
 
-selectmodel_df<- do.call(rbind,df_list)
+Sys.time();selectmodel_df<- do.call(rbind,df_list); Sys.time() #couple of seconds
+#write_rds(selectmodel_df, here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
 
-### Bar plot
-prop_traj<-selectmodel_df%>% group_by(model_order, shape_class, trend_name) %>% 
+oganisoEVI <- readRDS(here("Outputs", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
+
+#2. Selecting only required information from both dfs and joining to make one df
+detrended_final_model<- selectmodel_df %>% 
+  dplyr::select(c(cell, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+           "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+
+og_final_model<- oganisoEVI %>% 
+  dplyr::select(c(cell, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell", "OGData_ModelOrder"="model_order", "OGData_ShapeClass"="shape_class",
+           "OGData_TrendName"="trend_name", "OGData_LocBrk"="loc_brk"))
+
+df_both<- inner_join(detrended_final_model, og_final_model, by=join_by("cell"=="cell"))
+df_both<- df_both %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName), 
+                                         OGResults = paste0(OGData_ModelOrder, "_", OGData_ShapeClass, "_", OGData_TrendName))
+df_both<- df_both %>% dplyr::select(c(cell,DetrendedResults, OGResults, Detrended_LocBrk, OGData_LocBrk))
+pivot_df_both<- df_both %>% pivot_longer(c(2,3))
+
+#3. Comparison bar plot
+overall_plot_df<- pivot_df_both %>% group_by(name, value) %>% 
   summarise(count= n()) %>%
-  mutate(percentage= (count/nrow(selectmodel_df))*100) %>%
-  unite(Model_Shape_Trend, c("model_order", "shape_class", "trend_name"))
+  mutate(percentage= (count/nrow(og_final_model))*100) 
 
-MyPalette <- c(Null_stable_constant_NA ="#CCCCCC", 
-               Lin_decrease_constant_NA = "#332288", 
-               Lin_increase_constant_NA = "#117733", 
-               Lin_stable_constant_NA = "#CC6677",
-               Quad_stable_concave_NA ="#AA4499",
-               Quad_stable_convex_NA ="#882255")
+p1<- overall_plot_df %>% 
+  ggplot(aes(name, percentage, fill = value, alpha = name)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
+  facet_grid(~value, scales = "free_x", switch = "x") +
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none")+
+  xlab("Model Type")
+p1<- p1 + scale_fill_brewer(palette = "Set1")
+ggsave(here("Outputs", "Trajectory_Classification", "comparison_trajectory_prop_plot.png"), plot = p1,
+       height = 30, width = 30, units = "cm", dpi=700)  
+remove(p1)
 
-plot_prop_traj<- 
-  ggplot(prop_traj, aes(x=Model_Shape_Trend, y= percentage, fill=Model_Shape_Trend)) +
-  geom_bar(stat="identity") +
-  scale_fill_manual(values = MyPalette) +
-  theme_classic()+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")
-ggsave(here("Outputs", "Trajectory_Classification", "trajectory_prop_plot.png"), plot = plot_prop_traj,
-       height = 10, width = 10, units = "cm", dpi=700)  
+#4. Map making
+
+Set1palette<- brewer.pal(n=6, "Set1")
+Set1palette[[4]]<- "grey" #changing so that Null model reuslts are grey instead of purple
 
 
-### Map making
-Sys.time(); map_raster<- selectmodel_df %>% ungroup() %>%
+
+Sys.time(); detrended_map_raster<- selectmodel_df %>% ungroup() %>%
   dplyr::select(c(x, y, model_order, shape_class)) %>% 
-  mutate(pixelvalue= case_when(model_order=="Null" & shape_class== "stable_constant"~1,
-                               model_order=="Lin" & shape_class== "decrease_constant"~2,
-                               model_order=="Lin" & shape_class== "inrease_constant"~3,
-                               model_order=="Lin" & shape_class== "stable_constant"~4,
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"~1,
+                              model_order=="Lin" & shape_class== "increase_constant"~2,
+                              model_order=="Lin" & shape_class== "stable_constant"~3,
+                              model_order=="Null" & shape_class== "stable_constant"~4,
                                model_order=="Quad" & shape_class== "stable_concave"~5,
                                model_order=="Quad" & shape_class== "stable_convex"~6)) %>%
   dplyr::select(-c(model_order, shape_class)) %>%
   rast(); Sys.time()
-
-
-plot(map_df["pixelvalue"])
 
 neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
 map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
@@ -932,23 +957,91 @@ d_trans<- st_transform(d_trans, crs = 4326)
 tmap_mode("plot")
 modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   #tm_shape(d_trans)+ tm_fill()+
-  tm_shape (map_raster)+
-  tm_raster(col = "pixelvalue", style = "cat", palette =MyPalette, legend.show = F) +
+  tm_shape (detrended_map_raster)+
+  tm_raster(col = "pixelvalue", style = "cat", palette =Set1palette, legend.show = F) +
   tm_layout(legend.text.size = 1.5)+
   tm_add_legend(type = "fill", 
-                labels = c("Null-Stable,Constant", 
-                           "Linear- Decrease, Constant",
+                labels = c("Linear- Decrease, Constant", 
                            "Linear- Increase, Constant",
                            "Linear- Stable, Constant",
+                           "Null- Stable, Constant",
                            "Quadratic- Stable, Concave",
                            "Quadratic- Stable, Convex"),
-                col = MyPalette)
-tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "trajectory_map.png"),
+                col = Set1palette)
+tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "detrended_trajectory_map.png"),
           height = 30, width = 30, units = "cm", dpi=700)
 
-remove(map_raster, plot_prop_traj, prop_traj, neighbors, map_extent, d_trans, modelselect_map)
-remove(MyPalette, rds_list2)
-remove(df_list, selectmodel_df,i)
+ogSet1palette<- brewer.pal(n=8, "Set1")
+ogSet1palette[[4]]<- "grey" 
+
+Sys.time(); og_map_raster<- oganisoEVI %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>% 
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name) ~2,
+                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name) ~3,
+                              model_order=="Null" & shape_class== "stable_constant"& is.na(trend_name) ~4,
+                               model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name) ~5,
+                               model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~6,
+                              model_order=="Step" & shape_class== "NA" & trend_name== "decrease" ~7,
+                              model_order=="Step" & shape_class== "NA" & trend_name== "increase" ~8)) %>%
+  dplyr::select(-c(model_order, shape_class, trend_name)) %>%
+  rast(); Sys.time()
+
+og_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (og_map_raster)+
+  tm_raster(col = "pixelvalue", style = "cat", palette =ogSet1palette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "Linear- Stable, Constant",
+                           "Null- Stable, Constant",
+                           "Quadratic- Stable, Concave",
+                           "Quadratic- Stable, Convex",
+                           "Step- Increase",
+                           "Step- Decrease"),
+                col = ogSet1palette)
+tmap_save(og_modelselect_map, here("Outputs", "Trajectory_Classification", "og_trajectory_map.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+remove(detrended_map_raster, og_map_raster, Set1palette, ogSet1palette,modelselect_map,
+       og_modelselect_map, neighbors, map_extent, d_trans)
+
+#4.Plot longitude vs %pixels (count of pixels of a certain type/total number of pixels irrespective
+#of type in the bin of longitude) as a barplot 
+
+df_both_latlong<- oganisoEVI %>% dplyr::select(c(x,y,cell)) %>%
+  inner_join(df_both, by=join_by("cell"=="cell"))
+
+df_both_latlong<- df_both_latlong %>% ungroup() %>% mutate(CutNumber= cut_interval(y, n=30))
+
+pivot_df_both_latlong<- df_both_latlong %>% pivot_longer(4:5)
+total_pixels <- pivot_df_both_latlong %>% group_by(CutNumber,name) %>%
+  summarise(totalpixels=n())
+
+agg_df_both_latlong<- pivot_df_both_latlong %>% group_by(name, value, CutNumber) %>%
+   summarise(count= n()) 
+agg_df_both_latlong<- agg_df_both_latlong %>% 
+  inner_join(total_pixels, by=join_by("name"=="name", "CutNumber"=="CutNumber"))
+agg_df_both_latlong<- agg_df_both_latlong %>% mutate(percentage= (count/totalpixels)*100)
+
+Set1palette<- brewer.pal(n=8, "Set1")
+Set1palette<- Set1palette[c(1,2,5,6,7,8)]
+
+p2<- agg_df_both_latlong %>% filter(value!="Null_stable_constant_NA" & value != "Lin_stable_constant_NA") %>%
+  ggplot(aes(CutNumber, percentage, fill = value, alpha = name)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
+  facet_wrap(~value, scales = "free_y", ncol=1) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none")
+p2<- p2 + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Trajectory_Classification", "comparison_models_longitude_noLinStable_NoNullStable.png"), plot = p2,
+       height = 30, width = 30, units = "cm", dpi=700) 
+
 ```
 
 
