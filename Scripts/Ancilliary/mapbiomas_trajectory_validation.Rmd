@@ -58,14 +58,30 @@ validation_pts<- do.call(rbind,pts_list)
 remove(pts_list, i)
 validation_pts
 
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+map_validation_pts<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape (validation_pts)+
+  tm_dots(size=0.03) 
+tmap_save(map_validation_pts, here("Outputs", "Sample_Validation", "3882samplepoints_map.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
 #2/ Extracting anisoEVI timeseries at each point
-evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
-tic();evi_scaled<- evi/10^5;toc() #scaling factor mentioned on the description page of the GEE asset
+#evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+#Sys.time();evi_scaled<- evi/10^5;Sys.time() #scaling factor mentioned on the description page of the GEE asset
+#writeRaster(evi_scaled, here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "scaled_mosaiced_anisoEVI.tif"))
+evi_scaled <- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "scaled_mosaiced_anisoEVI.tif"))
 
 ##changing band names to year and months
 colnames<- list()
-tic(); for ( i in 1:nlyr(evi)){
-  x<- names(evi)[[i]]
+tic(); for ( i in 1:nlyr(evi_scaled)){
+  x<- names(evi_scaled)[[i]]
   y<- paste0(strsplit(x, "_")[[1]][5], "_",strsplit(x, "_")[[1]][6] )
   colnames[[i]] <-y
 }; toc()
@@ -82,6 +98,7 @@ summary(pivot_validation_pts)#2.3 % of 960000 rows missing og_anisoEVI value
 pivot_validation_pts<- pivot_validation_pts %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
 pivot_validation_pts<- pivot_validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","NewID"))
 pivot_validation_pts<- pivot_validation_pts %>% mutate(CellID= paste0(TransTo, NewID))
+
 remove(evi,x,y, i)
 ```
 
@@ -397,4 +414,159 @@ In the next chunk I apply the classification function.
 
 In the next chunk I apply the model selection function
 
-Next I compile results
+Next I compile results.
+```{r}
+#1. Final models input
+final_model_stl<- read_rds(here("Outputs", "Sample_Validation", "3882points_finalmodel.rds"))
+final_model_og<- read_rds(here("Outputs", "Sample_Validation", "og_3882points_finalmodel.rds"))
+
+#2. selecting required columns and merging into one df
+final_model_stl<- final_model_stl %>% dplyr::select (c(CellID, model_order, shape_class, trend, loc_brk))
+final_model_og<- final_model_og %>% dplyr::select (c(CellID, model_order, shape_class, trend_name, loc_brk))
+final_model_og <- final_model_og %>% rename(c("CellID"="CellID", "OGmodel_order"="model_order",
+                                              "OGshape_class"= "shape_class", "OGtrend"= "trend_name", "OGloc_brk"="loc_brk"))
+
+results_both<- final_model_stl %>% full_join(final_model_og, by= join_by("CellID"=="CellID"))
+
+#3. reran 1st chunk for complete information of points
+remove(evi_scaled2, pivot_validation_pts)
+
+anisoEVI_validation_pts2<- anisoEVI_validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","UniqueNumber"))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% dplyr::select(-c(UniqueNumber))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% dplyr::select(c(min, TransType, TransTo, x, y, geometry, CellID))
+results_both2<- anisoEVI_validation_pts2 %>% inner_join(results_both, by=join_by(CellID == CellID))
+results_both2<- results_both2 %>% mutate(DetrendedResults = paste0(model_order,"_", shape_class,"_", trend), 
+                                         OGResults = paste0(OGmodel_order, "_", OGshape_class, "_", OGtrend))
+results_both3 <- results_both2 %>% dplyr::select(-c(model_order, shape_class, trend, OGmodel_order, OGshape_class, OGtrend))
+pivot_results_both3<- results_both3 %>% pivot_longer(c(8,9))
+
+#4. Overall plot of transitions comparing detrended and og final models selected
+overall_plot_df<- pivot_results_both3 %>% group_by(name, value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(pivot_results_both3))*100) 
+
+p1 <- ggplot(data=overall_plot_df, aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="bottom")
+p1<- p1 + scale_fill_brewer(palette = "Greys")
+#ggsave(here("Outputs", "Sample_Validation", "overalltransitions_trajectory.png"), plot = p1,
+#       height = 30, width = 30, units = "cm", dpi=700) 
+
+transitionto_plot_df<- pivot_results_both3 %>% group_by(name, value, TransTo) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(pivot_results_both3))*100) 
+
+farm_transition<- transitionto_plot_df %>% filter(TransTo=="Farm") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "BuPu")+ggtitle("Farm")
+forest_transition<- transitionto_plot_df %>% filter(TransTo=="Forest") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Greens") +ggtitle("Forest")
+othernative_transition<- transitionto_plot_df %>% filter(TransTo=="OtherNative") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Oranges") + ggtitle("Other_Native")
+pasture_transition<- transitionto_plot_df %>% filter(TransTo=="Pasture") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Reds") + ggtitle("Pasture")
+p2<-ggarrange(farm_transition, forest_transition, othernative_transition, pasture_transition,
+          ncol = 2, nrow = 2)
+#ggsave(here("Outputs", "Sample_Validation", "grouptransitions_trajectory.png"), plot = p2,
+#       height = 30, width = 30, units = "cm", dpi=700) 
+
+remove(overall_plot_df, p1, transitionto_plot_df, farm_transition, forest_transition,
+       othernative_transition, pasture_transition, p2)
+
+#5. Comparison of breakpoints for the few points that show step changes in the og anisoEVI
+head(final_model_og)
+head(final_model_stl)
+
+stepmodel_og<- final_model_og %>% filter(!is.na(OGtrend))
+stepmodel_og  <- stepmodel_og  %>% 
+    tidyr::extract("CellID", c("TransTo", "UniqueNumber"), "(\\D*)(\\d.*)")
+stepmodel_og<- stepmodel_og %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+
+years<- rep(seq(from= 2002, to=2021),each=12)
+months<- rep(seq(from=1, to=12), 20)
+date_df<- tibble(years, months)
+date_df<- date_df %>% mutate(loc_brk= 1:nrow(date_df))
+stepmodel_og<- stepmodel_og %>% inner_join(date_df, by=join_by(OGloc_brk==loc_brk))
+
+validation_pts<- validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","UniqueNumber"))
+validation_pts<- validation_pts %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+stepmodel_og<- stepmodel_og %>% inner_join(validation_pts, by= join_by(CellID==CellID))
+#stepmodel_og<- stepmodel_og %>% dplyr::select(-c(TransTo.x, UniqueNumber.x))
+stepmodel_og<- stepmodel_og %>% mutate(YearAgreement= ifelse(years==min-1,1,0)) 
+sum(stepmodel_og$YearAgreement)
+
+#basically none of the breakpoints from trend analyses matches the year at which Mapbiomas detected
+#a LULC change.
+
+#6. Have decided to look at Google Earth imagery at these points
+#st_write(stepmodel_og, here("Outputs", "Sample_Validation", "stepmodel_og_validation_points.shp"))
+
+stepmodel_og<- st_read(here("Outputs", "Sample_Validation", "stepmodel_og_validation_points.shp"))
+map_validation_pts<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape (stepmodel_og)+
+  tm_dots(size=0.03) 
+tmap_save(map_validation_pts, here("Outputs", "Sample_Validation", "stepmodel_points.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+
+#7. Below I plot the og anisoEVI time series and decomposed trend for 3 points
+
+years<- rep(seq(from= 2002, to=2021),each=12)
+months<- rep(seq(from=1, to=12), 20)
+date_df<- tibble(years, months)
+date_df <- date_df %>% mutate(date = make_date(years, months))
+date_df<- date_df %>% mutate(index= 1:240)
+
+library(stlplus)
+plot<- function (cellid){
+  point_select<- pivot_validation_pts4 %>% filter(CellID==cellid)
+  point_ts<- ts(point_select$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+  stl_df<- stlplus(point_ts, s.window = 11, s.degree = 1, t.degree = 1)
+  df_needed<- (stl_df$data)
+  df_needed<- df_needed %>% bind_cols(point_select)
+  df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+  df_needed<- df_needed %>% dplyr::select(-c(raw, seasonal, remainder))
+  
+  
+  lp_fig<- df_needed %>% 
+  dplyr::select(c(value, trend)) %>%
+  mutate(index= 1:240) %>% inner_join(date_df, by=join_by("index"=="index")) %>%
+    ggplot(aes(x=date)) + 
+      geom_line(aes(y = value), color = "darkred") + 
+      geom_line(aes(y = trend), color="black", linetype="longdash")+
+      ylab("anisoEVI related value")+
+      theme_classic()
+  lp_fig
+  
+}
+
+forest427<- plot("Forest427")
+ggsave(here("Outputs", "Sample_Validation", "forest427.png"), plot = forest427,
+       height = 10, width = 15, units = "cm", dpi=700) 
+pasture616<- plot("Pasture427")
+ggsave(here("Outputs", "Sample_Validation", "pasture616.png"), plot = pasture616,
+       height = 10, width = 15, units = "cm", dpi=700) 
+othernative818<- plot("OtherNative818")
+ggsave(here("Outputs", "Sample_Validation", "othernative818.png"), plot = othernative818,
+       height = 10, width = 15, units = "cm", dpi=700) 
+
+
+```
