@@ -83,21 +83,22 @@ Discrepancy with Berdugo when looking at NDVI specifically- Berdugo seemed to ha
 #3. Preparing LULC Mask- DO NOT RUN AS OUTPUTS SAVED TO DISK
 ```{r}
 ########################################## BELOW PROJECTION ANALYSES IS COMPLETE, DO NOT REPEAT
-modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_MODIS_LULC_mask.tif")) #2001-2002
-modis_mask 
+#modis_mask<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_MODIS_LULC_mask.tif")) #2001-2002
+#modis_mask 
 #  I am interested in using this only as a mask i.e. I do not need to know which LULC 
 #I have kept i.e do not need to keep pixel values 
 # of LULC retained. SO I reclassify all 0 values to NA and all non 0 values to 1. 
-tic(); modis_mask<- terra::classify(modis_mask, cbind(0,NA), others = 1); toc()
+#tic(); modis_mask<- terra::classify(modis_mask, cbind(0,NA), others = 1); toc()
 
-tic(); modis_mask_proj<- terra::project(modis_mask, meanannualanisoEVI, 
-                                        method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
-tic(); modis_mask_proj2<- terra::crop(modis_mask_proj, meanannualanisoEVI)
+#tic(); modis_mask_proj<- terra::project(modis_mask, meanannualanisoEVI, 
+#                                        method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
+#tic(); modis_mask_proj2<- terra::crop(modis_mask_proj, meanannualanisoEVI)
 #writeRaster(modis_mask_proj2, here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_proj_MODIS_LULC_mask.tif"))
-remove(modis_mask, modis_mask_proj)
+#remove(modis_mask, modis_mask_proj)
 
 ########################################## ABOVE PROJECTION ANALYSES IS COMPLETE, DO NOT REPEAT
-#modis_mask_proj2<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_proj_MODIS_LULC_mask.tif"))
+########################################## BELOW WRITTEN OUT
+modis_mask_proj2<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_proj_MODIS_LULC_mask.tif"))
 
 modis_mask_proj2<- modis_mask_proj2[[1:21]]
 modis_mask_names<- seq(from = 2001, to=2021, by=1)
@@ -107,11 +108,13 @@ tic(); for ( i in 1:length(modis_mask_names)){
 }; toc()
 names(modis_mask_proj2)<- modis_mask_names
 
+Sys.time(); modis_mask_proj2<- terra::resample(modis_mask_proj2, monthly_anisoEVI, threads=T); Sys.time()
+
 for (i in 1:nlyr(modis_mask_proj2)){
   writeRaster(modis_mask_proj2[[i]], here("Data", "Masks_to_define_pixelsofinterest","Caatinga_annual_mask" ,paste0("Caatinga_",modis_mask_names[[i]], ".tif")))
 }
 
-
+remove(modis_mask_proj2)
 ```
 
 
@@ -167,8 +170,10 @@ masking_function<- function (mask, indice_raster){
   terra::cover(mask, indice_raster, values=1)
 }
 
-tic(); mask_df<-mask_df %>% mutate(masked_annualEVI = purrr::map2(annual_anisoEVI, annual_LULC, masking_function)); toc() #took a long time 65183.45 seconds which is 18 hours!!
-tic(); mask_df<-mask_df %>% mutate(masked_annualNDVI = purrr::map2(annual_NDVI, annual_LULC, masking_function)); toc()
+tic(); mask_df<-mask_df %>% mutate(masked_annualEVI = purrr::map2(annual_anisoEVI, annual_LULC, masking_function)); toc() #144.39 sec
+tic(); mask_df<-mask_df %>% mutate(masked_annualNDVI = purrr::map2(annual_NDVI, annual_LULC, masking_function)); toc() #31sec
+write_rds(mask_df, here("Data",  "Masks_to_define_pixelsofinterest", "caatinga_mask_df2.rds"))
+
 tic(); mask_df<-mask_df %>% mutate(masked_monthlyEVI = purrr::map2(monthly_EVI, annual_LULC, masking_function)); toc()
 tic(); mask_df<-mask_df %>% mutate(masked_annualEVI = purrr::map2(monthly_NDVI, annual_LULC, masking_function)); toc()
 
