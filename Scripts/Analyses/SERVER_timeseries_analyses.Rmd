@@ -684,376 +684,6 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
 
 
 ```
-
-Running across all points with parallelizing
-```{r}
-#Data input
-#decomposed_dftrial<- read_rds(here("Outputs", "STL_Decomposition", "Split_datagroups", "stldecomposition331.rds"))
-#head(decomposed_dftrial)
-
-#trial_df<- decomposed_dftrial %>% filter(cell==1679729)
-#head(trial_df)
-#trial_df<- trial_df %>% dplyr::select(-c(og_anisoEVI, int_anisoEVI, seasonal, remainder))
-#trial_df<- trial_df %>% separate_wider_delim(cols = date, delim = "_", names = c("Year","Month"))
-#trial_df<- trial_df %>% mutate(Date= paste0(Year,"_", Month, "_01"))
-#trial_df<- trial_df %>% mutate(Date= lubridate::as_date(Date))
-#trial_df<- trial_df %>% mutate(Months= 1:nrow(trial_df))
-#plot(trial_df$trend, type= "l")
-
-#tic(); x<- class_trajectory_mod (trial_df); toc()
-
-
-rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
-
-<<<<<<< HEAD
-name_i<- c(1704:1804)
-=======
-tic(); for (i in 1296:length(rds_list)){
-  test_df<- read_rds(rds_list[[i]])
-  plan(multisession, workers = numCores)
-  tic()
-  x <- test_df %>%
-    group_by(cell) %>%
-    nest() %>%
-    mutate(classification_data = furrr::future_map(data, class_trajectory_mod, 
-                                                   .options = furrr_options(seed = TRUE))) %>%
-    select(-data) %>%
-    unnest(classification_data)
-  toc()
-  write_rds(x, here("Outputs", "Trajectory_Classification", "Classification_df", 
-                    paste0("classification",i,".rds")))
-  remove(test_df, x)
-  print (paste0(i, "-Complete. Check"))
-  gc()
-}; toc()
->>>>>>> 6fe5b3e2295b1fef10200a022a45f676c51b92b6
-
-numCores<- 32
-library(foreach)
-library(doParallel)
-
-my.cluster<- parallel::makeCluster(
-  numCores,
-  type = "FORK",
-  outfile = ""
-)
-
-doParallel::registerDoParallel(cl = my.cluster)
-foreach::getDoParRegistered() #should be TRUE
-foreach::getDoParWorkers() #should give numCores
-
-# ## Plain nested for loop
-# for ( i in 1:length(rds_list)){
-#   print (i)
-#   test_df<- read.rds(rds_list[[i]])
-#   x1000cell<- list()
-#   cell_id<- unique(test_df$cell)
-#     for (j in 1:length(cell_id)){
-#       one_cell<- test_df %>% filter(cell==cell_if[j])
-#       one_cell_results<- class_trajectory_mod(one_cell)
-#       x1000cell[j]<- one_cell_results
-#       remove(one_cell_results, one_cell)
-#       gc()
-#     }
-#   x1000cell_df<- do.call(rbind, x1000cell)
-#   write_rds(x1000cell_df, here("Outputs", "Trajectory_Classification", "Classification_df", 
-#                     paste0("classification",name_i[i],".rds")))
-#   remove(x1000cell,x1000cell_df, test_df, cell_id)
-#   print ("Next rds file")
-#   gc()
-# }
-
-data_rds_list<- list()
-for (i in 1:length(rds_list)){
-  data_rds_list[[i]]<- read_rds(rds_list[i])
-}
-
-##Converting above to nested parallelized foreach loop
-Sys.time(); x<- foreach(
-  i= 1:length(data_rds_list),
-  .combine= "rbind") %dopar%
-    (data_rds_list[[i]] %>%
-      group_by(cell) %>%
-      nest() %>%
-      mutate(classification_data = purrr::map(data, class_trajectory_mod)) %>%
-      select(-data) %>%
-      unnest(classification_data)
-       ); Sys.time()
-
-```
-
-##############################################3. Model selection
-As per Berdugo et al., 2022 (PNAS), I do model selection by comparing AIC of the 
-4 models per pixel. But if the AIC difference between two models <2, then both
-models are similar. In this case, simplest model is selected. Null model is
-simplest, then linear, then step and last quadratic. Although step and quadratic
-models have the same number of parameters (three), step regressions are 
-considered simpler because the mathematical operations used only involve
-summation
-
-In the chunk below I write the code for above rules of model selection using
-one .rds file of 4 models (i.e. for 1000 unique pixels that have 4 models fit).
-I also parallelize and loop through all 1804 rds files in the same chunk.
-
-```{r}
-#trial_rds<- read_rds(here("Outputs", "Trajectory_Classification", "Classification_df", "classification8.rds"))
-#models_pixel_df<- test_df %>% filter(cell==40544)
-
-model_levels <- c("Null", "Lin", "Step", "Quad")
-
-model_select<- function(models_pixel_df){
-  #adding model name which did not get exported out in the classification function( row.names)
-  models_pixel_df <- models_pixel_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
-                                                                    levels = model_levels))
-  # #adding model simplicity for selection in next few steps
-  # models_pixel_df<- models_pixel_df %>% mutate(modelorder= case_when( model_type=="Null"~1,
-  #                                   model_type=="Lin"~2,
-  #                                   model_type=="Step"~3,
-  #                                   model_type=="Quad"~4))
-  #least AIC model selection
-  models_pixel_df <- models_pixel_df %>%
-    mutate(aic_diff= abs(aic) - min(abs(aic))) #wrt model with least AIC
-  
-  condition_less2<- models_pixel_df %>% filter(aic_diff<=2)
-  
-  if (dim(condition_less2)[1]==1){
-    models_pixel_df<- condition_less2 
-  } else{
-    models_pixel_df<- condition_less2 %>% 
-      filter(model_order==min(model_order))
-  }
-  models_pixel_df 
-}
-
-rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_df"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
-
-
-stl_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-stl_list <- gtools::mixedsort(stl_list) #arranging chronologically
-
-
-Sys.time(); for (i in 1675:length(rds_list)){ 
-  test_df<- read_rds(rds_list[[i]])
-  names(test_df)[15]<- "trend_name"
-  plan(multisession, workers = numCores)
-  tic()
-  x <- test_df %>%
-    group_by(cell) %>%
-    nest() %>%
-    mutate(modelselect_data = furrr::future_map(data, model_select, 
-                                                   .options = furrr_options(seed = TRUE))) %>%
-    select(-data) %>%
-    unnest(modelselect_data)
-  toc()
-  write_rds(x, here("Outputs", "Trajectory_Classification", "Final_model_df", 
-                    paste0("modelselect",i,".rds")))
-  
-  
-  stl_test_df <- read_rds(stl_list[[i]])
-  tic()
-  y<- stl_test_df %>% left_join(x, relationship = "many-to-one", by= join_by(cell == cell)); toc()
-  toc()
-  write_rds(y, here("Outputs", "Trajectory_Classification", "Final_model_combined_ogdata_df", 
-                    paste0("ogdata_model",i,".rds")))
-  
-  remove(test_df, x, y, stl_test_df)
-  print (paste0(i, "-Complete. Check"))
-  gc()
-}; Sys.time()
-```
-
-##############################################4. Results compilation
-For now I compile results for whole of Cerrado using the final models selected
-for eahc pixels using detrended and original anisoEVI timeseries
-```{r}
-#1. Data Input
-detrended_rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-detrended_rds_list<-gtools::mixedsort(detrended_rds_list)
-df_list<- list()
-Sys.time(); for ( i in 1:length(detrended_rds_list)){
-  print (paste0("Counter= ",i))
-  selectedmodel_df<- read_rds(detrended_rds_list[[i]])
-  df_list[[i]]<- selectedmodel_df
-  remove(selectedmodel_df)
-  gc()
-}; Sys.time() #5-6 min
-
-Sys.time();selectmodel_df<- do.call(rbind,df_list); Sys.time() #couple of seconds
-#write_rds(selectmodel_df, here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
-
-oganisoEVI <- readRDS(here("Outputs", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
-
-#2. Selecting only required information from both dfs and joining to make one df
-detrended_final_model<- selectmodel_df %>% 
-  dplyr::select(c(cell, model_order, shape_class, trend_name, loc_brk)) %>%
-  rename(c("cell"="cell", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
-           "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
-
-og_final_model<- oganisoEVI %>% 
-  dplyr::select(c(cell, model_order, shape_class, trend_name, loc_brk)) %>%
-  rename(c("cell"="cell", "OGData_ModelOrder"="model_order", "OGData_ShapeClass"="shape_class",
-           "OGData_TrendName"="trend_name", "OGData_LocBrk"="loc_brk"))
-
-df_both<- inner_join(detrended_final_model, og_final_model, by=join_by("cell"=="cell"))
-df_both<- df_both %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName), 
-                                         OGResults = paste0(OGData_ModelOrder, "_", OGData_ShapeClass, "_", OGData_TrendName))
-df_both<- df_both %>% dplyr::select(c(cell,DetrendedResults, OGResults, Detrended_LocBrk, OGData_LocBrk))
-pivot_df_both<- df_both %>% pivot_longer(c(2,3))
-
-#3. Comparison bar plot
-overall_plot_df<- pivot_df_both %>% group_by(name, value) %>% 
-  summarise(count= n()) %>%
-  mutate(percentage= (count/nrow(og_final_model))*100) 
-
-p1<- overall_plot_df %>% 
-  ggplot(aes(name, percentage, fill = value, alpha = name)) +
-  geom_col(position = position_dodge(), color = "black") +
-  theme_classic() +
-  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
-  facet_grid(~value, scales = "free_x", switch = "x") +
-  theme(strip.placement  = "outside",
-        panel.spacing    = unit(0, "points"),
-        strip.background = element_blank(),
-        strip.text       = element_text(size = 12, angle = 90),
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-        legend.position = "none")+
-  xlab("Model Type")
-p1<- p1 + scale_fill_brewer(palette = "Set1")
-ggsave(here("Outputs", "Trajectory_Classification", "comparison_trajectory_prop_plot.png"), plot = p1,
-       height = 30, width = 30, units = "cm", dpi=700)  
-remove(p1)
-
-#4. Map making
-
-Set1palette<- brewer.pal(n=6, "Set1")
-Set1palette[[4]]<- "grey" #changing so that Null model reuslts are grey instead of purple
-
-
-
-Sys.time(); detrended_map_raster<- selectmodel_df %>% ungroup() %>%
-  dplyr::select(c(x, y, model_order, shape_class)) %>% 
-  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"~1,
-                              model_order=="Lin" & shape_class== "increase_constant"~2,
-                              model_order=="Lin" & shape_class== "stable_constant"~3,
-                              model_order=="Null" & shape_class== "stable_constant"~4,
-                               model_order=="Quad" & shape_class== "stable_concave"~5,
-                               model_order=="Quad" & shape_class== "stable_convex"~6)) %>%
-  dplyr::select(-c(model_order, shape_class)) %>%
-  rast(); Sys.time()
-
-neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
-map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
-                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-
-
-tmap_mode("plot")
-modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  #tm_shape(d_trans)+ tm_fill()+
-  tm_shape (detrended_map_raster)+
-  tm_raster(col = "pixelvalue", style = "cat", palette =Set1palette, legend.show = F) +
-  tm_layout(legend.text.size = 1.5)+
-  tm_add_legend(type = "fill", 
-                labels = c("Linear- Decrease, Constant", 
-                           "Linear- Increase, Constant",
-                           "Linear- Stable, Constant",
-                           "Null- Stable, Constant",
-                           "Quadratic- Stable, Concave",
-                           "Quadratic- Stable, Convex"),
-                col = Set1palette)
-tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "detrended_trajectory_map.png"),
-          height = 30, width = 30, units = "cm", dpi=700)
-
-ogSet1palette<- brewer.pal(n=8, "Set1")
-ogSet1palette[[4]]<- "grey" 
-
-Sys.time(); og_map_raster<- oganisoEVI %>% ungroup() %>%
-  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>% 
-  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
-                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name) ~2,
-                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name) ~3,
-                              model_order=="Null" & shape_class== "stable_constant"& is.na(trend_name) ~4,
-                               model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name) ~5,
-                               model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~6,
-                              model_order=="Step" & shape_class== "NA" & trend_name== "decrease" ~7,
-                              model_order=="Step" & shape_class== "NA" & trend_name== "increase" ~8)) %>%
-  dplyr::select(-c(model_order, shape_class, trend_name)) %>%
-  rast(); Sys.time()
-
-og_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  #tm_shape(d_trans)+ tm_fill()+
-  tm_shape (og_map_raster)+
-  tm_raster(col = "pixelvalue", style = "cat", palette =ogSet1palette, legend.show = F) +
-  tm_layout(legend.text.size = 1.5)+
-  tm_add_legend(type = "fill", 
-                labels = c("Linear- Decrease, Constant", 
-                           "Linear- Increase, Constant",
-                           "Linear- Stable, Constant",
-                           "Null- Stable, Constant",
-                           "Quadratic- Stable, Concave",
-                           "Quadratic- Stable, Convex",
-                           "Step- Increase",
-                           "Step- Decrease"),
-                col = ogSet1palette)
-tmap_save(og_modelselect_map, here("Outputs", "Trajectory_Classification", "og_trajectory_map.png"),
-          height = 30, width = 30, units = "cm", dpi=700)
-remove(detrended_map_raster, og_map_raster, Set1palette, ogSet1palette,modelselect_map,
-       og_modelselect_map, neighbors, map_extent, d_trans)
-
-#4.Plot longitude vs %pixels (count of pixels of a certain type/total number of pixels irrespective
-#of type in the bin of longitude) as a barplot 
-
-df_both_latlong<- oganisoEVI %>% dplyr::select(c(x,y,cell)) %>%
-  inner_join(df_both, by=join_by("cell"=="cell"))
-
-df_both_latlong<- df_both_latlong %>% ungroup() %>% mutate(CutNumber= cut_interval(y, n=30))
-
-pivot_df_both_latlong<- df_both_latlong %>% pivot_longer(4:5)
-total_pixels <- pivot_df_both_latlong %>% group_by(CutNumber,name) %>%
-  summarise(totalpixels=n())
-
-agg_df_both_latlong<- pivot_df_both_latlong %>% group_by(name, value, CutNumber) %>%
-   summarise(count= n()) 
-agg_df_both_latlong<- agg_df_both_latlong %>% 
-  inner_join(total_pixels, by=join_by("name"=="name", "CutNumber"=="CutNumber"))
-agg_df_both_latlong<- agg_df_both_latlong %>% mutate(percentage= (count/totalpixels)*100)
-
-Set1palette<- brewer.pal(n=8, "Set1")
-Set1palette<- Set1palette[c(1,2,5,6,7,8)]
-
-p2<- agg_df_both_latlong %>% filter(value!="Null_stable_constant_NA" & value != "Lin_stable_constant_NA") %>%
-  ggplot(aes(CutNumber, percentage, fill = value, alpha = name)) +
-  geom_col(position = position_dodge(), color = "black") +
-  theme_classic() +
-  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
-  facet_wrap(~value, scales = "free_y", ncol=1) +
-  theme(axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        legend.position = "none")
-p2<- p2 + scale_fill_manual(values=Set1palette)
-ggsave(here("Outputs", "Trajectory_Classification", "comparison_models_longitude_noLinStable_NoNullStable.png"), plot = p2,
-       height = 30, width = 30, units = "cm", dpi=700) 
-
-```
-
-
-##############################################5. Results interpretation
-1. Here I look under the hood of the results. basically the resutls are that there
-are no change sin anisoEVI (decomponsed trend) with <10% showing a linear or
-quad trajectory and there are no abrupt shifts at all. So I want to look at 
-example pixels of each of these models and look at the original anisoEVI (interpolated
-and with NAs because lm fits models to data with NA) and see how different the
-results are. I do this for 15 dfs i.e. 15000 pixels and then pick out a couple of
-pixels to visualize and interpret
-
 In the below code chunk I alter the classification function such that
 it uses the og_anisoEVI column of data 
 ```{r}
@@ -1295,6 +925,341 @@ class_oganisoEVI_mod <- function (dataset = NULL, interval_size = 0.5) {
 }
 ```
 
+Trial running a set of points with parallelizing on server
+```{r}
+#Data input
+#decomposed_dftrial<- read_rds(here("Outputs", "STL_Decomposition", "Split_datagroups", "stldecomposition331.rds"))
+#head(decomposed_dftrial)
+
+#trial_df<- decomposed_dftrial %>% filter(cell==1679729)
+#head(trial_df)
+#trial_df<- trial_df %>% dplyr::select(-c(og_anisoEVI, int_anisoEVI, seasonal, remainder))
+#trial_df<- trial_df %>% separate_wider_delim(cols = date, delim = "_", names = c("Year","Month"))
+#trial_df<- trial_df %>% mutate(Date= paste0(Year,"_", Month, "_01"))
+#trial_df<- trial_df %>% mutate(Date= lubridate::as_date(Date))
+#trial_df<- trial_df %>% mutate(Months= 1:nrow(trial_df))
+#plot(trial_df$trend, type= "l")
+
+#tic(); x<- class_trajectory_mod (trial_df); toc()
+
+
+rds_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
+
+name_i<- c(1704:1804)
+
+numCores<- 32
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+# ## Plain nested for loop
+# for ( i in 1:length(rds_list)){
+#   print (i)
+#   test_df<- read.rds(rds_list[[i]])
+#   x1000cell<- list()
+#   cell_id<- unique(test_df$cell)
+#     for (j in 1:length(cell_id)){
+#       one_cell<- test_df %>% filter(cell==cell_if[j])
+#       one_cell_results<- class_trajectory_mod(one_cell)
+#       x1000cell[j]<- one_cell_results
+#       remove(one_cell_results, one_cell)
+#       gc()
+#     }
+#   x1000cell_df<- do.call(rbind, x1000cell)
+#   write_rds(x1000cell_df, here("Outputs", "Trajectory_Classification", "Classification_df", 
+#                     paste0("classification",name_i[i],".rds")))
+#   remove(x1000cell,x1000cell_df, test_df, cell_id)
+#   print ("Next rds file")
+#   gc()
+# }
+
+data_rds_list<- list()
+for (i in 1:length(rds_list)){
+  data_rds_list[[i]]<- read_rds(rds_list[i])
+}
+
+##Converting above to nested parallelized foreach loop
+Sys.time(); x<- foreach(
+  i= 1:length(data_rds_list),
+  .combine= "rbind") %dopar%
+    (data_rds_list[[i]] %>%
+      group_by(cell) %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, class_trajectory_mod)) %>%
+      select(-data) %>%
+      unnest(classification_data)
+       ); Sys.time()
+
+```
+Above run was a success. In next chunk running classification analyses using og_anisoEVI values for all points
+```{r}
+rds_list <- list.files(path = here("Outputs", "STL_Decomposition",
+                                   "Split_datagroups", "Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list<-gtools::mixedsort(rds_list) #arranging chronologically
+
+numCores<- 32
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+data_rds_list<- list()
+for (i in 1701:1804){
+  data_rds_list[[i]]<- read_rds(rds_list[i])
+}
+
+data_rds_list<- data_rds_list %>% discard(is.null)
+
+##Converting above to nested parallelized foreach loop
+Sys.time(); x<- foreach(
+  i= 1:length(data_rds_list),
+  .combine= "rbind") %dopar%
+    (data_rds_list[[i]] %>%
+      group_by(cell) %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, class_oganisoEVI_mod)) %>%
+      select(-data) %>%
+      unnest(classification_data)
+       ); Sys.time()
+write_rds(x, here("Outputs", "Trajectory_Classification", "OGanisoEVI_Classification_df", "classification_1701_1804.rds"))
+
+```
+
+
+
+##############################################3. Model selection
+As per Berdugo et al., 2022 (PNAS), I do model selection by comparing AIC of the 
+4 models per pixel. But if the AIC difference between two models <2, then both
+models are similar. In this case, simplest model is selected. Null model is
+simplest, then linear, then step and last quadratic. Although step and quadratic
+models have the same number of parameters (three), step regressions are 
+considered simpler because the mathematical operations used only involve
+summation
+
+In the chunk below I write the code for above rules of model selection using
+one .rds file of 4 models (i.e. for 1000 unique pixels that have 4 models fit).
+I also parallelize and loop through all 1804 rds files in the same chunk.
+
+```{r}
+#trial_rds<- read_rds(here("Outputs", "Trajectory_Classification", "Classification_df", "classification8.rds"))
+#models_pixel_df<- test_df %>% filter(cell==40544)
+
+model_levels <- c("Null", "Lin", "Step", "Quad")
+
+model_select<- function(models_pixel_df){
+  #adding model name which did not get exported out in the classification function( row.names)
+  models_pixel_df <- models_pixel_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
+                                                                    levels = model_levels))
+  # #adding model simplicity for selection in next few steps
+  # models_pixel_df<- models_pixel_df %>% mutate(modelorder= case_when( model_type=="Null"~1,
+  #                                   model_type=="Lin"~2,
+  #                                   model_type=="Step"~3,
+  #                                   model_type=="Quad"~4))
+  #least AIC model selection
+  models_pixel_df <- models_pixel_df %>%
+    mutate(aic_diff= abs(aic) - min(abs(aic))) #wrt model with least AIC
+  
+  condition_less2<- models_pixel_df %>% filter(aic_diff<=2)
+  
+  if (dim(condition_less2)[1]==1){
+    models_pixel_df<- condition_less2 
+  } else{
+    models_pixel_df<- condition_less2 %>% 
+      filter(model_order==min(model_order))
+  }
+  models_pixel_df 
+}
+
+rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
+
+
+stl_list <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+stl_list <- gtools::mixedsort(stl_list) #arranging chronologically
+
+
+Sys.time(); for (i in 101:200){ 
+  test_df<- read_rds(rds_list[[i]])
+  names(test_df)[15]<- "trend_name"
+  plan(multisession, workers = numCores)
+  tic()
+  x <- test_df %>%
+    group_by(cell) %>%
+    nest() %>%
+    mutate(modelselect_data = furrr::future_map(data, model_select, 
+                                                   .options = furrr_options(seed = TRUE))) %>%
+    select(-data) %>%
+    unnest(modelselect_data)
+  toc()
+  write_rds(x, here("Outputs", "Trajectory_Classification", "Final_model_df", 
+                    paste0("modelselect",i,".rds")))
+  
+  
+  stl_test_df <- read_rds(stl_list[[i]])
+  tic()
+  y<- stl_test_df %>% left_join(x, relationship = "many-to-one", by= join_by(cell == cell)); toc()
+  toc()
+  write_rds(y, here("Outputs", "Trajectory_Classification", "Final_model_combined_ogdata_df", 
+                    paste0("ogdata_model",i,".rds")))
+  
+  remove(test_df, x, y, stl_test_df)
+  print (paste0(i, "-Complete. Check"))
+  gc()
+}; Sys.time()
+```
+
+In the next chunk I do model selection of the models in which I have used 
+original anisoEVI
+```{r}
+rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","OGanisoEVI_Classification_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
+
+#rerun lines 1012- 1024 to set up the parallelization
+
+data_rds_list<- list()
+for (i in 1:length(rds_list)){
+  data_rds_list[[i]]<- read_rds(rds_list[i])
+}
+
+data_rds_list<- data_rds_list %>% discard(is.null)
+
+Sys.time(); y<- foreach (
+  i=1:length(data_rds_list),
+  .combine = "rbind") %dopar% 
+  (data_rds_list[[i]] %>%
+     rename("trend_name"="trend") %>%
+    dplyr::group_by(cell) %>%
+    nest() %>%
+    mutate(modelselect_data = purrr::map(data, model_select)) %>%
+    select(-data) %>%
+    unnest(modelselect_data)
+  ); Sys.time()
+
+write_rds(y, here("Outputs", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
+
+#remove(i, rds_list, model_levels)
+
+```
+
+
+##############################################4. Results compilation
+```{r}
+
+rds_list2 <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
+                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list2<-gtools::mixedsort(rds_list2)
+df_list<- list()
+Sys.time(); for ( i in 1:length(rds_list2)){
+  print (paste0("Counter= ",i))
+  selectedmodel_df<- read_rds(rds_list2[[i]])
+  df_list[[i]]<- selectedmodel_df
+  remove(selectedmodel_df)
+  gc()
+}; Sys.time()
+
+selectmodel_df<- do.call(rbind,df_list)
+
+### Bar plot
+prop_traj<-selectmodel_df%>% group_by(model_order, shape_class, trend_name) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(selectmodel_df))*100) %>%
+  unite(Model_Shape_Trend, c("model_order", "shape_class", "trend_name"))
+
+MyPalette <- c(Null_stable_constant_NA ="#CCCCCC", 
+               Lin_decrease_constant_NA = "#332288", 
+               Lin_increase_constant_NA = "#117733", 
+               Lin_stable_constant_NA = "#CC6677",
+               Quad_stable_concave_NA ="#AA4499",
+               Quad_stable_convex_NA ="#882255")
+
+plot_prop_traj<- 
+  ggplot(prop_traj, aes(x=Model_Shape_Trend, y= percentage, fill=Model_Shape_Trend)) +
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = MyPalette) +
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")
+ggsave(here("Outputs", "Trajectory_Classification", "trajectory_prop_plot.png"), plot = plot_prop_traj,
+       height = 10, width = 10, units = "cm", dpi=700)  
+
+
+### Map making
+Sys.time(); map_raster<- selectmodel_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class)) %>% 
+  mutate(pixelvalue= case_when(model_order=="Null" & shape_class== "stable_constant"~1,
+                               model_order=="Lin" & shape_class== "decrease_constant"~2,
+                               model_order=="Lin" & shape_class== "inrease_constant"~3,
+                               model_order=="Lin" & shape_class== "stable_constant"~4,
+                               model_order=="Quad" & shape_class== "stable_concave"~5,
+                               model_order=="Quad" & shape_class== "stable_convex"~6)) %>%
+  dplyr::select(-c(model_order, shape_class)) %>%
+  rast(); Sys.time()
+
+
+plot(map_df["pixelvalue"])
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+
+tmap_mode("plot")
+modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (map_raster)+
+  tm_raster(col = "pixelvalue", style = "cat", palette =MyPalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Null-Stable,Constant", 
+                           "Linear- Decrease, Constant",
+                           "Linear- Increase, Constant",
+                           "Linear- Stable, Constant",
+                           "Quadratic- Stable, Concave",
+                           "Quadratic- Stable, Convex"),
+                col = MyPalette)
+tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "trajectory_map.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+remove(map_raster, plot_prop_traj, prop_traj, neighbors, map_extent, d_trans, modelselect_map)
+remove(MyPalette, rds_list2)
+remove(df_list, selectmodel_df,i)
+```
+
+
+##############################################5. Results interpretation
+Here I look under the hood of the results. basically the resutls are that there
+are no change sin anisoEVI (decomponsed trend) with <10% showing a linear or
+quad trajectory and there are no abrupt shifts at all. So I want to look at 
+example pixels of each of these models and look at the original anisoEVI (interpolated
+and with NAs because lm fits models to data with NA) and see how different the
+results are. I do this for 15 dfs i.e. 15000 pixels and then pick out a couple of
+pixels to visualize and interpret
+
+
 In the chunk below I reran the classification and selection for the og anisoEVI
 ```{r}
 #run lines 706- 708 to read in the split dfs
@@ -1323,32 +1288,7 @@ Sys.time(); for (i in 1:10){
 
 remove(i, rds_list)
 
-#run lines lines 749-774 for model select function
-rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_og_anisoEVI_df"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
 
-Sys.time(); for (i in 1:10){ 
-  test_df<- read_rds(rds_list[[i]])
-  names(test_df)[15]<- "trend_name"
-  plan(multisession, workers = numCores)
-  tic()
-  x <- test_df %>%
-    group_by(cell) %>%
-    nest() %>%
-    mutate(modelselect_data = furrr::future_map(data, model_select, 
-                                                   .options = furrr_options(seed = TRUE))) %>%
-    select(-data) %>%
-    unnest(modelselect_data)
-  toc()
-  write_rds(x, here("Outputs", "Trajectory_Classification", "Final_model_og_anisoEVI_df", 
-                    paste0("modelselect_og_anisoEVI",i,".rds")))
-  remove(test_df, x)
-  print (paste0(i, "-Complete. Check"))
-  gc()
-};
-
-remove(i, rds_list, model_levels)
 
 #results compilation
 rds_list2 <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_og_anisoEVI_df"), 
@@ -1475,7 +1415,7 @@ alldata_df<- do.call(rbind,alldata_list)
 remove(alldata_list, i, alldata_df_list )
 
 #Function to make line plot
-lineplot_func<- function(cellvalue, title_name){
+lineplot_func<- function(cellvalue){
   lp_fig<- alldata_df %>% filter(cell==cellvalue) %>% 
   dplyr::select(c(og_anisoEVI, trend)) %>%
   mutate(index= 1:240) %>%
@@ -1483,63 +1423,24 @@ lineplot_func<- function(cellvalue, title_name){
       geom_line(aes(y = og_anisoEVI), color = "darkred") + 
       geom_line(aes(y = trend), color="black", linetype="longdash")+
       ylab("anisoEVI related value")+
-      ggtitle(title_name)+
       theme_classic()
   lp_fig
 }
 
 #1. OG data= Step decrease, STL data= Linear stable constant
-eg1<- lineplot_func(134428,"OG=Step-Dec; STL=Linear-Stable-Constant")
+eg1<- lineplot_func(134428)
 
 #2. OG data= Step decrease, STL data= Null stable constant
-eg2<- lineplot_func(142490, "OG=Step-Dec;STL=Null-Stable-Constant")
+eg2<- lineplot_func(142490)
 
 #3. OG data= Step increase, STL data= Linear stable constant
-eg3<- lineplot_func(120165, "OG=Step-Inc;STL=Linear-Stable-Constant")
+eg3<- lineplot_func(120165)
 
 #4. OG data= Step increase, STL data= Null stable constant
-eg4<- lineplot_func(142358,"OG=Step-Inc;STL=Null-Stable-Constant")
-
-library(ggpubr)
-xfig<- ggarrange(eg1, eg2, eg3, eg4, ncol=2, nrow=2)
-ggsave(here("Outputs", "Trajectory_Classification","Final_model_og_anisoEVI_df", "example_pixel_trend_oganisoEVI.png"), plot = xfig,
-       height = 40, width = 40, units = "cm", dpi=700)  
+eg4<- lineplot_func(142358)
 
 
-```
-
-Basically the results slightly change when analysing trajectories using og anisoEVI
-data. When using og anisoEVI data, there are pixels with abrupt shifts- very few
-but they are still there, which are characterized as null models when using the 
-STL decomposed trend. 
-
-2. Another problem is that there is a trajectory called Linear Stable Constant
-which does not make sense. A linear model can only have linear increase constant
-and linear decrease constant. Linear stable constant is just a null stable constant
-model. So troubleshooting this issue in the next chunk
-
-```{r}
-#rerun lines 818-830 but only for i=1
-lin_stable_constant_pixels<-selectedmodel_df %>% filter(model_order=="Lin" & 
-                            shape_class=="stable_constant") #27 pixels
-unique(lin_stable_constant_pixels$cell)
-
-rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Classification_df"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list <- gtools::mixedsort(rds_list) #arranging chronologically
-  
-allmodels_df<-read_rds(rds_list[[i]])
-
-eg1_allmodels<- allmodels_df %>% filter(cell==14065)
 
 
-rds_list3 <- list.files(path = here("Outputs", "STL_Decomposition","Split_datagroups"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-rds_list3<-gtools::mixedsort(rds_list3) #arranging chronologically
-
-rawdata_df<- read_rds(rds_list3[[i]])
-rawdata_df<- rawdata_df %>% filter(cell==14065)
-dataset<- rawdata_df
-#rerunning classification function above with dataset
 
 ```
