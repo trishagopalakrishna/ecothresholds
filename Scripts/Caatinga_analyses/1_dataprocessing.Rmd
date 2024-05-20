@@ -90,9 +90,9 @@ Discrepancy with Berdugo when looking at NDVI specifically- Berdugo seemed to ha
 # of LULC retained. SO I reclassify all 0 values to NA and all non 0 values to 1. 
 #tic(); modis_mask<- terra::classify(modis_mask, cbind(0,NA), others = 1); toc()
 
-#tic(); modis_mask_proj<- terra::project(modis_mask, meanannualanisoEVI, 
+#tic(); modis_mask_proj<- terra::project(modis_mask, monthly_anisoEVI, 
 #                                        method = "near", mask= T, align=T); toc() #nearest neighbor becuse LULC is catergorical pixel values
-#tic(); modis_mask_proj2<- terra::crop(modis_mask_proj, meanannualanisoEVI)
+#tic(); modis_mask_proj2<- terra::resample(modis_mask_proj, monthly_anisoEVI)
 #writeRaster(modis_mask_proj2, here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_proj_MODIS_LULC_mask.tif"))
 #remove(modis_mask, modis_mask_proj)
 
@@ -108,19 +108,18 @@ tic(); for ( i in 1:length(modis_mask_names)){
 }; toc()
 names(modis_mask_proj2)<- modis_mask_names
 
-Sys.time(); modis_mask_proj2<- terra::resample(modis_mask_proj2, monthly_anisoEVI, threads=T); Sys.time()
-
 for (i in 1:nlyr(modis_mask_proj2)){
-  writeRaster(modis_mask_proj2[[i]], here("Data", "Masks_to_define_pixelsofinterest","Caatinga_annual_mask" ,paste0("Caatinga_",modis_mask_names[[i]], ".tif")))
+  writeRaster(modis_mask_proj2[[i]], here("Data", "Masks_to_define_pixelsofinterest","Caatinga_annual_mask2" ,paste0("Caatinga_",modis_mask_names[[i]], ".tif")))
 }
 
 remove(modis_mask_proj2)
+remove(i,x)
 ```
 
 
 #4. Applying above prepared LULC Mask
 ```{r}
-mask_list <- list.files(path = here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_annual_mask"), 
+mask_list <- list.files(path = here("Data", "Masks_to_define_pixelsofinterest", "Caatinga_annual_mask2"), 
                        pattern='.tif$', all.files=TRUE, full.names=TRUE) 
 
 mask_rasters_list<- list()
@@ -164,19 +163,34 @@ modis_lulc_asign<- function(years){
 }
 tic(); mask_df<-mask_df %>% mutate(annual_LULC = map(years, modis_lulc_asign)); toc()
 remove(modis_lulc_asign)
-write_rds(mask_df, here("Data",  "Masks_to_define_pixelsofinterest", "caatinga_mask_df.rds"))
+
 
 masking_function<- function (mask, indice_raster){
   terra::cover(mask, indice_raster, values=1)
 }
 
 tic(); mask_df<-mask_df %>% mutate(masked_annualEVI = purrr::map2(annual_anisoEVI, annual_LULC, masking_function)); toc() #144.39 sec
+
 tic(); mask_df<-mask_df %>% mutate(masked_annualNDVI = purrr::map2(annual_NDVI, annual_LULC, masking_function)); toc() #31sec
-write_rds(mask_df, here("Data",  "Masks_to_define_pixelsofinterest", "caatinga_mask_df2.rds"))
 
-tic(); mask_df<-mask_df %>% mutate(masked_monthlyEVI = purrr::map2(monthly_EVI, annual_LULC, masking_function)); toc()
-tic(); mask_df<-mask_df %>% mutate(masked_annualEVI = purrr::map2(monthly_NDVI, annual_LULC, masking_function)); toc()
+tic(); mask_df<-mask_df %>% mutate(masked_monthlyEVI = purrr::map2(monthly_EVI, annual_LULC, masking_function)); toc() #18 min
 
+tic(); mask_df<-mask_df %>% mutate(masked_monthlyNDVI = purrr::map2(monthly_NDVI, annual_LULC, masking_function)); toc() #14min
+
+
+writeRaster_function<- function (masked_raster, yrmonthname){
+  terra::writeRaster(masked_raster, here("Outputs", "Indices", "Caatinga", "masked_monthlyEVI", paste0("masked_monthlyEVI_", yrmonthname, ".tif")))
+}
+tic(); mask_df<-mask_df %>% mutate(write_put2 = purrr::map2(masked_monthlyEVI, Years_Months, writeRaster_function)); toc() 
+
+
+mask_df2<- mask_df %>% dplyr::select(c(years, months, masked_annualEVI, masked_annualNDVI))
+mask_df2<- mask_df2 %>% filter(months==1)
+writeRaster_function2<- function (masked_raster, yr_name){
+  terra::writeRaster(masked_raster, here("Outputs", "Indices", "Caatinga", "masked_annualNDVI", paste0("masked_annualNDVI_", yr_name, ".tif")))
+}
+tic(); mask_df2<-mask_df2 %>% mutate(write_put3 = purrr::map2(masked_annualNDVI, years, writeRaster_function2)); toc() 
+remove(writeRaster_function2)
 
 ```
 

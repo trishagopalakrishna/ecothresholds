@@ -80,20 +80,20 @@ First code chunk is the classification function
 ```{r}
 library(MuMIn)
 
-class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
-  dataset<- dataset %>% mutate(Years= 1:nrow(dataset))
+class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
+  dataset<- dataset %>% mutate(time_step= 1:nrow(dataset))
   #Trajectory fitting
   null_mod<- lm(value ~ 1, data = dataset) ##1. No intercept
   summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
   nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value,na.rm=T)
   aic_null<- MuMIn::AICc(null_mod)
 
-  linear_mod<- lm(value ~ Years, data = dataset) ##2.linear
+  linear_mod<- lm(value ~ time_step, data = dataset) ##2.linear
   summary(linear_mod)
   nmrs_lin<- sqrt(sum(summary(linear_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value,na.rm=T)
   aic_lin<- MuMIn::AICc(linear_mod)
 
-  orth_poly_mod<- lm(value ~ poly(Years,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
+  orth_poly_mod<- lm(value ~ poly(time_step,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
   summary(orth_poly_mod)
   nmrs_quad<- sqrt(sum(summary(orth_poly_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value, na.rm=T)
   aic_quad<- MuMIn::AICc(orth_poly_mod)
@@ -110,21 +110,22 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
   delta  <-  orth_poly_mod$coefficients[2]
   epsilon  <-  orth_poly_mod$coefficients[1]
 
-  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Years)$coef[2]
-  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Year)$coef[1]
+
+  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value)])$coef[2]
+  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value)])$coef[1]
 
   eta  <-  1/lm((orth_poly_mod$model[, 2][, 1])^2 ~
                 orth_poly_mod$model[, 2][, 2])$coef[2]
   theta  <-  (-lm((orth_poly_mod$model[, 2][, 1])^2 ~
                   orth_poly_mod$model[, 2][, 2])$coef[1])*eta
 
-  Y2 <- dataset$value*(max(dataset$Year)-min(dataset$Year))/(max(dataset$value)-min(dataset$value)) 
+    Y2 <- dataset$value[!is.na(dataset$value)]*(max(dataset$time_step[!is.na(dataset$value)])-min(dataset$time_step[!is.na(dataset$value)]))/(max(dataset$value[!is.na(dataset$value)])-min(dataset$value[!is.na(dataset$value)])) 
 
   # p2 and p3 are relevant when Y and X amplitudes are equivalent,in particular when 
   # studying scaled-to-1 indices, Y and X amplitudes may be very different, so we 
   # scaled the amplitudes to calculate p2 and p3
 
-  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$Year,2, raw=T))$coefficients
+  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$time_step[!is.na(dataset$value)],2, raw=T))$coefficients
 
   # Quadratic model output:
   classification <-
@@ -136,7 +137,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                  summary(orth_poly_mod)$coefficients[3, 4],
                strd_error=summary(orth_poly_mod)$coefficients[2, 2],
                intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
-               x_m = (dataset$Year[length(dataset$Year)]-dataset$Year[1])/2+dataset$Year[1],
+               x_m = (dataset$time_step[length(dataset$time_step)]-dataset$time_step[1])/2+dataset$time_step[1],
                # points of interest:
                p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta),
                p2 = (-polynomial_orthonormal_basis[2]+1)/
@@ -162,7 +163,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                  summary(orth_poly_mod)$coefficients[3, 4],
                strd_error=summary(orth_poly_mod)$coefficients[2, 2],
                intercept = epsilon+delta*beta,
-               x_m = (dataset$Year[length(dataset$Year)]-dataset$Year[1])/2+dataset$Year[1],
+               x_m = (dataset$time_step[length(dataset$time_step)]-dataset$time_step[1])/2+dataset$time_step[1],
                p1 = NA,
                p2 = NA,
                p3 = NA,
@@ -185,7 +186,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                  summary(orth_poly_mod)$coefficients[3, 4],
                strd_error=summary(orth_poly_mod)$coefficients[2, 2],
                intercept = null_mod$coefficients,
-               x_m = (dataset$Year[length(dataset$Year)]-dataset$Year[1])/2+dataset$Year[1],
+               x_m = (dataset$time_step[length(dataset$time_step)]-dataset$time_step[1])/2+dataset$time_step[1],
                p1 = NA,
                p2 = NA,
                p3 = NA,
@@ -205,11 +206,11 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
     # Compute the derivative at xm-delta and at xm + delta with delta being
     # half of the input interval size (its 25% of the time interval which is set as 0.5)
       derivative <-
-        2*(classification$x_m[i] - (dataset$Year[length(dataset$Year)]-dataset$Year[1])*(interval_size/2))*  
+        2*(classification$x_m[i] - (dataset$time_step[length(dataset$time_step)]-dataset$Year[1])*(interval_size/2))*  
         classification$second_order_coefficient[i] +
         classification$first_order_coefficient[i]
       derivative2 <-
-        2*(classification$x_m[i] + (dataset$Year[length(dataset$Year)]-dataset$Year[1])*(interval_size/2))*
+        2*(classification$x_m[i] + (dataset$Year[length(dataset$time_step)]-dataset$time_step[1])*(interval_size/2))*
         classification$second_order_coefficient[i] +
         classification$first_order_coefficient[i]
 
@@ -279,12 +280,12 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
   
   # Abrupt breakpoint analyses
   chng_fit<- chngpt::chngptm(formula.1=value~1,
-                      formula.2=~Year,
+                      formula.2=~time_step,
                       family="gaussian", data=dataset,
                       type="step",
                       var.type="bootstrap", weights=NULL)
 
-  pred_chg <- data.frame(timestep = dataset$Year,
+  pred_chg <- data.frame(timestep = dataset$time_step,
                          bp = chng_fit$best.fit$fitted.values)
 
   chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$value))/sd(dataset$value)
@@ -299,11 +300,11 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
   classification[4, 16] <-  (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
                         max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1]))
   classification[4, 17] <-  dataset %>%
-                                  dplyr::filter(Year<=chng_fit$chngpt) %>%
+                                  dplyr::filter(time_step<=chng_fit$chngpt) %>%
                                   dplyr::pull(value) %>%
                                   sd()
   classification[4, 18] <- dataset %>%
-                        dplyr::filter(Year>=chng_fit$chngpt) %>%
+                        dplyr::filter(time_step>=chng_fit$chngpt) %>%
                         dplyr::pull(value) %>%
                         sd()
   
