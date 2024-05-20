@@ -206,11 +206,11 @@ class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
     # Compute the derivative at xm-delta and at xm + delta with delta being
     # half of the input interval size (its 25% of the time interval which is set as 0.5)
       derivative <-
-        2*(classification$x_m[i] - (dataset$time_step[length(dataset$time_step)]-dataset$Year[1])*(interval_size/2))*  
+        2*(classification$x_m[i] - (dataset$time_step[length(dataset$time_step)]-dataset$time_step[1])*(interval_size/2))*  
         classification$second_order_coefficient[i] +
         classification$first_order_coefficient[i]
       derivative2 <-
-        2*(classification$x_m[i] + (dataset$Year[length(dataset$time_step)]-dataset$time_step[1])*(interval_size/2))*
+        2*(classification$x_m[i] + (dataset$time_step[length(dataset$time_step)]-dataset$time_step[1])*(interval_size/2))*
         classification$second_order_coefficient[i] +
         classification$first_order_coefficient[i]
 
@@ -285,7 +285,7 @@ class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
                       type="step",
                       var.type="bootstrap", weights=NULL)
 
-  pred_chg <- data.frame(timestep = dataset$time_step,
+  pred_chg <- data.frame(timestep = dataset$time_step[!is.na(dataset$value)],
                          bp = chng_fit$best.fit$fitted.values)
 
   chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$value))/sd(dataset$value)
@@ -337,7 +337,7 @@ foreach::getDoParWorkers() #should give numCores
 
 tic(); trial_classification<- pivot_annual_EVI %>% filter(cell==1466)
 
-tic();x<- class_trajectory_mod(trial_classification);toc()
+tic();x<- class_trajectory_mod(trial_classification, value);toc()
 
 %>%
       #group_by(cell) %>%
