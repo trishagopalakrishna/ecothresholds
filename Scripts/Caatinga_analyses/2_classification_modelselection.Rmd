@@ -26,7 +26,7 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 #Introduction 
 In this script I extract the time series information for pixels of interest, complete the classification and model selection steps. 
 
-#1. Data input
+#1. Data input and prep
 ```{r}
 read_rasters_function<- function(folder_name){
   raster_list<- list.files(path = here("Outputs", "Indices","Caatinga", folder_name), pattern='.tif$', all.files=TRUE, full.names=TRUE)
@@ -37,32 +37,23 @@ read_rasters_function<- function(folder_name){
 }
 
 tic(); monthly_EVI<- read_rasters_function("masked_monthlyEVI"); toc()
-tic(); annual_EVI<- read_rasters_function("masked_annualEVI"); toc()
 tic(); monthly_NDVI<- read_rasters_function("masked_monthlyNDVI"); toc()
-tic(); annual_NDVI<- read_rasters_function("masked_annualNDVI"); toc()
 
 #scaling
 tic(); monthly_EVI<- monthly_EVI/10^5; toc()
-tic(); annual_EVI<- annual_EVI/10^5; toc()
 tic(); monthly_NDVI<- monthly_NDVI*0.0001; toc() #Scale mentioned on GEE product "Bands" page
-tic(); annual_NDVI<- annual_NDVI*0.0001; toc()
+
 
 #Converting to dataframe
 tic(); monthly_EVI_df<- terra::as.data.frame(monthly_EVI, xy=T, cells= T); tic()
 #write_rds(monthly_EVI_df, here("Outputs", "Indices", "Caatinga", "scaled_monthly_EVI_df.rds"))
 tic(); monthly_NDVI_df<- terra::as.data.frame(monthly_NDVI, xy=T, cells= T); tic()
 #write_rds(monthly_NDVI_df, here("Outputs", "Indices", "Caatinga", "scaled_monthly_NDVI_df.rds"))
-tic(); annual_EVI_df<- terra::as.data.frame(annual_EVI, xy=T, cells= T); tic()
-#write_rds(annual_EVI_df, here("Outputs", "Indices", "Caatinga", "scaled_annual_EVI_df.rds"))
-tic(); annual_NDVI_df<- terra::as.data.frame(annual_NDVI, xy=T, cells= T); tic()
-#write_rds(annual_NDVI_df, here("Outputs", "Indices", "Caatinga", "scaled_annual_NDVI_df.rds"))
 
-annual_EVI_df<- read_rds (here("Outputs", "Indices", "Caatinga", "scaled_annual_EVI_df.rds"))
-annual_NDVI_df<- read_rds(here("Outputs", "Indices", "Caatinga", "scaled_annual_NDVI_df.rds"))
 
 #Pivot each dataframe
-tic(); pivot_annual_EVI<- annual_EVI_df %>% pivot_longer(4:24); toc() 
-tic(); pivot_annual_EVI<- pivot_annual_EVI %>% separate_wider_delim(cols = name, delim = "_", names = c("TitleString","Year"));toc()
+tic(); pivot_monthly_EVI<- monthly_EVI_df %>% pivot_longer(4:255); toc() 
+tic(); pivot_monthly_EVI<- pivot_monthly_EVI %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month_Chr"));toc()
 pivot_annual_EVI<- pivot_annual_EVI%>% dplyr::select(-c(TitleString))
 
 tic(); pivot_annual_NDVI<- annual_NDVI_df %>% pivot_longer(4:24); toc() 
@@ -335,7 +326,7 @@ foreach::getDoParRegistered() #should be TRUE
 foreach::getDoParWorkers() #should give numCores
 
 
-tic(); trial_classification<- pivot_annual_EVI %>% filter(cell==1466)
+tic(); trial_classification<- pivot_annual_EVI %>% filter(cell==2500)
 
 tic();x<- class_trajectory_mod(trial_classification, value);toc()
 
