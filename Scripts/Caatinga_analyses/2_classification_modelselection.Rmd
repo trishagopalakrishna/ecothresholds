@@ -50,17 +50,59 @@ tic(); monthly_EVI_df<- terra::as.data.frame(monthly_EVI, xy=T, cells= T); tic()
 tic(); monthly_NDVI_df<- terra::as.data.frame(monthly_NDVI, xy=T, cells= T); tic()
 #write_rds(monthly_NDVI_df, here("Outputs", "Indices", "Caatinga", "scaled_monthly_NDVI_df.rds"))
 
+monthly_EVI_df<- read_rds(here("Outputs", "Indices", "Caatinga", "scaled_monthly_EVI_df.rds"))
+monthly_NDVI_df <- read_rds(here("Outputs", "Indices", "Caatinga", "scaled_monthly_NDVI_df.rds"))
 
-#Pivot each dataframe
+#Pivot each dataframe and reorder by month
 tic(); pivot_monthly_EVI<- monthly_EVI_df %>% pivot_longer(4:255); toc() 
 tic(); pivot_monthly_EVI<- pivot_monthly_EVI %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month_Chr"));toc()
-pivot_annual_EVI<- pivot_annual_EVI%>% dplyr::select(-c(TitleString))
+tic(); pivot_monthly_EVI<- pivot_monthly_EVI %>% mutate(Month_Num= case_when(Month_Chr=="Jan"~1,
+                                                                             Month_Chr=="Feb"~2,
+                                                                             Month_Chr=="Mar"~3,
+                                                                             Month_Chr=="Apr"~4,
+                                                                             Month_Chr=="May"~5,
+                                                                             Month_Chr=="Jun"~6,
+                                                                             Month_Chr=="Jul"~7,
+                                                                             Month_Chr=="Aug"~8,
+                                                                             Month_Chr=="Sep"~9,
+                                                                             Month_Chr=="Oct"~10,
+                                                                             Month_Chr=="Nov"~11,
+                                                                             Month_Chr=="Dec"~12)); toc()
 
-tic(); pivot_annual_NDVI<- annual_NDVI_df %>% pivot_longer(4:24); toc() 
-tic(); pivot_annual_NDVI<- pivot_annual_NDVI %>% separate_wider_delim(cols = name, delim = "_", names = c("TitleString","Year"));toc()
-pivot_annual_NDVI<- pivot_annual_NDVI%>% dplyr::select(-c(TitleString))
+tic(); pivot_monthly_EVI<- pivot_monthly_EVI %>% group_by(cell, Year) %>% arrange(Month_Num, .by_group = TRUE); toc()
+
+tic(); pivot_monthly_NDVI<- monthly_NDVI_df %>% pivot_longer(4:255); toc() 
+tic(); pivot_monthly_NDVI<- pivot_monthly_NDVI %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month_Chr"));toc()
+tic(); pivot_monthly_NDVI<- pivot_monthly_NDVI %>% mutate(Month_Num= case_when(Month_Chr=="Jan"~1,
+                                                                             Month_Chr=="Feb"~2,
+                                                                             Month_Chr=="Mar"~3,
+                                                                             Month_Chr=="Apr"~4,
+                                                                             Month_Chr=="May"~5,
+                                                                             Month_Chr=="Jun"~6,
+                                                                             Month_Chr=="Jul"~7,
+                                                                             Month_Chr=="Aug"~8,
+                                                                             Month_Chr=="Sep"~9,
+                                                                             Month_Chr=="Oct"~10,
+                                                                             Month_Chr=="Nov"~11,
+                                                                             Month_Chr=="Dec"~12)); toc()
+
+tic(); pivot_monthly_NDVI<- pivot_monthly_NDVI %>% group_by(cell, Year) %>% arrange(Month_Num, .by_group = TRUE); toc()
 
 
+#Applying Berdugo's criteria of a pixel having mean annual value=NA if more than
+#10/23 values are missing (no mention in Berdugo whether missing values are consecutive or total)
+tic(); pivot_annual_EVI <- pivot_monthly_EVI %>% group_by(cell, Year) %>% 
+  summarise(Num_NA= sum(is.na(value)),
+            value_mean= ifelse(Num_NA>(10/23)*12, NA, mean(value, na.rm=T))); toc()
+
+#write_rds(pivot_annual_EVI, here("Outputs", "Indices", "Caatinga", "pivot_condition_annual_EVI.rds"))
+
+tic(); pivot_annual_NDVI <- pivot_monthly_NDVI %>% group_by(cell, Year) %>% 
+  summarise(Num_NA= sum(is.na(value)),
+            value_mean= ifelse(Num_NA>(10/23)*12, NA, mean(value, na.rm=T))); toc()
+
+#write_rds(pivot_annual_EVI, here("Outputs", "Indices", "Caatinga", "pivot_condition_annual_EVI.rds"))
+#write_rds(pivot_annual_NDVI, here("Outputs", "Indices", "Caatinga", "pivot_condition_annual_NDVI.rds"))
 remove(read_rasters_function, annual_EVI, annual_NDVI, monthly_EVI, monthly_NDVI)
 gc()
 ```
@@ -71,22 +113,22 @@ First code chunk is the classification function
 ```{r}
 library(MuMIn)
 
-class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
+annual_class_trajectory_mod <- function (dataset = NULL,interval_size = 0.5) {
   dataset<- dataset %>% mutate(time_step= 1:nrow(dataset))
   #Trajectory fitting
-  null_mod<- lm(value ~ 1, data = dataset) ##1. No intercept
+  null_mod<- lm(value_mean ~ 1, data = dataset) ##1. No intercept
   summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
-  nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value,na.rm=T)
+  nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2,na.rm=T)/length(dataset$value_mean))/sd(dataset$value_mean,na.rm=T)
   aic_null<- MuMIn::AICc(null_mod)
 
-  linear_mod<- lm(value ~ time_step, data = dataset) ##2.linear
+  linear_mod<- lm(value_mean ~ time_step, data = dataset) ##2.linear
   summary(linear_mod)
-  nmrs_lin<- sqrt(sum(summary(linear_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value,na.rm=T)
+  nmrs_lin<- sqrt(sum(summary(linear_mod)$residuals^2,na.rm=T)/length(dataset$value_mean))/sd(dataset$value_mean,na.rm=T)
   aic_lin<- MuMIn::AICc(linear_mod)
 
-  orth_poly_mod<- lm(value ~ poly(time_step,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
+  orth_poly_mod<- lm(value_mean ~ poly(time_step,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
   summary(orth_poly_mod)
-  nmrs_quad<- sqrt(sum(summary(orth_poly_mod)$residuals^2,na.rm=T)/length(dataset$value))/sd(dataset$value, na.rm=T)
+  nmrs_quad<- sqrt(sum(summary(orth_poly_mod)$residuals^2,na.rm=T)/length(dataset$value_mean))/sd(dataset$value_mean, na.rm=T)
   aic_quad<- MuMIn::AICc(orth_poly_mod)
 
   ## To get relevant values for quadratic output - Directly from Pellise et al., 2024 
@@ -102,21 +144,21 @@ class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
   epsilon  <-  orth_poly_mod$coefficients[1]
 
 
-  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value)])$coef[2]
-  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value)])$coef[1]
+  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value_mean)])$coef[2]
+  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$time_step[!is.na(dataset$value_mean)])$coef[1]
 
   eta  <-  1/lm((orth_poly_mod$model[, 2][, 1])^2 ~
                 orth_poly_mod$model[, 2][, 2])$coef[2]
   theta  <-  (-lm((orth_poly_mod$model[, 2][, 1])^2 ~
                   orth_poly_mod$model[, 2][, 2])$coef[1])*eta
 
-    Y2 <- dataset$value[!is.na(dataset$value)]*(max(dataset$time_step[!is.na(dataset$value)])-min(dataset$time_step[!is.na(dataset$value)]))/(max(dataset$value[!is.na(dataset$value)])-min(dataset$value[!is.na(dataset$value)])) 
+    Y2 <- dataset$value_mean[!is.na(dataset$value_mean)]*(max(dataset$time_step[!is.na(dataset$value_mean)])-min(dataset$time_step[!is.na(dataset$value_mean)]))/(max(dataset$value_mean[!is.na(dataset$value_mean)])-min(dataset$value_mean[!is.na(dataset$value_mean)])) 
 
   # p2 and p3 are relevant when Y and X amplitudes are equivalent,in particular when 
   # studying scaled-to-1 indices, Y and X amplitudes may be very different, so we 
   # scaled the amplitudes to calculate p2 and p3
 
-  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$time_step[!is.na(dataset$value)],2, raw=T))$coefficients
+  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$time_step[!is.na(dataset$value_mean)],2, raw=T))$coefficients
 
   # Quadratic model output:
   classification <-
@@ -270,16 +312,16 @@ class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
   }
   
   # Abrupt breakpoint analyses
-  chng_fit<- chngpt::chngptm(formula.1=value~1,
+  chng_fit<- chngpt::chngptm(formula.1=value_mean~1,
                       formula.2=~time_step,
                       family="gaussian", data=dataset,
                       type="step",
                       var.type="bootstrap", weights=NULL)
 
-  pred_chg <- data.frame(timestep = dataset$time_step[!is.na(dataset$value)],
+  pred_chg <- data.frame(timestep = dataset$time_step[!is.na(dataset$value_mean)],
                          bp = chng_fit$best.fit$fitted.values)
 
-  chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$value))/sd(dataset$value)
+  chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$value_mean))/sd(dataset$value_mean)
 
   classification[4, 13] <- chng_fit$chngpt
   classification[4, 11] <- MuMIn::AICc(chng_fit)
@@ -292,25 +334,49 @@ class_trajectory_mod <- function (dataset = NULL, value, interval_size = 0.5) {
                         max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1]))
   classification[4, 17] <-  dataset %>%
                                   dplyr::filter(time_step<=chng_fit$chngpt) %>%
-                                  dplyr::pull(value) %>%
+                                  dplyr::pull(value_mean) %>%
                                   sd()
   classification[4, 18] <- dataset %>%
                         dplyr::filter(time_step>=chng_fit$chngpt) %>%
-                        dplyr::pull(value) %>%
+                        dplyr::pull(value_mean) %>%
                         sd()
   
   row.names(classification) <- c("Y_pol","Y_lin", "Y_nch", "Y_abpt")
   
-  # classification$cell <- unique(dataset$cell)
-  classification$x <- unique(dataset$x)
-  classification$y <- unique(dataset$y)
+  classification$cell <- unique(dataset$cell)
+  #classification$x <- unique(dataset$x)
+  #classification$y <- unique(dataset$y)
 
   return(classification)
 }
 ```
 
-Applying classification function
+Applying classification function for annual anisoEVI
 ```{r}
+pivot_annual_EVI<- read_rds(here("Outputs", "Indices", "Caatinga", "pivot_condition_annual_EVI.rds"))
+#there are a couple of pixels that have only 1 or 2 annual values after aggregating the monthly values
+yearNAannualEVI <- pivot_annual_EVI %>% group_by(cell) %>% summarise(Year_NA=sum(is.na(value_mean)))
+percent_yearNA_annualEVI<- yearNAannualEVI %>% group_by(Year_NA)%>% summarise(count=n(),
+                                                                               percentage=(count/823841)*100) #823841 is number of unique pixels
+
+#About 98% of all pixels have no missing annual values or have only 1 missing annual value
+#I apply Berdugo rule again and keep pixels that have (10/23)*21 less than or equal to 9 annual values only
+
+tic();pivot_annual_EVI2<- pivot_annual_EVI %>% group_by(cell) %>% 
+  mutate(Year_NA= sum(is.na(value_mean))) %>%
+  filter(Year_NA<=((10/23)*21)); toc()
+
+#splitting into a list of dataframes
+chunk2<- 21*10000
+n2<- nrow(pivot_annual_EVI2)
+r2<- rep(1:ceiling(n2/chunk2), each=chunk2)[1:(n2)]
+tic(); split_df<- split(pivot_annual_EVI2, r2); toc()
+remove(chunk2, n2, r2)
+
+#Sys.time(); for ( i in 1:length(split_df)){
+#  write_rds(split_df[[i]], here("Outputs", "Indices", "Caatinga", "split_groups_annualEVI",paste0("split_df_annualEVI_",i, ".rds")))
+#}; Sys.time()
+
 numCores<- 32
 library(foreach)
 library(doParallel)
@@ -325,17 +391,74 @@ doParallel::registerDoParallel(cl = my.cluster)
 foreach::getDoParRegistered() #should be TRUE
 foreach::getDoParWorkers() #should give numCores
 
+Sys.time(); x_annualEVI<- foreach(
+  i= 1:length(split_df),
+  .combine= "rbind") %dopar%
+    (split_df[[i]] %>%
+      group_by(cell) %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, annual_class_trajectory_mod)) %>%
+      select(-data) %>%
+      unnest(classification_data)
+       ); Sys.time()
+write_rds(x_annualEVI, here("Outputs", "Trajectory_Classification", "Caatinga", "classification_annualEVI.rds"))
+remove(split_df, pivot_annual_EVI, pivot_annual_EVI2, percent_yearNA_annualEVI, yearNAannualEVI, x_annualEVI)
+```
 
-tic(); trial_classification<- pivot_annual_EVI %>% filter(cell==2500)
 
-tic();x<- class_trajectory_mod(trial_classification, value);toc()
+Applying classification function for annual NDVI
+```{r}
+pivot_annual_NDVI<- read_rds(here("Outputs", "Indices", "Caatinga", "pivot_condition_annual_NDVI.rds"))
+#there are a couple of pixels that have only 1 or 2 annual values after aggregating the monthly values
+yearNAannualNDVI <- pivot_annual_NDVI %>% group_by(cell) %>% summarise(Year_NA=sum(is.na(value_mean)))
+percent_yearNA_annualNDVI<- yearNAannualNDVI %>% group_by(Year_NA)%>% summarise(count=n(),
+                                                                               percentage=(count/nrow(yearNAannualNDVI))*100) #823841 is number of unique pixels
 
-%>%
-      #group_by(cell) %>%
-      #nest() %>%
-      mutate(classification_data = purrr::map(pivot_annual_EVI, class_trajectory_mod)) %>%
-      select(-data) ;toc()
+#About 98% of all pixels have no missing annual values or have only 1 missing annual value
+#I apply Berdugo rule again and keep pixels that have (10/23)*21 less than or equal to 9 annual values only
+
+tic();pivot_annual_NDVI2<- pivot_annual_NDVI %>% group_by(cell) %>% 
+  mutate(Year_NA= sum(is.na(value_mean))) %>%
+  filter(Year_NA<=((10/23)*21)); toc()
+
+#splitting into a list of dataframes
+chunk2<- 21*10000
+n2<- nrow(pivot_annual_NDVI2)
+r2<- rep(1:ceiling(n2/chunk2), each=chunk2)[1:(n2)]
+tic(); split_df<- split(pivot_annual_NDVI2, r2); toc()
+remove(chunk2, n2, r2)
+
+#Sys.time(); for ( i in 1:length(split_df)){
+#  write_rds(split_df[[i]], here("Outputs", "Indices", "Caatinga", "split_groups_annualNDVI",paste0("split_df_annualNDVI_",i, ".rds")))
+#}; Sys.time()
+
+numCores<- 32
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+Sys.time(); x_annualNDVI<- foreach(
+  i= 1:length(split_df),
+  .combine= "rbind") %dopar%
+    (split_df[[i]] %>%
+      group_by(cell) %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, annual_class_trajectory_mod)) %>%
+      select(-data) %>%
+      unnest(classification_data)
+       ); Sys.time()
+write_rds(x_annualNDVI, here("Outputs", "Trajectory_Classification", "Caatinga", "classification_annualNDVI.rds"))
+remove(split_df, pivot_annual_NDVI, pivot_annual_NDVI2, percent_yearNA_annualNDVI, yearNAannualNDVI, x_annualNDVI)
+
 
 
 ```
-
