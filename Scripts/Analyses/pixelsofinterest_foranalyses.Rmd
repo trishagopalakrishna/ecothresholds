@@ -220,6 +220,27 @@ tic(); masked_evi2<- terra::crop(masked_evi, vect(cerrado));toc()
 tic(); masked_evi2<- terra::mask(masked_evi2, vect(cerrado)); toc()
 
 
+#map of LULC masked EVI 
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+tic(); maskedevi2_agg<- terra::aggregate(masked_evi2, fact = 3 , fun= "median");toc()
+
+
+tmap_mode("plot")
+maskedevi2_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(maskedevi2_agg)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="anisoEVI") + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(d_trans)+ tm_borders()
+tic();tmap_animation(maskedevi2_map, filename = here("Outputs", "Indices","Masked_anisoEVI", "LULCmasked_anisoEVI_map.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+
+
 years<- seq(from=2001, to=2021, by=1)
 annual_masked_evi_stack_list<- list() #making a list of spatrasters, where each spatrasters is annual with 12 months rasters in the stack
 for(i in 1:length(years)){
@@ -744,7 +765,7 @@ no2001_max_consecutiveNAs<-rast(here("Outputs","Indices", "Masked_anisoEVI","Con
 m <- rbind(c(0, 0), c(1, 1), c(2, 2), c(3, 3))
 
 tic(); rcx1 <- classify(no2001_max_consecutiveNAs, m, others= NA);toc()
-writeRaster(rcx1, here("Outputs", "Pixels_of_Interest", "0_4_maxconsecutiveNA.tif"))
+writeRaster(rcx1, here("Outputs",  "0_4_maxconsecutiveNA.tif"))
 
 tic(); no2001_0_4maxconsecutiveNA_masked_evi2<- terra::mask (no2001_masked_evi2, rcx1);toc()
 
