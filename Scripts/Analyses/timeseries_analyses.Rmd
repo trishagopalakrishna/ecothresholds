@@ -872,20 +872,23 @@ For now I compile results for whole of Cerrado using the final models selected
 for eahc pixels using detrended and original anisoEVI timeseries
 ```{r}
 #1. Data Input
-detrended_rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
-                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
-detrended_rds_list<-gtools::mixedsort(detrended_rds_list)
-df_list<- list()
-Sys.time(); for ( i in 1:length(detrended_rds_list)){
-  print (paste0("Counter= ",i))
-  selectedmodel_df<- read_rds(detrended_rds_list[[i]])
-  df_list[[i]]<- selectedmodel_df
-  remove(selectedmodel_df)
-  gc()
-}; Sys.time() #5-6 min
+#detrended_rds_list <- list.files(path = here("Outputs", "Trajectory_Classification","Final_model_df"), 
+#                       pattern='.rds$', all.files=TRUE, full.names=TRUE)
+#detrended_rds_list<-gtools::mixedsort(detrended_rds_list)
+#detrended_rds_list<- detrended_rds_list[-1]
+#df_list<- list()
+#Sys.time(); for ( i in 1:length(detrended_rds_list)){
+#  print (paste0("Counter= ",i))
+#  selectedmodel_df<- read_rds(detrended_rds_list[[i]])
+#  df_list[[i]]<- selectedmodel_df
+#  remove(selectedmodel_df)
+#  gc()
+#}; Sys.time() #5-6 min
 
-Sys.time();selectmodel_df<- do.call(rbind,df_list); Sys.time() #couple of seconds
+#Sys.time();selectmodel_df<- do.call(rbind,df_list); Sys.time() #couple of seconds
 #write_rds(selectmodel_df, here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
+
+selectmodel_df<-readRDS(here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
 
 oganisoEVI <- readRDS(here("Outputs", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
 
@@ -900,7 +903,7 @@ og_final_model<- oganisoEVI %>%
   rename(c("cell"="cell", "OGData_ModelOrder"="model_order", "OGData_ShapeClass"="shape_class",
            "OGData_TrendName"="trend_name", "OGData_LocBrk"="loc_brk"))
 
-df_both<- inner_join(detrended_final_model, og_final_model, by=join_by("cell"=="cell"))
+df_both<- inner_join(detrended_final_model,og_final_model, by=join_by("cell"=="cell"))
 df_both<- df_both %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName), 
                                          OGResults = paste0(OGData_ModelOrder, "_", OGData_ShapeClass, "_", OGData_TrendName))
 df_both<- df_both %>% dplyr::select(c(cell,DetrendedResults, OGResults, Detrended_LocBrk, OGData_LocBrk))
@@ -933,7 +936,7 @@ remove(p1)
 
 Set1palette<- brewer.pal(n=6, "Set1")
 Set1palette[[4]]<- "grey" #changing so that Null model reuslts are grey instead of purple
-
+Set1palette[[3]]<- "grey" 
 
 
 Sys.time(); detrended_map_raster<- selectmodel_df %>% ungroup() %>%
@@ -968,11 +971,12 @@ modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
                            "Quadratic- Stable, Concave",
                            "Quadratic- Stable, Convex"),
                 col = Set1palette)
-tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "detrended_trajectory_map.png"),
+tmap_save(modelselect_map, here("Outputs", "Trajectory_Classification", "detrended_trajectory_map_grey.png"),
           height = 30, width = 30, units = "cm", dpi=700)
 
 ogSet1palette<- brewer.pal(n=8, "Set1")
 ogSet1palette[[4]]<- "grey" 
+ogSet1palette[[3]]<- "grey" 
 
 Sys.time(); og_map_raster<- oganisoEVI %>% ungroup() %>%
   dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>% 
@@ -982,8 +986,8 @@ Sys.time(); og_map_raster<- oganisoEVI %>% ungroup() %>%
                               model_order=="Null" & shape_class== "stable_constant"& is.na(trend_name) ~4,
                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name) ~5,
                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~6,
-                              model_order=="Step" & shape_class== "NA" & trend_name== "decrease" ~7,
-                              model_order=="Step" & shape_class== "NA" & trend_name== "increase" ~8)) %>%
+                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~7,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~8)) %>%
   dplyr::select(-c(model_order, shape_class, trend_name)) %>%
   rast(); Sys.time()
 
@@ -1002,7 +1006,7 @@ og_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
                            "Step- Increase",
                            "Step- Decrease"),
                 col = ogSet1palette)
-tmap_save(og_modelselect_map, here("Outputs", "Trajectory_Classification", "og_trajectory_map.png"),
+tmap_save(og_modelselect_map, here("Outputs", "Trajectory_Classification", "og_trajectory_map_grey.png"),
           height = 30, width = 30, units = "cm", dpi=700)
 remove(detrended_map_raster, og_map_raster, Set1palette, ogSet1palette,modelselect_map,
        og_modelselect_map, neighbors, map_extent, d_trans)
@@ -1041,6 +1045,121 @@ p2<- agg_df_both_latlong %>% filter(value!="Null_stable_constant_NA" & value != 
 p2<- p2 + scale_fill_manual(values=Set1palette)
 ggsave(here("Outputs", "Trajectory_Classification", "comparison_models_longitude_noLinStable_NoNullStable.png"), plot = p2,
        height = 30, width = 30, units = "cm", dpi=700) 
+
+#4.Percentage area/number of pixels that have "unstable" trajectories 
+#in each of the climate zones by Marina's collegaues 
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+crs(og_map_raster)<- crs(d_trans)
+crs(detrended_map_raster)<- crs(d_trans)
+
+central<- d_trans %>% filter(region=="Central")
+southern<- d_trans %>% filter(region=="Southern")
+eastern<- d_trans %>% filter(region=="Eastern")
+
+area_zone_tabulation_function<- function(shapefile, pixeltype_raster, zone_name){
+  subset_ra <- mask(pixeltype_raster, shapefile)
+  df <- as.data.frame(table(as.matrix(subset_ra)))
+  df$Percent <- df$Freq / sum(df$Freq) * 100
+  df$ZoneName <- zone_name
+  df
+}
+
+central_og<- area_zone_tabulation_function(central, og_map_raster, "Central")
+central_og<- central_og %>% mutate(DataType="OG_anisoEVI")
+southern_og<- area_zone_tabulation_function(southern, og_map_raster, "Southern")
+southern_og<- southern_og %>% mutate(DataType="OG_anisoEVI")
+eastern_og<- area_zone_tabulation_function(eastern, og_map_raster, "Eastern")
+eastern_og<- eastern_og%>% mutate(DataType="OG_anisoEVI")
+
+central_detrended<- area_zone_tabulation_function(central, detrended_map_raster, "Central")
+central_detrended<- central_detrended %>% mutate(DataType="Decomposed_anisoEVI")
+southern_detrended<- area_zone_tabulation_function(southern, detrended_map_raster, "Southern")
+southern_detrended<- southern_detrended %>% mutate(DataType="Decomposed_anisoEVI")
+eastern_detrended<- area_zone_tabulation_function(eastern, detrended_map_raster, "Eastern")
+eastern_detrended<- eastern_detrended %>% mutate(DataType="Decomposed_anisoEVI")
+
+central_trajectories<- rbind(central_og, central_detrended)
+southern_trajectories<- rbind(southern_og, southern_detrended)
+eastern_trajectories<- rbind(eastern_og, eastern_detrended)
+
+central_trajectories<- central_trajectories %>% mutate(Traj_type= case_when(Var1==1~"Lin_decrease_constant",
+                                                                        Var1==2~"Lin_increase_constant",
+                                                                        Var1==3~"Lin_stable_constant",
+                                                                        Var1==4~"Null_stable_constant",
+                                                                        Var1==5~"Quad_stable_concave",
+                                                                        Var1==6~"Quad_stable_convex",
+                                                                        Var1==7~"Step_decrease",
+                                                                        Var1==8~"Step_increase"))
+  
+
+southern_trajectories<- southern_trajectories %>% mutate(Traj_type= case_when(Var1==1~"Lin_decrease_constant",
+                                                                        Var1==2~"Lin_increase_constant",
+                                                                        Var1==3~"Lin_stable_constant",
+                                                                        Var1==4~"Null_stable_constant",
+                                                                        Var1==5~"Quad_stable_concave",
+                                                                        Var1==6~"Quad_stable_convex",
+                                                                        Var1==7~"Step_decrease",
+                                                                        Var1==8~"Step_increase"))
+
+
+eastern_trajectories<- eastern_trajectories %>% mutate(Traj_type= case_when(Var1==1~"Lin_decrease_constant",
+                                                                        Var1==2~"Lin_increase_constant",
+                                                                        Var1==3~"Lin_stable_constant",
+                                                                        Var1==4~"Null_stable_constant",
+                                                                        Var1==5~"Quad_stable_concave",
+                                                                        Var1==6~"Quad_stable_convex",
+                                                                        Var1==7~"Step_decrease",
+                                                                        Var1==8~"Step_increase"))
+
+
+#Barplot
+x1<-central_trajectories %>% 
+  ggplot(aes(DataType, Percent, fill = Traj_type, alpha = DataType)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
+  facet_grid(~Traj_type, scales = "free_x", switch = "x") +
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none")
+x1<- x1 + scale_fill_brewer(palette = "Set1")
+ggsave(here("Outputs", "Trajectory_Classification", "central_trajectories.png"), plot=x1,height = 30, width = 30, units = "cm", dpi=700 )
+
+x2<-southern_trajectories %>% 
+  ggplot(aes(DataType, Percent, fill = Traj_type, alpha = DataType)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
+  facet_grid(~Traj_type, scales = "free_x", switch = "x") +
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none")
+x2<- x2 + scale_fill_brewer(palette = "Set1")
+ggsave(here("Outputs", "Trajectory_Classification", "southern_trajectories.png"), plot=x2,height = 30, width = 30, units = "cm", dpi=700 )
+
+x3<-eastern_trajectories %>% 
+  ggplot(aes(DataType, Percent, fill = Traj_type, alpha = DataType)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  scale_alpha_manual(values = c(0.5, 1), guide = guide_none()) +
+  facet_grid(~Traj_type, scales = "free_x", switch = "x") +
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.position = "none")
+x3<- x3 + scale_fill_brewer(palette = "Set1")
+ggsave(here("Outputs", "Trajectory_Classification", "eastern_trajectories.png"), plot=x3,height = 30, width = 30, units = "cm", dpi=700 )
+
+
 
 ```
 
