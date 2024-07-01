@@ -1,0 +1,273 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+#Introduction
+In this script, I prepare the time series of indices by extracting to study area (anthropogenic LULC removed)
+and preparing the data i.e. excluding pixels with more than 4 consecutive months missing in a year etc
+
+##1. Data input by zone and extract anthropic thresholded raster two the three zones
+```{r}
+#central 
+evi_mask_central<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "Zone_EVI", "anisoEVI_central.tif"))
+kndvi_mask_central<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE", "Zone_kndvi", "kndvi_central.tif"))
+ndvi_mask_central<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "Zone_ndvi", "ndvi_central.tif"))
+
+#southern
+evi_mask_southern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_southern.tif"))
+kndvi_mask_southern<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_southern.tif"))
+ndvi_mask_southern<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_southern.tif"))
+
+#eastern
+evi_mask_eastern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_eastern.tif"))
+kndvi_mask_eastern<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_eastern.tif"))
+ndvi_mask_eastern<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_eastern.tif"))
+
+#10% anthropic mask
+thresh10_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_10.tif"))
+thresh20_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_20.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+Sys.time();thresh10_central<- terra::crop(thresh10_anthropic, vect(d_trans$geometry[[1]]))
+thresh10_central_mask<- terra::mask(thresh10_central, vect(d_trans$geometry[[1]])); Sys.time()
+Sys.time(); thresh10_southern<- terra::crop(thresh10_anthropic, vect(d_trans$geometry[[2]]))
+thresh10_southern_mask<- terra::mask(thresh10_southern, vect(d_trans$geometry[[2]])); Sys.time()
+Sys.time();thresh10_eastern<- terra::crop(thresh10_anthropic, vect(d_trans$geometry[[3]]))
+thresh10_eastern_mask<- terra::mask(thresh10_eastern, vect(d_trans$geometry[[3]])); Sys.time()
+remove(thresh10_central, thresh10_southern, thresh10_eastern)
+writeRaster(thresh10_central_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh10_central.tif"))
+writeRaster(thresh10_southern_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh10_southern.tif"))
+writeRaster(thresh10_eastern_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh10_eastern.tif"))
+
+Sys.time();thresh20_central<- terra::crop(thresh20_anthropic, vect(d_trans$geometry[[1]]))
+thresh20_central_mask<- terra::mask(thresh20_central, vect(d_trans$geometry[[1]])); Sys.time()
+Sys.time(); thresh20_southern<- terra::crop(thresh20_anthropic, vect(d_trans$geometry[[2]]))
+thresh20_southern_mask<- terra::mask(thresh20_southern, vect(d_trans$geometry[[2]])); Sys.time()
+Sys.time();thresh20_eastern<- terra::crop(thresh20_anthropic, vect(d_trans$geometry[[3]]))
+thresh20_eastern_mask<- terra::mask(thresh20_eastern, vect(d_trans$geometry[[3]])); Sys.time()
+remove(thresh20_central, thresh20_southern, thresh20_eastern)
+writeRaster(thresh20_central_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh20_central.tif"))
+writeRaster(thresh20_southern_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh20_southern.tif"))
+writeRaster(thresh20_eastern_mask, here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresh20_eastern.tif"))
+
+remove(thresh10_anthropic, thresh10_central_mask, thresh10_eastern_mask, thresh10_southern_mask,
+       thresh20_anthropic, thresh20_central_mask, thresh20_eastern_mask, thresh20_southern_mask)
+remove(cerrado)
+```
+
+##2. Criteria 1 - Consider indices only from Jan 2001
+```{r}
+evi_mask_central<-evi_mask_central[[23:263]]
+kndvi_mask_central<-kndvi_mask_central[[23:263]]
+ndvi_mask_central<-ndvi_mask_central[[23:263]]
+
+evi_mask_southern<-evi_mask_southern[[23:263]]
+kndvi_mask_southern<-kndvi_mask_southern[[23:263]]
+ndvi_mask_southern<-ndvi_mask_southern[[23:263]]
+
+evi_mask_eastern<-evi_mask_eastern[[23:263]]
+kndvi_mask_eastern<-kndvi_mask_eastern[[23:263]]
+ndvi_mask_eastern<-ndvi_mask_eastern[[23:263]]
+
+```
+
+
+##3. Criteria 2 - Exclude pixels which have a max of 4 consecutive missing monthly index values
+in a year
+To do this I need to first prepare a mask of pixels with the above condition
+for each index in each zone
+```{r}
+### TRIAL- to find highest number of consecutive NA values
+#x<- c(0.80, -0.32, NA, NA, 0.60,  0.13, -0.48, -0.09,  0.69, NA,  0.78,  0.89)
+#y<- is.na(x)
+#max(rle(y)$lengths[rle(y)$values]) #longest consecutive NA months i.e. 2 consectuive months of NA, 3 consecutive months of NA
+
+#1. Calculate number of consecutive missing/NA index values per year
+years<- seq(from=2001, to=2021, by=1)
+
+maxconsecutiveNA<- function (index_completeraster, zone_polygon, file_path1, zone_name){
+  annual_index_list<- list() #making a list of spatrasters, where each spatrasters is annual with 12 months rasters in the stack
+  for(i in 1:length(years)){
+  x<- subset(index_completeraster, grep(years[i], names(index_completeraster)))
+  annual_index_list[[i]]<-x
+  }
+  
+  no_consecutive_NA<- function (x){
+    y<- is.na(x)
+      if (sum(y)==0){
+        x<-0
+    } else {
+    x<- max(rle(y)$lengths[rle(y)$values])
+  }
+  x
+  }
+  
+  consecutive_NA_through_year_list<- list()
+  tic(); for (i in 1:length(annual_index_list)){
+    x<- terra::app(annual_index_list[[i]], fun= no_consecutive_NA)
+    y<- terra::mask(x, vect(zone_polygon))
+    consecutive_NA_through_year_list[i]<-y
+    remove(y)
+  }; toc() #1 hour  
+  
+  for (i in 1:length(consecutive_NA_through_year_list)){
+  names(consecutive_NA_through_year_list[[i]])<- years[[i]]
+  writeRaster(consecutive_NA_through_year_list[[i]],
+              here("Outputs","Indices", file_path1, "Consecutive_missingNAs", paste0(zone_name, '_', years[[i]],"_throughtime.tif")))
+  }  
+}
+
+Sys.time(); maxconsecutiveNA(evi_mask_central, d_trans$geometry[[1]], file_path1 = "anisoEVI", zone_name = "central"); Sys.time()
+Sys.time(); maxconsecutiveNA(evi_mask_southern, d_trans$geometry[[2]], file_path1 = "anisoEVI", zone_name = "southern"); Sys.time()
+Sys.time(); maxconsecutiveNA(evi_mask_eastern, d_trans$geometry[[3]], file_path1 = "anisoEVI", zone_name = "eastern"); Sys.time()
+
+Sys.time(); maxconsecutiveNA(kndvi_mask_central, d_trans$geometry[[1]], file_path1 = "kNDVI", zone_name = "central"); Sys.time()
+Sys.time(); maxconsecutiveNA(kndvi_mask_southern, d_trans$geometry[[2]], file_path1 = "kNDVI", zone_name = "southern"); Sys.time()
+Sys.time(); maxconsecutiveNA(kndvi_mask_eastern, d_trans$geometry[[3]], file_path1 = "kNDVI", zone_name = "eastern"); Sys.time()
+
+Sys.time(); maxconsecutiveNA(ndvi_mask_central, d_trans$geometry[[1]], file_path1 = "NDVI", zone_name = "central"); Sys.time()
+Sys.time(); maxconsecutiveNA(ndvi_mask_southern, d_trans$geometry[[2]], file_path1 = "NDVI", zone_name = "southern"); Sys.time()
+Sys.time(); maxconsecutiveNA(ndvi_mask_eastern, d_trans$geometry[[3]], file_path1 = "NDVI", zone_name = "eastern"); Sys.time()
+
+remove(years, maxconsecutiveNA)
+
+#2. Calculate max missing/NA greeness value across years
+central_max_consecutiveNA_function<- function (index_path){
+  raster_filepath <- list.files(path = here("Outputs", "Indices", index_path ,"Consecutive_missingNAs"), pattern= "^central", all.files=TRUE, full.names=TRUE)
+  raster_list<-lapply(raster_filepath, rast)
+  consecutivemissingNA_peryear<-rast(raster_list)
+  max_consecutiveNAs<-  terra::app(consecutivemissingNA_peryear, fun= "max")
+  writeRaster(max_consecutiveNAs, here("Outputs", "Indices", index_path, "Max_consecutive_missingNA", paste0("central", index_path, "maxconsecutiveNA.tif")))
+}
+
+southern_max_consecutiveNA_function<- function (index_path){
+  raster_filepath <- list.files(path = here("Outputs", "Indices", index_path ,"Consecutive_missingNAs"), pattern= "^southern", all.files=TRUE, full.names=TRUE)
+  raster_list<-lapply(raster_filepath, rast)
+  consecutivemissingNA_peryear<-rast(raster_list)
+  max_consecutiveNAs<-  terra::app(consecutivemissingNA_peryear, fun= "max")
+  writeRaster(max_consecutiveNAs, here("Outputs", "Indices", index_path, "Max_consecutive_missingNA", paste0("southern", index_path, "maxconsecutiveNA.tif")))
+}
+
+eastern_max_consecutiveNA_function<- function (index_path){
+  raster_filepath <- list.files(path = here("Outputs", "Indices", index_path ,"Consecutive_missingNAs"), pattern= "^eastern", all.files=TRUE, full.names=TRUE)
+  raster_list<-lapply(raster_filepath, rast)
+  consecutivemissingNA_peryear<-rast(raster_list)
+  max_consecutiveNAs<-  terra::app(consecutivemissingNA_peryear, fun= "max")
+  writeRaster(max_consecutiveNAs, here("Outputs", "Indices", index_path, "Max_consecutive_missingNA", paste0("eastern", index_path, "maxconsecutiveNA.tif")))
+}
+
+Sys.time(); central_max_consecutiveNA_function("NDVI"); Sys.time()
+Sys.time(); central_max_consecutiveNA_function("kNDVI"); Sys.time()
+Sys.time(); central_max_consecutiveNA_function("anisoEVI"); Sys.time()
+
+Sys.time(); southern_max_consecutiveNA_function("NDVI"); Sys.time()
+Sys.time(); southern_max_consecutiveNA_function("kNDVI"); Sys.time()
+Sys.time(); southern_max_consecutiveNA_function("anisoEVI"); Sys.time()
+
+Sys.time(); eastern_max_consecutiveNA_function("NDVI"); Sys.time()
+Sys.time(); eastern_max_consecutiveNA_function("kNDVI"); Sys.time()
+Sys.time(); eastern_max_consecutiveNA_function("anisoEVI"); Sys.time()
+
+remove(central_max_consecutiveNA_function, eastern_max_consecutiveNA_function, southern_max_consecutiveNA_function)
+
+#3. Classification of max consecutive NA rasters to keep pixels with value < 4 
+m <- rbind(c(0, 0), c(1, 1), c(2, 2), c(3, 3))
+
+max_consecutive_mask<- function (index_path){
+  raster_filepath <- list.files(path = here("Outputs", "Indices", index_path ,"Max_consecutive_missingNA"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+  raster_list<-lapply(raster_filepath, rast)
+  for ( i in 1:length(raster_filepath)){
+    rcx1 <- classify(raster_list[[i]], m, others= NA)
+    writeRaster(rcx1, here("Outputs", "Indices", index_path, "Max_consecutive_missingNA", 
+                              paste0("reclass_", strsplit(strsplit(strsplit(raster_filepath[[i]], "_")[[1]][3], "/")[[1]][2], ".tif")[[1]][1], ".tif")))
+  }
+print (paste0("Counter =",i))
+} 
+
+Sys.time(); max_consecutive_mask("anisoEVI"); Sys.time()
+Sys.time(); max_consecutive_mask("kNDVI"); Sys.time()
+Sys.time(); max_consecutive_mask("NDVI"); Sys.time()
+
+remove(max_consecutive_mask, m)
+
+#4. Extract all zone index rasters within above masks
+final_mask_function<- function(time_series_raster_list, index_path){
+  file_p<- list.files(here("Outputs", "Indices", index_path ,"Max_consecutive_missingNA"), pattern= "^reclass_", all.files=TRUE, full.names=TRUE)
+  mask_raster<- lapply(file_p, rast)
+  maxconsecutive_masked_list<- list()
+  print ("Starting loop")
+  for(i in 1:length(mask_raster)){
+    maxconsecutive_masked_list[[i]]<- terra::mask(time_series_raster_list[[i]], mask_raster[[i]])
+    writeRaster(maxconsecutive_masked_list[[i]], here("Outputs", "Indices", index_path, "Max_consecutive_missingNA",
+                                            paste0("masked_",strsplit(strsplit(strsplit(file_p[[i]], "/")[[1]][11], "_")[[1]][2], ".tif")[[1]][1], ".tif"                                                                                                                )))
+  }
+  print (paste0("Counter=", i))
+}
+
+anisoEVI_list<- list(evi_mask_central, evi_mask_eastern, evi_mask_southern)
+Sys.time(); final_mask_function(anisoEVI_list, "anisoEVI"); Sys.time()
+ndvi_list<- list(ndvi_mask_central, ndvi_mask_eastern, ndvi_mask_southern)
+Sys.time(); final_mask_function(ndvi_list, "NDVI"); Sys.time()
+kndvi_list<- list(kndvi_mask_central, kndvi_mask_eastern, kndvi_mask_southern)
+Sys.time(); final_mask_function(kndvi_list, "kNDVI"); Sys.time()
+
+remove(final_mask_function)
+remove(anisoEVI_list, ndvi_list, kndvi_list)
+remove(evi_mask_central, evi_mask_eastern, evi_mask_southern, kndvi_mask_central,
+       kndvi_mask_eastern, kndvi_mask_southern, ndvi_mask_central, ndvi_mask_eastern,
+       ndvi_mask_southern)
+
+```
+
+
+##4. Criteria 3 - Linear interpolation using neighboring time steps for pixels with max one consecutive NA index values
+
+```{r}
+linear_interpolation_function<- function(index_path){
+  file_p<- list.files(here("Outputs", "Indices", index_path ,"Max_consecutive_missingNA"), 
+                      pattern= "^masked_", all.files=TRUE, full.names=TRUE)
+  masked_raster_list<- lapply(file_p, rast)
+
+  for (i in 1:length(masked_raster_list)){
+    df_criteria1<- terra::as.data.frame(masked_raster_list[[i]], xy=T, cell=T)
+    pivot_df_criteria1<- pivot_longer(df_criteria1, 4:243)
+    pivot_df_criteria1<- pivot_df_criteria1 %>% 
+                    mutate(Year = substring (name,1, 4), Month = substring (name, 6))
+    pivot_df_criteria1<- pivot_df_criteria1 %>%
+      group_by(cell) %>%
+      mutate(value_int = imputeTS::na_interpolation(value, option = "linear", maxgap = 1))
+  
+    write_rds(pivot_df_criteria1, here("Outputs", "Indices", index_path, "Max_consecutive_missingNA",
+                                 paste0("int_",strsplit(strsplit(strsplit(file_p[[i]], "/")[[1]][11], "_")[[1]][2], ".tif")[[1]][1], ".rds"                                                                                                                )    ))
+    remove(df_criteria1, pivot_df_criteria1)
+  }
+}
+
+Sys.time(); linear_interpolation_function("anisoEVI"); Sys.time()
+Sys.time(); linear_interpolation_function("kNDVI"); Sys.time()
+Sys.time(); linear_interpolation_function("NDVI"); Sys.time()
+
+```
