@@ -1,0 +1,80 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I complete the STL decomposition to detrend the time series anisoEVI data.
+
+##STL decomposition
+```{r}
+numCores<- 16
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+
+stl<- function (pivot_df_trial, index_path, zone ){
+  Sys.time(); chunk2 <- 240*1000
+  n2 <- nrow(pivot_df_trial)
+  r2  <- rep(1:ceiling(n2/chunk2),each=chunk2)[1:(n2)]
+  split_pivot_df <- split(pivot_df_trial, r2)
+  remove(chunk2, n2,r2)
+  remove(pivot_df_trial)
+  gc(); Sys.time()
+
+  library(stlplus)  
+  stl_decomposition<- function (df, swin){
+    df_ts<- ts(df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+    stl_df<- stlplus::stlplus(df_ts, s.window = swin, s.degree = 1, t.degree = 1)
+    df_needed<- (stl_df$data)
+    df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+    df_needed
+  }
+  
+  results <- foreach(
+    i= 1:100,
+    .combine = "rbind") %dopar% {
+      split_pivot_df[[i]] %>%
+        group_by(cell) %>%
+        nest() %>%
+        mutate(stl_data = purrr::map(data, stl_decomposition, swin="periodic")) %>%
+        unnest(c(data,stl_data)) %>%
+        dplyr::select(-c(Year, Month, raw))
+    }
+  write_rds(results, here("Outputs", "Indices",index_path, "STL_Decomposition","swindow_periodic", paste0("stl_",zone, ".rds")))
+}
+
+Sys.time();southernaniso_rds<- read_rds(here("Outputs", "Indices", "anisoEVI","Max_consecutive_missingNA", "meanfill_anisoEVI_southern.rds")); Sys.time()
+
+Sys.time(); stl(southernaniso_rds, "anisoEVI", "southern"); Sys.time()
+
+```
