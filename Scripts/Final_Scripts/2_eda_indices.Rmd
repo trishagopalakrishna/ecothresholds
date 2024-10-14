@@ -22,12 +22,16 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 ##Introduction
-In this script, I extract prepare time series of anisoEVI, kNDVI, NDVI & EVI by doing EDA
+In this script, I extract prepare time series of anisoEVI, NDVI  by doing EDA
 in known area. I then extract the indices in the  study area delineated in 1_studyarea_delineation.Rmd
 
-#1. Preparation of anisoEVI, kNDVI, NDVI
+#1. Preparation of anisoEVI, NDVI
 <<<<<<<<Do not run this chunk as products have been written out>>>>>>
 ```{r}
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
 #1. anisoEVI
 #evi_list <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
 #evi_raster_list<-lapply(evi_list, rast)
@@ -48,27 +52,7 @@ colnames<- unlist(colnames)
 names(evi)<- colnames
 remove(i,x,y, colnames)
 
-#2.kNDVI
-#kndvi_list <- list.files(path = here("Data", "Indices", "kNDVI_Cerrado_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
-#kndvi_raster_list<-lapply(kndvi_list, rast)
-#tic(); kndvi<- rast(kndvi_raster_list); toc() 
-#writeRaster(kndvi, here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "kndvi_stack.tif"))
-#remove(kndvi_raster_list, kndvi_list)
-
-kndvi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "kndvi_stack.tif"))
-colnames<- list()
-tic(); for ( i in 1:nlyr(kndvi)){
-  x<- names(kndvi)[[i]]
-  y<- paste0(strsplit(x, "_")[[1]][2], "_",strsplit(x, "_")[[1]][3] )
-  colnames[[i]] <-y
-}; toc()
-colnames<- unlist(colnames)
-names(kndvi)<- colnames
-remove(i,x,y, colnames)
-
-kndvi<- kndvi[[1:262]] #excluding year 2022
-
-#3.NDVI
+#2.NDVI
 #ndvi_list <- list.files(path = here("Data", "Indices", "Cerrado_monthlyNDVI_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
 #ndvi_raster_list<-lapply(ndvi_list, rast)
 #tic(); ndvi<- do.call(mosaic, ndvi_raster_list); toc() #2 hours
@@ -104,11 +88,36 @@ names(ndvi_proj_scale)<- colnames
 remove(i,x,y, colnames)
 remove(ndvi)
 
-#4. Crop/mask to Cerrado 
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-cerrado<- d_trans %>% st_union()
+#3. EVI
+evi_list <- list.files(path = here("Data", "Indices", "Cerrado_monthlyEVI_GEE"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+evi_raster_list<-lapply(evi_list, rast)
+tic(); evi<- do.call(mosaic,evi_raster_list); toc() #2.5 hours
+#writeRaster(evi, here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "mosaiced_evi.tif"))
 
+evi<- rast(here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "mosaiced_evi.tif"))
+colnames<- list()
+tic(); for ( i in 1:nlyr(evi)){
+  x<- names(evi)[[i]]
+  y<- paste0(strsplit(x, "_")[[1]][1], "_",strsplit(x, "_")[[1]][2] )
+  colnames[[i]] <-y
+}; toc()
+colnames<- unlist(colnames)
+names(evi)<- colnames
+remove(i,x,y, colnames)
+
+evi<- evi[[2:263]]
+
+#ndvi_proj<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_southern.tif"))
+#Sys.time(); evi_proj<- terra::project(evi,ndvi_proj, method= "bilinear", align= T); Sys.time()# 40 min
+#Sys.time(); evi_proj<- terra::crop(evi_proj, d_trans); Sys.time() #7 min
+#Sys.time(); writeRaster(evi_proj, here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "mosaiced_evi_proj_2000Maronwards.tif")); Sys.time()
+
+#evi_proj<- rast(here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "mosaiced_evi_proj_2000Maronwards.tif")); 
+#evi_proj_scale<- evi_proj * 0.0001 #scale from GEE https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13A3#bands
+#Sys.time(); writeRaster(evi_proj_scale, here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "mosaiced_wvi_proj_scaled_2000Maronwards.tif")); Sys.time() #10min
+#remove(evi_proj)
+
+#4. Crop/mask to Cerrado 
 Sys.time();evi_crop_central<- terra::crop(evi, vect(d_trans$geometry[[1]]))
 evi_mask_central<- terra::mask(evi_crop_central, vect(d_trans$geometry[[1]])); Sys.time()
 Sys.time(); evi_crop_southern<- terra::crop(evi, vect(d_trans$geometry[[2]]))
@@ -121,18 +130,6 @@ writeRaster(evi_mask_southern, here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Z
 writeRaster(evi_mask_eastern, here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_eastern.tif"))
 remove(evi_mask_central, evi_mask_eastern, evi_mask_southern)
 
-Sys.time();kndvi_crop_central<- terra::crop(kndvi, vect(d_trans$geometry[[1]]))
-kndvi_mask_central<- terra::mask(kndvi_crop_central, vect(d_trans$geometry[[1]])); Sys.time()
-Sys.time(); kndvi_crop_southern<- terra::crop(kndvi, vect(d_trans$geometry[[2]]))
-kndvi_mask_southern<- terra::mask(kndvi_crop_southern, vect(d_trans$geometry[[2]])); Sys.time()
-Sys.time(); kndvi_crop_eastern<- terra::crop(kndvi, vect(d_trans$geometry[[3]]))
-kndvi_mask_eastern<- terra::mask(kndvi_crop_eastern, vect(d_trans$geometry[[3]])); Sys.time()
-remove(kndvi_crop_central, kndvi_crop_southern, kndvi_crop_eastern)
-writeRaster(kndvi_mask_central, here("Data", "Indices", "kNDVI_Cerrado_GEE", "Zone_kndvi", "kndvi_central.tif"))
-writeRaster(kndvi_mask_southern, here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_southern.tif"))
-writeRaster(kndvi_mask_eastern, here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_eastern.tif"))
-remove(kndvi_mask_central, kndvi_mask_eastern, kndvi_mask_southern)
-
 Sys.time();ndvi_crop_central<- terra::crop(ndvi_proj_scale, vect(d_trans$geometry[[1]]))
 ndvi_mask_central<- terra::mask(ndvi_crop_central, vect(d_trans$geometry[[1]])); Sys.time()
 Sys.time(); ndvi_crop_southern<- terra::crop(ndvi_proj_scale, vect(d_trans$geometry[[2]]))
@@ -144,32 +141,43 @@ writeRaster(ndvi_mask_central, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE"
 writeRaster(ndvi_mask_southern, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_southern.tif"))
 writeRaster(ndvi_mask_eastern, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_eastern.tif"))
 remove(ndvi_mask_central, ndvi_mask_eastern, ndvi_mask_southern)
-remove(kndvi, evi, ndvi_proj_scale)
+
+Sys.time();evi_crop_central<- terra::crop(evi_proj_scale, vect(d_trans$geometry[[1]]))
+evi_mask_central<- terra::mask(evi_crop_central, vect(d_trans$geometry[[1]])); Sys.time()
+Sys.time(); evi_crop_southern<- terra::crop(evi_proj_scale, vect(d_trans$geometry[[2]]))
+evi_mask_southern<- terra::mask(evi_crop_southern, vect(d_trans$geometry[[2]])); Sys.time()
+Sys.time(); evi_crop_eastern<- terra::crop(evi_proj_scale, vect(d_trans$geometry[[3]]))
+evi_mask_eastern<- terra::mask(evi_crop_eastern, vect(d_trans$geometry[[3]])); Sys.time()
+remove(evi_crop_central, evi_crop_southern, evi_crop_eastern)
+writeRaster(evi_mask_central, here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "Zone_EVI", "EVI_central.tif"))
+writeRaster(evi_mask_southern, here("Data", "Indices", "Cerrado_monthlyEVI_GEE","Zone_EVI", "EVI_southern.tif"))
+writeRaster(evi_mask_eastern, here("Data", "Indices", "Cerrado_monthlyEVI_GEE","Zone_EVI", "EVI_eastern.tif"))
+remove(evi_mask_central, evi_mask_eastern, evi_mask_southern)
 
 ```
 
-#2. Basic EDA of anisoEVI, kNDVI, NDVI
+#2. Basic EDA of anisoEVI, EVI, NDVI
 ```{r}
 #central 
-evi_mask_central<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "Zone_EVI", "anisoEVI_central.tif"))
-kndvi_mask_central<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE", "Zone_kndvi", "kndvi_central.tif"))
+aniso_mask_central<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "Zone_EVI", "anisoEVI_central.tif"))
 ndvi_mask_central<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "Zone_ndvi", "ndvi_central.tif"))
+evi_mask_central<- rast(here("Data", "Indices", "Cerrado_monthlyEVI_GEE", "Zone_evi", "evi_central.tif"))
 
 #southern
-evi_mask_southern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_southern.tif"))
-kndvi_mask_southern<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_southern.tif"))
+aniso_mask_southern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_southern.tif"))
 ndvi_mask_southern<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_southern.tif"))
+evi_mask_southern<- rast(here("Data", "Indices", "Cerrado_monthlyEVI_GEE","Zone_evi", "evi_southern.tif"))
 
 #eastern
-evi_mask_eastern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_eastern.tif"))
-kndvi_mask_eastern<- rast(here("Data", "Indices", "kNDVI_Cerrado_GEE","Zone_kndvi", "kndvi_eastern.tif"))
+aniso_mask_eastern<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE","Zone_EVI", "anisoEVI_eastern.tif"))
 ndvi_mask_eastern<- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE","Zone_ndvi", "ndvi_eastern.tif"))
+evi_mask_eastern<- rast(here("Data", "Indices", "Cerrado_monthlyEVI_GEE","Zone_evi", "evi_eastern.tif"))
 
-calc_df<- tibble(index= rep(c("anisoEVI", "kNDVI", "NDVI"), time=3))
+calc_df<- tibble(index= rep(c("anisoEVI", "NDVI", "EVI"), time=3))
 calc_df<- calc_df %>% mutate(zone= rep(c("central", "southern", "eastern"), each=3))
-list_rasters<- list(evi_mask_central, kndvi_mask_central, ndvi_mask_central,
-                    evi_mask_southern, kndvi_mask_southern, ndvi_mask_southern,
-                    evi_mask_eastern, kndvi_mask_eastern, ndvi_mask_eastern)
+list_rasters<- list(aniso_mask_central, ndvi_mask_central, evi_mask_central,
+                    aniso_mask_southern, ndvi_mask_southern, evi_mask_southern,
+                    aniso_mask_eastern, ndvi_mask_eastern, evi_mask_eastern)
 
 calc_df<- calc_df %>% mutate(raster_stack= list_rasters)
 remove(list_rasters)
@@ -181,12 +189,11 @@ mean_raster_function<- function (raster_stack){
 }
 Sys.time(); calc_df<- calc_df %>% mutate(mean_zone=purrr::map(raster_stack, mean_raster_function)); Sys.time() #4min
 
-
-sd_raster_function<- function (raster_stack){
-   sd_of_raster<- terra::global(raster_stack, fun="sd", na.rm=T)
-   sd_of_raster #df
-}
-Sys.time(); calc_df<- calc_df %>% mutate(sd_zone=purrr::map(raster_stack, sd_raster_function)); Sys.time() #4min
+#sd_raster_function<- function (raster_stack){
+#   sd_of_raster<- terra::global(raster_stack, fun="sd", na.rm=T)
+#   sd_of_raster #df
+#}
+#Sys.time(); calc_df<- calc_df %>% mutate(sd_zone=purrr::map(raster_stack, sd_raster_function)); Sys.time() #4min
 
 add_timestamp<- function (df){
   x<- tibble(year= rep(2000:2021, each=12))
@@ -196,14 +203,12 @@ add_timestamp<- function (df){
 }
 Sys.time(); calc_df<- calc_df %>% mutate(mean_zone_timestamp=purrr::map(mean_zone, add_timestamp)); Sys.time() #4min
 
-mean_df<- calc_df %>% dplyr::select(-c(raster_stack, mean_zone)) %>% unnest(c(mean_zone_timestamp, sd_zone))
+mean_df<- calc_df %>% dplyr::select(-c(raster_stack, mean_zone)) %>% unnest(c(mean_zone_timestamp))
 mean_df<- mean_df %>% mutate(Time= paste0(year, "_", month, "_01"))
 mean_df<- mean_df %>% mutate(Time= as_date(Time))
-mean_df<- mean_df %>% mutate(lower_ci= mean-sd, upper_ci=mean+sd)
 
 p<- ggplot(data=mean_df, aes(x=Time, y=mean, group=index)) +
   geom_line(aes(color= index))+ 
-  geom_ribbon(aes(ymin=lower_ci, ymax=upper_ci, fill= index), linetype=2, alpha=0.1)+
   ylab("mean value of index") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
   facet_grid(zone~.)
@@ -214,13 +219,10 @@ ggsave(here("Data", "Indices", "mean_indices_throughtime_zone.png"),p,
        dpi=700, height = 25, width = 25, units = "cm")
 
 #2. seasonal mean index value through time and zones
-seasonal_df<- mean_df %>% group_by(month, index, zone) %>% summarise(mean_of_mean= mean(mean),
-                                                                     mean_of_lowerci= mean(lower_ci),
-                                                                     mean_of_upperci= mean(upper_ci))
+seasonal_df<- mean_df %>% group_by(month, index, zone) %>% summarise(mean_of_mean= mean(mean))
 
-q<- ggplot(data=seasonal_df, aes(x=month, y=mean_of_mean, group=index)) +
+q<- ggplot(data=seasonal_df, aes(x=as.factor(month), y=mean_of_mean, group=index)) +
   geom_line(aes(color= index))+ 
-  geom_ribbon(aes(ymin=mean_of_lowerci, ymax=mean_of_upperci, fill= index), linetype=2, alpha=0.1)+
   ylab("mean value of index") + xlab("Month")+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
   facet_grid(zone~.)
@@ -233,74 +235,220 @@ ggsave(here("Data", "Indices", "seasonal_mean_indices_throughmonths_zone.png"),q
 
 #3. Correlogram of mean index value (through time) seperately for each region
 #Central
-central_df<- mean_df %>% filter(zone=="central") %>% 
-  dplyr::select(c(index, Time, year,mean)) %>%
-  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
-pivot_central_df<- pivot_wider(central_df,
-                               names_from = index, values_from = annual_mean) %>%
-  ungroup %>% dplyr::select(-year)
+#central_df<- mean_df %>% filter(zone=="central") %>% 
+#  dplyr::select(c(index, Time, year,mean)) %>%
+#  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
+#pivot_central_df<- pivot_wider(central_df,
+#                               names_from = index, values_from = annual_mean) %>%
+#  ungroup %>% dplyr::select(-year)
 
 #install.packages("corrplot")
-library(corrplot)
-M1<-cor(pivot_central_df)
+#library(corrplot)
+#M1<-cor(pivot_central_df)
 
 #pvalue of correlations from 
 #http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
-cor.mtest <- function(mat, ...) {
-    mat <- as.matrix(mat)
-    n <- ncol(mat)
-    p.mat<- matrix(NA, n, n)
-    diag(p.mat) <- 0
-    for (i in 1:(n - 1)) {
-        for (j in (i + 1):n) {
-            tmp <- cor.test(mat[, i], mat[, j], ...)
-            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
-        }
-    }
-  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
-  p.mat
-}
-p.mat1 <- cor.mtest(pivot_central_df)
-png(height=480, width=480, file= here("Data", "Indices", "central_correlogram.png"))
-corrplot(
-  M1, order = "hclust", type="upper",p.mat=p.mat1, sig.level = 0.01
-)
-dev.off()
+#cor.mtest <- function(mat, ...) {
+#    mat <- as.matrix(mat)
+#    n <- ncol(mat)
+#    p.mat<- matrix(NA, n, n)
+#    diag(p.mat) <- 0
+#    for (i in 1:(n - 1)) {
+#        for (j in (i + 1):n) {
+#            tmp <- cor.test(mat[, i], mat[, j], ...)
+#            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+#        }
+#    }
+#  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+#  p.mat
+#}
+#p.mat1 <- cor.mtest(pivot_central_df)
+#png(height=480, width=480, file= here("Data", "Indices", "central_correlogram.png"))
+#corrplot(
+#  M1, order = "hclust", type="upper",p.mat=p.mat1, sig.level = 0.01
+#)
+#dev.off()
 
-#Southern
-southern_df<- mean_df %>% filter(zone=="southern") %>% 
-  dplyr::select(c(index, Time, year,mean)) %>%
-  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
-pivot_southern_df<- pivot_wider(southern_df,
-                               names_from = index, values_from = annual_mean) %>%
-  ungroup %>% dplyr::select(-year)
+##Southern
+#southern_df<- mean_df %>% filter(zone=="southern") %>% 
+#  dplyr::select(c(index, Time, year,mean)) %>%
+#  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
+#pivot_southern_df<- pivot_wider(southern_df,
+#                               names_from = index, values_from = annual_mean) %>%
+#  ungroup %>% dplyr::select(-year)
 
-M2<-cor(pivot_southern_df)
-p.mat2 <- cor.mtest(pivot_southern_df)
+#M2<-cor(pivot_southern_df)
+#p.mat2 <- cor.mtest(pivot_southern_df)
 
-png(height=480, width=480, file= here("Data", "Indices", "southern_correlogram.png"))
-corrplot(
-  M2, order = "hclust", type="upper",p.mat=p.mat2, sig.level = 0.01
-  )
-dev.off()
+#png(height=480, width=480, file= here("Data", "Indices", "southern_correlogram.png"))
+#corrplot(
+#  M2, order = "hclust", type="upper",p.mat=p.mat2, sig.level = 0.01
+#  )
+#dev.off()
 
 #Eastern
-eastern_df<- mean_df %>% filter(zone=="eastern") %>% 
-  dplyr::select(c(index, Time, year,mean)) %>%
-  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
-pivot_eastern_df<- pivot_wider(eastern_df,
-                               names_from = index, values_from = annual_mean) %>%
-  ungroup %>% dplyr::select(-year)
-M3<-cor(pivot_eastern_df)
+#eastern_df<- mean_df %>% filter(zone=="eastern") %>% 
+#  dplyr::select(c(index, Time, year,mean)) %>%
+#  group_by(year, index) %>% summarise(annual_mean=mean(mean)) 
+#pivot_eastern_df<- pivot_wider(eastern_df,
+#                               names_from = index, values_from = annual_mean) %>%
+#  ungroup %>% dplyr::select(-year)
+#M3<-cor(pivot_eastern_df)
 
-p.mat3 <- cor.mtest(pivot_eastern_df)
-png(height=480, width=480, file= here("Data", "Indices", "eastern_correlogram.png"))
-corrplot(
-  M3, order = "hclust", type="upper",p.mat=p.mat3, sig.level = 0.01
-)
-dev.off() 
+#p.mat3 <- cor.mtest(pivot_eastern_df)
+#png(height=480, width=480, file= here("Data", "Indices", "eastern_correlogram.png"))
+#corrplot(
+#  M3, order = "hclust", type="upper",p.mat=p.mat3, sig.level = 0.01
+#)
+#dev.off() 
 
-
-remove(M1, M2, M3, p.mat1, p.mat2, p.mat3, pivot_central_df, pivot_eastern_df, pivot_southern_df)
-remove(cor.mtest)
+#remove(M1, M2, M3, p.mat1, p.mat2, p.mat3, pivot_central_df, pivot_eastern_df, pivot_southern_df)
+#remove(cor.mtest)
+remove(p,q, add_timestamp, mean_raster_function)
 ```
+
+#3. Matching of anisoEVI and NDVI with ground truth points
+Lewis et al., 2020 includes ground truth points with vegetation physiognomy information. Hence, I extract time series anisoEVI and NSVI for the ground
+truth points to better understand the range of anisoEVI and NDVI values for each vegetation physiognomy, through time
+```{r}
+lewis_points<- st_read(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "prepped_points.shp")) #see Scripts>Ancilliary?lewiset2023_points_processing.R for processing
+#The points annoyingly fall across the central and eastern cliamte zones (as per Cattelan et al)
+#running lines 88-89 from first chunk
+n_obs_name<- lewis_points %>% count(Name) %>% st_drop_geometry()
+lewis_points<- st_join(lewis_points, d_trans)
+
+eastern_lewis_points<- lewis_points %>% filter(region=="Eastern")
+central_lewis_points<- lewis_points %>% filter(region=="Central")
+
+#reading central and eastern anisoevi, ndvi, evi lines from previous chunk 161-64 & 171-74
+Sys.time(); aniso_points_central<- terra::extract(aniso_mask_central, central_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+Sys.time(); aniso_points_eastern<- terra::extract(aniso_mask_eastern, eastern_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+
+df_aniso_central<- as.data.frame(aniso_points_central)
+df_aniso_eastern<- as.data.frame(aniso_points_eastern)
+
+extracted_aniso_df<- bind_rows(df_aniso_central, df_aniso_eastern)
+remove(df_aniso_central, df_aniso_eastern, aniso_points_central, aniso_points_eastern)
+
+##repeating for NDVI
+Sys.time(); ndvi_points_central<- terra::extract(ndvi_mask_central, central_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+Sys.time(); ndvi_points_eastern<- terra::extract(ndvi_mask_eastern, eastern_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+
+df_ndvi_central<- as.data.frame(ndvi_points_central)
+df_ndvi_eastern<- as.data.frame(ndvi_points_eastern)
+
+extracted_ndvi_df<- bind_rows(df_ndvi_central,df_ndvi_eastern)
+remove(df_ndvi_central, df_ndvi_eastern, ndvi_points_central, ndvi_points_eastern)
+
+##repeating for EVI
+Sys.time(); evi_points_central<- terra::extract(evi_mask_central, central_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+Sys.time(); evi_points_eastern<- terra::extract(evi_mask_eastern, eastern_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE);Sys.time()
+
+df_evi_central<- as.data.frame(evi_points_central)
+df_evi_eastern<- as.data.frame(evi_points_eastern)
+
+extracted_evi_df<- bind_rows(df_evi_central,df_evi_eastern)
+remove(df_evi_central, df_evi_eastern, evi_points_central, evi_points_eastern)
+
+#Considering time series only from Jan 2002 to Dec 2021
+extracted_aniso_df<- extracted_aniso_df[,-c(5:26)]
+extracted_ndvi_df<- extracted_ndvi_df[,-c(5:26)]
+extracted_evi_df<- extracted_evi_df[,-c(5:26)]
+names(extracted_evi_df)<- names(extracted_aniso_df)
+
+#Calculating time series mean value with sd across all points for anisoEVI, NDVI, EVI
+pivot_extracted_aniso_df<- extracted_aniso_df  %>% pivot_longer(5:244)
+pivot_extracted_ndvi_df<- extracted_ndvi_df %>% pivot_longer(5:244)
+pivot_extracted_evi_df<- extracted_evi_df %>% pivot_longer(5:244)
+
+
+pivot_extracted_aniso_df<- pivot_extracted_aniso_df %>%  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+pivot_extracted_ndvi_df<- pivot_extracted_ndvi_df %>%  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+pivot_extracted_evi_df<- pivot_extracted_evi_df %>%  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+
+aniso_summary_statistics<- pivot_extracted_aniso_df %>% group_by(Name, Year, Month) %>%
+  summarise(meananiso_acrosspoints=mean(value,  na.rm=T),
+            sdaniso_acrosspoints=sd(value, na.rm=T))
+ndvi_summary_statistics<- pivot_extracted_ndvi_df %>% group_by(Name, Year, Month) %>%
+  summarise(meanNDVI_acrosspoints=mean(value,  na.rm=T),
+            sdNDVI_acrosspoints=sd(value, na.rm=T))
+evi_summary_statistics<- pivot_extracted_evi_df %>% group_by(Name, Year, Month) %>%
+  summarise(meanEVI_acrosspoints=mean(value,  na.rm=T),
+            sdEVI_acrosspoints=sd(value, na.rm=T))
+
+summary_df<- full_join(aniso_summary_statistics, ndvi_summary_statistics)
+summary_df<- full_join(summary_df, evi_summary_statistics)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+summary_df<- summary_df %>% mutate(Time= paste0(Year, "_", Month, "_01"))
+summary_df<- summary_df %>% mutate(Time= as_date(Time))
+
+############## Line graph comparing anisoEVI & NDVI through months by "name" in Lewisetal data by taking mean across all 
+############## poitns in each "name
+pivot_summary_df1<- summary_df %>% dplyr::select(c(Name, Year, Month, Time, meananiso_acrosspoints, meanNDVI_acrosspoints, meanEVI_acrosspoints)) %>%
+  pivot_longer(5:7)
+pivot_summary_df1<- pivot_summary_df1 %>% mutate(name=case_when(name=="meanEVI_acrosspoints"~"EVI",
+                                                                name=="meananiso_acrosspoints"~"anisoEVI",
+                                                                TRUE~"NDVI"))
+a<-ggplot(pivot_summary_df1, aes(x=Time, y=value, group= name, color=name)) +
+  geom_line() + 
+  theme_classic()+ 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())+
+  facet_wrap(~Name, ncol = 1, scales = "free")+ ylab("Mean index across all points") +xlab("Time in months (2002-2021)")
+a<- a+scale_color_brewer( palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2")+
+  theme_classic()+ theme(legend.title=element_blank()) 
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "anisoEVI_NDVI_acrosspoints_name_throughtime.png"),a, 
+       dpi=700, height = 25, width = 25, units = "cm")
+remove(a, pivot_summary_df1)
+remove(summary_df, evi_summary_statistics, ndvi_summary_statistics)
+
+############## Line graph comparing anisoEVI & NDVI for all Jans, all Febs by "name" in Lewisetal data with CI ribbon
+aniso_summary_statistics2<- pivot_extracted_aniso_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T),
+            sd=sd(value, na.rm=T)) %>% mutate(Index="anisoEVI")
+ndvi_summary_statistics2<- pivot_extracted_ndvi_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T),
+            sd=sd(value, na.rm=T)) %>% mutate(Index="NDVI")
+evi_summary_statistics2<- pivot_extracted_evi_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T),
+            sd=sd(value, na.rm=T)) %>% mutate(Index="EVI")
+
+summary_df<- bind_rows(aniso_summary_statistics2, ndvi_summary_statistics2, evi_summary_statistics2)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+summary_df<- summary_df %>% mutate(se= sd/sqrt(n),
+         lower.ci= mean- qt(1 - (0.05 / 2), n - 1) * se,
+         upper.ci= mean + qt(1 - (0.05 / 2), n - 1) * se)
+
+p<-ggplot(data=summary_df, aes(x=Month, y=mean, group=Index, colour= Index)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2")+
+  geom_ribbon(aes(ymin=summary_df$lower.ci, ymax=summary_df$upper.ci, fill= Index), linetype=2, alpha=0.1)+
+  scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())+
+  facet_wrap(~Name, scales = "fixed")
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "anisoEVI_NDVI_forallJansFebsacrossYears_byname.png"),p, 
+       dpi=700, height = 25, width = 25, units = "cm")
+remove(p, evi_summary_statistics2, ndvi_summary_statistics2, summary_df)
+
+############## Grouped boxplot (group is index) for each year (xlab~months)
+boxplot_aniso_df<- pivot_extracted_aniso_df %>% dplyr::select(c(Name, Year, value)) %>%
+  mutate(Index="anisoEVI")
+boxplot_ndvi_df<- pivot_extracted_ndvi_df %>% dplyr::select(c(Name, Year, value)) %>%
+  mutate(Index="NDVI")
+boxplot_evi_df<- pivot_extracted_evi_df %>% dplyr::select(c(Name, Year, value)) %>% 
+  mutate(Index="EVI")
+
+boxplot_df<- bind_rows(boxplot_aniso_df, boxplot_ndvi_df, boxplot_evi_df)
+
+p<-ggplot((boxplot_df %>% filter(Year>2018)), aes(x=Name, y=value, fill= Index)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette="Dark2") +
+  theme_classic() + 
+  theme(legend.title = element_blank()) +  facet_wrap(~Year,ncol = 1) +
+  ylab("Index value") +xlab("Across all points in each physiognomy (Lewis et al)")
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "boxplot_indexcomparison_foreachname_2018_end.png"),p, 
+       dpi=700, height = 50, width = 50, units = "cm")
+
+```
+
+
+
+
