@@ -888,9 +888,9 @@ for eahc pixels using detrended and original anisoEVI timeseries
 #Sys.time();selectmodel_df<- do.call(rbind,df_list); Sys.time() #couple of seconds
 #write_rds(selectmodel_df, here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
 
-selectmodel_df<-readRDS(here("Outputs", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
+selectmodel_df<-readRDS(here("Outputs","Archive", "Trajectory_Classification","Final_model_df", "combined_modelselect.rds"))
 
-oganisoEVI <- readRDS(here("Outputs", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
+oganisoEVI <- readRDS(here("Outputs","Archive", "Trajectory_Classification", "OGanisoEVI_Final_model_df", "modelselect.rds"))
 
 #2. Selecting only required information from both dfs and joining to make one df
 detrended_final_model<- selectmodel_df %>% 
