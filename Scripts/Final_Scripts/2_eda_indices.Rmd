@@ -382,9 +382,15 @@ summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
 summary_df<- summary_df %>% mutate(Time= paste0(Year, "_", Month, "_01"))
 summary_df<- summary_df %>% mutate(Time= as_date(Time))
 
+#I exclude water and nonveg for now because (1) water should not have any index values as it is excluded and (2) nonveg includes
+#narrow roads etc which is not of interest. Regarding first point, the water points do have anisoEVI, NDVI & EVI values
+#because the water points are narrow streams which have not been excluded from the greenness products ie only big water bodies
+#have been excluded. So theoretically the grenness values should not exist for these points, but they do.
+summary_df_without_waternonveg<- summary_df %>% filter(Name!="nonveg" & Name!="water")
+
 ############## Line graph comparing anisoEVI & NDVI through months by "name" in Lewisetal data by taking mean across all 
-############## poitns in each "name
-pivot_summary_df1<- summary_df %>% dplyr::select(c(Name, Year, Month, Time, meananiso_acrosspoints, meanNDVI_acrosspoints, meanEVI_acrosspoints)) %>%
+############## points in each "name
+pivot_summary_df1<- summary_df_without_waternonveg %>% dplyr::select(c(Name, Year, Month, Time, meananiso_acrosspoints, meanNDVI_acrosspoints, meanEVI_acrosspoints)) %>%
   pivot_longer(5:7)
 pivot_summary_df1<- pivot_summary_df1 %>% mutate(name=case_when(name=="meanEVI_acrosspoints"~"EVI",
                                                                 name=="meananiso_acrosspoints"~"anisoEVI",
@@ -400,7 +406,7 @@ a<- a+scale_color_brewer( palette = "Dark2") +
 ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "anisoEVI_NDVI_acrosspoints_name_throughtime.png"),a, 
        dpi=700, height = 25, width = 25, units = "cm")
 remove(a, pivot_summary_df1)
-remove(summary_df, evi_summary_statistics, ndvi_summary_statistics)
+remove(summary_df, evi_summary_statistics, ndvi_summary_statistics, summary_df_without_waternonveg)
 
 ############## Line graph comparing anisoEVI & NDVI for all Jans, all Febs by "name" in Lewisetal data with CI ribbon
 aniso_summary_statistics2<- pivot_extracted_aniso_df %>% group_by(Name, Month) %>%
@@ -419,14 +425,39 @@ summary_df<- summary_df %>% mutate(se= sd/sqrt(n),
          lower.ci= mean- qt(1 - (0.05 / 2), n - 1) * se,
          upper.ci= mean + qt(1 - (0.05 / 2), n - 1) * se)
 
-p<-ggplot(data=summary_df, aes(x=Month, y=mean, group=Index, colour= Index)) + 
+summary_df_without_waternonveg<- summary_df %>% filter(Name!="nonveg" & Name!="water")
+
+p<-ggplot(data=summary_df_without_waternonveg, aes(x=Month, y=mean, group=Index, colour= Index)) + 
   geom_line() + scale_color_brewer(palette = "Dark2")+
-  geom_ribbon(aes(ymin=summary_df$lower.ci, ymax=summary_df$upper.ci, fill= Index), linetype=2, alpha=0.1)+
+  geom_ribbon(aes(ymin=summary_df_without_waternonveg$lower.ci, ymax=summary_df_without_waternonveg$upper.ci, fill= Index), linetype=2, alpha=0.1)+
   scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())+
   facet_wrap(~Name, scales = "fixed")
 ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "anisoEVI_NDVI_forallJansFebsacrossYears_byname.png"),p, 
        dpi=700, height = 25, width = 25, units = "cm")
-remove(p, evi_summary_statistics2, ndvi_summary_statistics2, summary_df)
+remove(p, evi_summary_statistics2, ndvi_summary_statistics2, summary_df, summary_df_without_waternonveg)
+
+############## Line graph comparing anisoEVI & NDVI for all Jans, all Febs by "name" in Lewisetal data such that the data is normalized 
+aniso_summary_statistics2<- pivot_extracted_aniso_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T)) %>% mutate(Index="anisoEVI")
+ndvi_summary_statistics2<- pivot_extracted_ndvi_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T)) %>% mutate(Index="NDVI")
+evi_summary_statistics2<- pivot_extracted_evi_df %>% group_by(Name, Month) %>%
+  summarise(mean=mean(value,  na.rm=T)) %>% mutate(Index="EVI")
+summary_df<- bind_rows(aniso_summary_statistics2, ndvi_summary_statistics2, evi_summary_statistics2)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+summary_df_without_waternonveg<- summary_df %>% filter(Name!="nonveg" & Name!="water")
+
+summary_df_without_waternonveg<- summary_df_without_waternonveg %>% group_by(Name, Index) %>%
+  mutate(mean_annual= mean(mean))
+summary_df_without_waternonveg<- summary_df_without_waternonveg %>% mutate(percentage_change= ((mean-mean_annual)/mean)*100)
+
+s<-ggplot(data=summary_df_without_waternonveg, aes(x=Month, y=percentage_change, group=Index, colour= Index)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2")+
+  #geom_ribbon(aes(ymin=summary_df_without_waternonveg$lower.ci, ymax=summary_df_without_waternonveg$upper.ci, fill= Index), linetype=2, alpha=0.1)+
+  scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())+
+  facet_wrap(~Name, scales = "fixed")
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "percentage_change_anisoEVI_NDVI_forallJansFebsacrossYears_byname.png"),s, 
+       dpi=700, height = 25, width = 25, units = "cm")
 
 ############## Grouped boxplot (group is index) for each year (xlab~months)
 boxplot_aniso_df<- pivot_extracted_aniso_df %>% dplyr::select(c(Name, Year, value)) %>%
