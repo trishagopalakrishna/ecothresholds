@@ -26,6 +26,7 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 In this script I complete the STL decomposition to detrend the time series anisoEVI data.
 
 ##STL decomposition
+The chunk below has been written considering that the analyses is run on a server. 
 ```{r}
 numCores<- 16
 library(foreach)
@@ -42,16 +43,13 @@ foreach::getDoParRegistered() #should be TRUE
 foreach::getDoParWorkers() #should give numCores
 
 
-stl<- function (pivot_df_trial, index_path, zone ){
-  Sys.time(); chunk2 <- 240*1000
-  n2 <- nrow(pivot_df_trial)
-  r2  <- rep(1:ceiling(n2/chunk2),each=chunk2)[1:(n2)]
-  split_pivot_df <- split(pivot_df_trial, r2)
-  remove(chunk2, n2,r2)
-  remove(pivot_df_trial)
-  gc(); Sys.time()
+Sys.time()
+file_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/Max_consecutive_missingNA/meanfill_central_dfs/",pattern='.rds$', all.files=TRUE, full.names=TRUE)
+rds_list<-lapply(file_list, read_rds)
+Sys.time()
+length(rds_list)
 
-  library(stlplus)  
+stl<- function (split_pivot_df){
   stl_decomposition<- function (df, swin){
     df_ts<- ts(df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
     stl_df<- stlplus::stlplus(df_ts, s.window = swin, s.degree = 1, t.degree = 1)
@@ -59,22 +57,22 @@ stl<- function (pivot_df_trial, index_path, zone ){
     df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
     df_needed
   }
+  message ("Stl function defined")
   
   results <- foreach(
-    i= 1:100,
+    i= 1:length(split_pivot_df), #manually subset 
     .combine = "rbind") %dopar% {
       split_pivot_df[[i]] %>%
         group_by(cell) %>%
         nest() %>%
-        mutate(stl_data = purrr::map(data, stl_decomposition, swin="periodic")) %>%
+        mutate(stl_data = purrr::map(data, stl_decomposition, swin=11)) %>%
         unnest(c(data,stl_data)) %>%
         dplyr::select(-c(Year, Month, raw))
     }
-  write_rds(results, here("Outputs", "Indices",index_path, "STL_Decomposition","swindow_periodic", paste0("stl_",zone, ".rds")))
+  message("Stl decomposition complete")
+  write_rds(results, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/STL_Decomposition/swindow_11/stl_central11001_end.rds")
+  message ("rds written out")
 }
 
-Sys.time();southernaniso_rds<- read_rds(here("Outputs", "Indices", "anisoEVI","Max_consecutive_missingNA", "meanfill_anisoEVI_southern.rds")); Sys.time()
-
-Sys.time(); stl(southernaniso_rds, "anisoEVI", "southern"); Sys.time()
-
+Sys.time(); stl(rds_list); Sys.time()
 ```
