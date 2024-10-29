@@ -22,9 +22,11 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 ##Introduction
-In this script, I delineate the study area within the Cerrado (Brazilian savanna) biome
+In this script, I delineate the study area within the Cerrado (Brazilian savanna) biome. The aim is to 
+exclude all anthropic area and focus only on native savannas. However, I need to figure out how to 
+delineate anthropic and native areas.
 
-#1. Criteria 1- exclude all pixels that have been transformed to anthropic land use and cover 
+#Data processing
 I use the Mapbiomas vegetation product that is commonly used across Brazil and its biomes. 
 This product is at 30m spatial resolution, derived from Landsat imagergy. In GEE, I completed 
 processing this data such that the resulting product is a multiband image at 1km resolution,
@@ -429,3 +431,5 @@ remove(pivot_area_anthropic_df, pivot_df, pivot_thresharea_anthropic_df)
 remove(s)
 remove(area_anthropic_df, thresh_area_anthropic_df)
 ```
+
+
