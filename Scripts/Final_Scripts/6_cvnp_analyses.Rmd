@@ -1,0 +1,422 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I do EDA and analyses of the trajectory shape results only considering Chapadas dos Vierdos National Park, which is protected area (hence we can assume pristine savanna physiognomies) in which Marina and her group extensively work in. We have a lot more contextual information for this national park which hopefully helps to make sense of the resilience results. 
+
+#Data input and prelim EDA - area in CVNP classified as different trajectories from different indices
+```{r}
+#CVNP shp
+cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) #cannot remember where this polygon comes from, maybe GEE?
+
+#anisoEVI & NDVI traj results
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+ndvi_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "ndvi_amtrends11_trajresults.tif"))
+#1-Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
+
+#Extracting anisoEVI & NDVI results only for CVNP
+Sys.time(); cvnp_aniso_trajshapes<- terra::crop(anisoEVI_map_results, vect(cvnp_shp))
+cvnp_aniso_trajshapes<- terra::mask(cvnp_aniso_trajshapes, vect(cvnp_shp)); Sys.time()
+writeRaster(cvnp_aniso_trajshapes, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_anisoevi_trajshapes.tif"))
+
+Sys.time(); cvnp_ndvi_trajshapes<- terra::crop(ndvi_map_results, vect(cvnp_shp))
+cvnp_ndvi_trajshapes<- terra::mask( cvnp_ndvi_trajshapes, vect(cvnp_shp)); Sys.time()
+writeRaster(cvnp_ndvi_trajshapes, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_ndvi_trajshapes.tif"))
+
+#Barplot results of area of different trajectory shapes in CVNP for both indices
+df_cvnp_ndvi<- terra::as.data.frame(cvnp_ndvi_trajshapes, cells=TRUE, xy=TRUE)
+df_cvnp_aniso<- terra::as.data.frame(cvnp_aniso_trajshapes, cells=TRUE, xy=TRUE)
+# #### NDVI has 12 pixels more than anisoEVI! Checking on QGIS
+# ndvi_cells<- df_cvnp_ndvi$cell
+# anisoevi_cells<- df_cvnp_aniso$cell
+# valuesinndvi_notinanisoevi<-setdiff(ndvi_cells,anisoevi_cells)
+# ndvi_notinanisoevi_df<- df_cvnp_ndvi[df_cvnp_ndvi$cell %in% valuesinndvi_notinanisoevi,]
+# ndvi_notinanisoevi_vector<- terra::vect(ndvi_notinanisoevi_df, geom=c("x", "y"), crs="epsg:4326")
+# Sys.time(); ndvi_notinanisoevi_map_results<- terra::rasterize(ndvi_notinanisoevi_vector, anisoEVI_map_results, "max", fun="max"); Sys.time()
+# writeRaster(ndvi_notinanisoevi_map_results, here("Scratch", "ndvi_notinanisoevi.tif"), overwrite=T)
+# #I checked these 12 pixels in QGIS. 3 pixels are in the border, so that is fine. But the other
+# #pixels are in the interior. So I do not understand why ndvi has results for the interior pixels
+# #and not anisoEVI. Mayeb I excluded these pixels from anisoevi because of 3 consecutive missing values. 
+# #So I keep only pixels that are in both results.
+# remove(anisoevi_cells, ndvi_cells, valuesinndvi_notinanisoevi, ndvi_notinanisoevi_df, ndvi_notinanisoevi_vector, ndvi_notinanisoevi_map_results)
+
+names(df_cvnp_ndvi)<- c("cell", "x", "y", "NDVI")
+names(df_cvnp_aniso)<- c("cell", "x", "y", "anisoEVI")
+
+df_join<- inner_join(df_cvnp_ndvi, df_cvnp_aniso)
+pivot_df<- df_join %>% pivot_longer(4:5)
+pivot_df<- pivot_df %>% mutate(value=case_when(value==1~"Linear-decrease",
+                                               value==2~"Linear-increase",
+                                               value==4~"Step-decrease",
+                                               value==5~"Step-increase",
+                                               value==6~"Quad-decrease accelerated",
+                                               value==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+##Comparison barplot reduced trajectories
+comparison_barplot_df <- pivot_df %>% group_by(name, value) %>%
+  summarise(count=n())
+comparison_barplot_df <- comparison_barplot_df  %>% mutate(percentage=(count/nrow(df_join))*100)
+
+comparison_barplot<- comparison_barplot_df %>% 
+  ggplot(aes(value, percentage, fill = value, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of study area")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+
+comparisonpalette<- brewer.pal(n=5, "Set1")
+comparisonpalette[[3]]<- "grey"
+comparison_barplot<- comparison_barplot+ scale_fill_manual(values=comparisonpalette)
+ggsave(here("Outputs", "Final_TrajShape_Models","CVNP_results", "cvnp_comparison_indices_am_swin11.png"),
+       comparison_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+##Comparison confusion matrices ie crosstab
+df_join
+
+df_join<- df_join %>% mutate(NDVI=case_when(NDVI==1~"Linear-decrease",
+                                            NDVI==2~"Linear-increase",
+                                            NDVI==4~"Step-decrease",
+                                            NDVI==5~"Step-increase",
+                                            NDVI==6~"Quad-decrease accelerated",
+                                            NDVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+df_join<- df_join %>% mutate(anisoEVI=case_when(anisoEVI==1~"Linear-decrease",
+                                            anisoEVI==2~"Linear-increase",
+                                            anisoEVI==4~"Step-decrease",
+                                            anisoEVI==5~"Step-increase",
+                                            anisoEVI==6~"Quad-decrease accelerated",
+                                            anisoEVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+trial_crosstab<- df_join %>% group_by(NDVI, anisoEVI) %>%
+  summarise(percentage=(n()/nrow(df_join))*100)
+crosstab_display<- trial_crosstab %>% pivot_wider(names_from = NDVI, values_from = percentage)
+#write.csv(crosstab_display, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_anisoevi_ndvi_reducedtrajshape_percentage_crosstab.csv"))
+
+remove(comparison_barplot_df, comparison_barplot, comparisonpalette, crosstab_display, cvnp_aniso_trajshapes, cvnp_ndvi_trajshapes, df_cvnp_aniso, df_cvnp_ndvi, df_join, ndvi_map_results, anisoEVI_map_results, pivot_df, trial_crosstab)
+
+#Maps of trajectory shapes in CVNP
+mappalette<- brewer.pal(n=7, "Set1")
+mappalette[[3]]<- "grey"
+mappalette[[4]]<-  "#984EA3"
+mappalette[[5]]<-  "#FF7F00"
+mappalette[[6]]<- "#FFFF33"
+mappalette[[7]]<- "#A65628"
+
+aniso_cvnp_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(cvnp_shp)+ tm_fill()+
+  tm_shape (cvnp_aniso_trajshapes)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+
+ndvi_cvnp_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(cvnp_shp)+ tm_fill()+
+  tm_shape (cvnp_ndvi_trajshapes)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5) #+
+  #tm_add_legend(type = "fill", 
+  #              labels = c("Linear- Decrease, Constant", 
+  #                         "Linear- Increase, Constant",
+  #                         "No trend",
+  #                         "Step- Decrease",
+  #                         "Step- Increase",
+  #                         "Quad- Decrease, Accelerated",
+  #                         "Quad- Decrease, Decelerated"),
+  #              col = mappalette)
+
+cvnp_maps<- tmap_arrange(aniso_cvnp_map, ndvi_cvnp_map)
+tmap_save(cvnp_maps, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "aniso_ndvi_results.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+```
+The crosstab results basically show that there are no pixels that were classified as by both indices to be linear decrease and step decrease. 
+
+#EDA around the step change pixels from both anisoEVI and NDVI indices
+```{r}
+#anisoEVI
+aniso_central<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual","finalshape_annuals11_central.rds"))
+aniso_southern<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual", "finalshape_annuals11_southern.rds"))
+aniso_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual","finalshape_annuals11_eastern.rds"))
+
+aniso_df<- rbind(aniso_southern, aniso_eastern, aniso_central)
+remove(aniso_central, aniso_southern, aniso_eastern)
+
+aniso_final_model<- aniso_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", 
+           "AnisoEVI_Detrended_ModelOrder"="model_order", "AnisoEVI_Detrended_ShapeClass"="shape_class",
+           "AnisoEVI_Detrended_TrendName"="trend_name", "AnisoEVI_Detrended_LocBrk"="loc_brk"))
+aniso_final_model<- aniso_final_model %>% 
+                  mutate(AnisoEVI_DetrendedResults = paste0(AnisoEVI_Detrended_ModelOrder,"_", AnisoEVI_Detrended_ShapeClass,"_", AnisoEVI_Detrended_TrendName))
+aniso_final_model2<- aniso_final_model %>% dplyr::select(c(x,y, cell, AnisoEVI_DetrendedResults, AnisoEVI_Detrended_LocBrk))
+remove(aniso_final_model)
+
+#ndvi
+ndvi_southern<-read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_southern.rds"))
+ndvi_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_eastern.rds"))
+ndvi_central<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_central.rds"))
+
+ndvi_df<- rbind(ndvi_southern, ndvi_eastern, ndvi_central)
+remove(ndvi_central, ndvi_southern, ndvi_eastern)
+
+ndvi_final_model<- ndvi_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", 
+           "NDVI_Detrended_ModelOrder"="model_order", "NDVI_Detrended_ShapeClass"="shape_class",
+           "NDVI_Detrended_TrendName"="trend_name", "NDVI_Detrended_LocBrk"="loc_brk"))
+ndvi_final_model<- ndvi_final_model %>% 
+                  mutate(NDVI_DetrendedResults = paste0(NDVI_Detrended_ModelOrder,"_", NDVI_Detrended_ShapeClass,"_", NDVI_Detrended_TrendName))
+ndvi_final_model2<- ndvi_final_model %>% dplyr::select(c(x,y,cell, NDVI_DetrendedResults, NDVI_Detrended_LocBrk))
+remove(ndvi_final_model)
+
+#filtering to consider only step pixels
+step_aniso<- aniso_final_model2 %>% filter(str_detect(AnisoEVI_DetrendedResults, 'Step'))
+step_ndvi<- ndvi_final_model2 %>% filter(str_detect(NDVI_DetrendedResults, 'Step'))
+
+step_aniso<- step_aniso %>% mutate(AnisoEVI_Detrended_LocBrk=case_when(AnisoEVI_Detrended_LocBrk==1~2002,
+                                                                       AnisoEVI_Detrended_LocBrk==2~2003,
+                                                                       AnisoEVI_Detrended_LocBrk==3~2004,
+                                                                       AnisoEVI_Detrended_LocBrk==4~2005,
+                                                                       AnisoEVI_Detrended_LocBrk==5~2006,
+                                                                       AnisoEVI_Detrended_LocBrk==6~2007,
+                                                                       AnisoEVI_Detrended_LocBrk==7~2008,
+                                                                       AnisoEVI_Detrended_LocBrk==8~2009,
+                                                                       AnisoEVI_Detrended_LocBrk==9~2010,
+                                                                       AnisoEVI_Detrended_LocBrk==10~2011,
+                                                                       AnisoEVI_Detrended_LocBrk==11~2012,
+                                                                       AnisoEVI_Detrended_LocBrk==12~2013,
+                                                                       AnisoEVI_Detrended_LocBrk==13~2014,
+                                                                       AnisoEVI_Detrended_LocBrk==14~2015,
+                                                                       AnisoEVI_Detrended_LocBrk==15~2016,
+                                                                       AnisoEVI_Detrended_LocBrk==16~2017,
+                                                                       AnisoEVI_Detrended_LocBrk==17~2018,
+                                                                       AnisoEVI_Detrended_LocBrk==18~2019,
+                                                                       AnisoEVI_Detrended_LocBrk==19~2020,
+                                                                       AnisoEVI_Detrended_LocBrk==20~2021))
+
+step_ndvi<- step_ndvi %>% mutate(NDVI_Detrended_LocBrk=case_when(NDVI_Detrended_LocBrk==1~2002,
+                                                                       NDVI_Detrended_LocBrk==2~2003,
+                                                                       NDVI_Detrended_LocBrk==3~2004,
+                                                                       NDVI_Detrended_LocBrk==4~2005,
+                                                                       NDVI_Detrended_LocBrk==5~2006,
+                                                                       NDVI_Detrended_LocBrk==6~2007,
+                                                                       NDVI_Detrended_LocBrk==7~2008,
+                                                                       NDVI_Detrended_LocBrk==8~2009,
+                                                                       NDVI_Detrended_LocBrk==9~2010,
+                                                                       NDVI_Detrended_LocBrk==10~2011,
+                                                                       NDVI_Detrended_LocBrk==11~2012,
+                                                                       NDVI_Detrended_LocBrk==12~2013,
+                                                                       NDVI_Detrended_LocBrk==13~2014,
+                                                                       NDVI_Detrended_LocBrk==14~2015,
+                                                                       NDVI_Detrended_LocBrk==15~2016,
+                                                                       NDVI_Detrended_LocBrk==16~2017,
+                                                                       NDVI_Detrended_LocBrk==17~2018,
+                                                                       NDVI_Detrended_LocBrk==18~2019,
+                                                                       NDVI_Detrended_LocBrk==19~2020,
+                                                                       NDVI_Detrended_LocBrk==20~2021))
+# #reading line 34
+# stepaniso_year_vector<- terra::vect(step_aniso, geom=c("x", "y"), crs="epsg:4326")
+# st_write(st_as_sf(stepaniso_year_vector),  here("Outputs", "Final_TrajShape_Models", "Annual", "aniso_steptype_year.shp"))
+# Sys.time(); stepaniso_year_raster<- terra::rasterize(stepaniso_year_vector, anisoEVI_map_results, "AnisoEVI_Detrended_LocBrk", fun="max"); Sys.time()
+# writeRaster(stepaniso_year_raster, here("Outputs", "Final_TrajShape_Models", "Annual", "stepaniso_year.tif"), overwrite=T)
+# 
+# stepndvi_year_vector<- terra::vect(step_ndvi, geom=c("x", "y"), crs="epsg:4326")
+# st_write(st_as_sf(stepndvi_year_vector),  here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "ndvi_steptype_year.shp"))
+# Sys.time(); stepndvi_year_raster<- terra::rasterize(stepndvi_year_vector, anisoEVI_map_results, "NDVI_Detrended_LocBrk", fun="max"); Sys.time()
+# writeRaster(stepndvi_year_raster, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "stepndvi_year.tif"), overwrite=T)
+#remove(stepaniso_year_raster, stepaniso_year_vector, stepndvi_year_raster, stepndvi_year_vector)
+#remove(step_aniso, step_ndvi)
+
+stepaniso_year_raster<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "stepaniso_year.tif"))
+stepndvi_year_raster<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "stepndvi_year.tif"))
+
+cvnp_stepaniso_year<- terra::crop(stepaniso_year_raster, vect(cvnp_shp))
+cvnp_stepaniso_year<- terra::mask(cvnp_stepaniso_year, vect(cvnp_shp))
+#writeRaster(cvnp_stepaniso_year, here("Outputs", "Final_TrajShape_Models", "CVNP_Results", "cvnp_stepaniso_year.tif"))
+
+cvnp_stepndvi_year<- terra::crop(stepndvi_year_raster, vect(cvnp_shp))
+cvnp_stepndvi_year<- terra::mask(cvnp_stepndvi_year, vect(cvnp_shp))
+#writeRaster(cvnp_stepndvi_year, here("Outputs", "Final_TrajShape_Models", "CVNP_Results", "cvnp_stepndvi_year.tif"))
+
+df_cvnp_stepaniso_year<- terra::as.data.frame(cvnp_stepaniso_year, cells=TRUE, xy=TRUE)
+df_cvnp_stepndvi_year<- terra::as.data.frame(cvnp_stepndvi_year, cells=TRUE, xy=TRUE)
+
+cvnp_stepaniso_barplot_df <- df_cvnp_stepaniso_year %>% group_by(max) %>%
+  summarise(count=n())
+cvnp_stepaniso_barplot_df <- cvnp_stepaniso_barplot_df  %>% mutate(percentage=(count/sum(count))*100)
+names(cvnp_stepaniso_barplot_df)<- c("Year", "AnisoEVICount", "AnisoEVI_Percentage")
+cvnp_stepndvi_barplot_df <- df_cvnp_stepndvi_year %>% group_by(max) %>%
+  summarise(count=n())
+cvnp_stepndvi_barplot_df  <- cvnp_stepndvi_barplot_df   %>% mutate(percentage=(count/sum(count))*100)
+names(cvnp_stepndvi_barplot_df)<- c("Year", "NDVICount", "NDVI_Percentage")
+
+cvnp_step_year<- full_join(cvnp_stepaniso_barplot_df, cvnp_stepndvi_barplot_df, by=join_by(Year))
+pivot_cvnp_step_year<- cvnp_step_year %>% dplyr::select(Year, AnisoEVI_Percentage, NDVI_Percentage) %>%
+  pivot_longer(2:3)
+pivot_cvnp_step_year<- pivot_cvnp_step_year %>% mutate(name=case_when(name=="AnisoEVI_Percentage"~"AnisoEVI",
+                                                                      TRUE~"NDVI"))
+cvnp_step_year_barplot<- pivot_cvnp_step_year %>% 
+  ggplot(aes(value, as.factor(Year), group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("% of step pixels")+ ylab ("Year of step change")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))
+ggsave(here("Outputs", "Final_TrajShape_Models","CVNP_results", "cvnp_stepchange_year_allindices.png"),
+       cvnp_step_year_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+```
+
+#Processing CVNP physiognomy map from Lewis et al. 2020
+In the below chunk I do exploratory analyses to check if there are significant differences in the % of level 1 physiognomies across trajectory shapes in CVNP (for aniso EVI and NDVI)
+```{r}
+veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
+#0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
+#9=cerradao, 10=mata de galeria, 11-pasture, 12- water, 13- plantation, 14- agriculture, 15- nonvegetated
+
+#Mask and crop
+crop_veg_phy<- terra::crop(veg_phy, vect(cvnp_shp))
+mask_veg_phy<- terra::mask(crop_veg_phy, vect(cvnp_shp))
+remove(crop_veg_phy, veg_phy)
+
+#Reclassifying to level 1 as all the campo are grasslands-1, both cerrado and verada are savannas-2
+#and cerradao, mata de galeria is woodland-3. Remainder are anthropic-4, water is NA
+
+m<- rbind(c(0,1), c(1,1), c(3,1), c(5,2), 
+          c(6,2), c(8,2), c(9,3), c(10,3), 
+          c(11,4), c(12,NA), c(13,4), c(14,4), c(15,4))
+
+lev1_phy<- terra::classify(mask_veg_phy, m)
+remove(m)
+
+#Coarsening to obtain proportion of larger 1km pixel that is grassland, savannas, woodland, anthropic
+m_grass_only<- rbind(c(1,1), c(2,0), c(3,0), c(4,0))
+lev1_grassonly<- terra::classify(lev1_phy, m_grass_only)
+remove(m_grass_only)
+
+m_savanna_only<- rbind(c(1,0), c(2,2), c(3,0), c(4,0))
+lev1_savannaonly<- terra::classify(lev1_phy, m_savanna_only)
+remove(m_savanna_only)
+
+m_woodland_only<- rbind(c(1,0), c(2,0), c(3,3), c(4,0))
+lev1_woodlandonly<- terra::classify(lev1_phy, m_woodland_only)
+remove(m_woodland_only)
+
+m_anthropic_only<- rbind(c(1,0), c(2,0), c(3,0), c(4,4))
+lev1_anthropiconly<- terra::classify(lev1_phy, m_anthropic_only)
+remove(m_anthropic_only)
+
+cvnp_aniso_trajshapes<- rast(here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_anisoevi_trajshapes.tif"))
+#1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+cvnp_ndvi_trajshapes<- rast(here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_ndvi_trajshapes.tif"))
+#1-Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
+
+grass_percentage<- terra::resample(lev1_grassonly, cvnp_aniso_trajshapes, method="average")
+savanna_percentage<- terra::resample(lev1_savannaonly, cvnp_aniso_trajshapes, method="average")
+woodland_percentage<- terra::resample(lev1_woodlandonly, cvnp_aniso_trajshapes, method="average")
+anthropic_percentage<- terra::resample(lev1_anthropiconly, cvnp_aniso_trajshapes, method="average")
+remove(lev1_anthropiconly, lev1_grassonly, lev1_savannaonly, lev1_woodlandonly)
+
+lev1_proportion_aniso_ndvi<- c(cvnp_aniso_trajshapes,cvnp_ndvi_trajshapes, grass_percentage, savanna_percentage, woodland_percentage, anthropic_percentage)
+df_lev1_prop_aniso_ndvi<- terra::as.data.frame(lev1_proportion_aniso_ndvi, cells=TRUE, xy=TRUE)
+names(df_lev1_prop_aniso_ndvi)<- c("cell", "x", "y", "anisoEVI_trajshape","NDVI_trajshape", "grass_prop", "savanna_prop", "wood_prop", "anthropic_prop")
+#there are a couple of cells that have NA traj shape, but have proportion of physiognomies
+
+df_lev1_prop_aniso_ndvi<- df_lev1_prop_aniso_ndvi %>% 
+  mutate(anisoEVI_trajshape= case_when(anisoEVI_trajshape==1~"Linear-decrease",
+                                       anisoEVI_trajshape==2~"Linear-increase",
+                                       anisoEVI_trajshape==3~"No trend",
+                                       anisoEVI_trajshape==4~"Step-decrease",
+                                       anisoEVI_trajshape==5~"Step-increase"))
+df_lev1_prop_aniso_ndvi<- df_lev1_prop_aniso_ndvi %>% 
+  mutate(NDVI_trajshape= case_when(NDVI_trajshape==1~"Linear-decrease",
+                                       NDVI_trajshape==2~"Linear-increase",
+                                       NDVI_trajshape==3~"No trend",
+                                       NDVI_trajshape==4~"Step-decrease",
+                                       NDVI_trajshape==5~"Step-increase",
+                                      NDVI_trajshape==6~"Quad dec accelerated",
+                                      NDVI_trajshape==7~"Quad dec decelerated"))
+
+#Boxplot- x-axis== different traj shapes, y-axis== %grass, %savanna, %woodland, %anthropic spread
+#Ideally the step pixels should show significantly different veg physiognomy specifically %grass
+
+#Within the step pixels only, boxplot- x-axis==Breakpoint Year, y-axis==% physiognomy, group by== step inc/dec
+
+```
+
+In the next chunk I do exploratory analyses to check for a relationship between pixel heterogeneity and trajectory shape in CVNP
+```{r}
+mask_veg_phy #from previous chunk
+
+lev2_phy_richness<- terra::resample(mask_veg_phy, cvnp_aniso_trajshapes, method="mode")
+lev2_phy_richness_aniso_ndvi<- c(cvnp_aniso_trajshapes,cvnp_ndvi_trajshapes, lev2_phy_richness)
+df_lev2_phy_richness_aniso_ndvi<- terra::as.data.frame(lev2_phy_richness_aniso_ndvi, cells=TRUE, xy=TRUE)
+names(df_lev2_phy_richness_aniso_ndvi)<- c("cell", "x", "y", "anisoEVI_trajshape","NDVI_trajshape", "Phy_richness")
+#there are a couple of cells that have NA traj shape, but have proportion of physiognomies
+
+df_lev2_phy_richness_aniso_ndvi<- df_lev2_phy_richness_aniso_ndvi %>% 
+  mutate(anisoEVI_trajshape= case_when(anisoEVI_trajshape==1~"Linear-decrease",
+                                       anisoEVI_trajshape==2~"Linear-increase",
+                                       anisoEVI_trajshape==3~"No trend",
+                                       anisoEVI_trajshape==4~"Step-decrease",
+                                       anisoEVI_trajshape==5~"Step-increase"))
+df_lev2_phy_richness_aniso_ndvi<- df_lev2_phy_richness_aniso_ndvi %>% 
+  mutate(NDVI_trajshape= case_when(NDVI_trajshape==1~"Linear-decrease",
+                                       NDVI_trajshape==2~"Linear-increase",
+                                       NDVI_trajshape==3~"No trend",
+                                       NDVI_trajshape==4~"Step-decrease",
+                                       NDVI_trajshape==5~"Step-increase",
+                                      NDVI_trajshape==6~"Quad dec accelerated",
+                                      NDVI_trajshape==7~"Quad dec decelerated"))
+
+#Boxplot- x-axis== different traj shapes, y-axis== Phy richness spread
+#Ideally the stable pixels should show significantly different physiognomy richness compared to other trajectory shapes
+
+
+
+
+
+```
