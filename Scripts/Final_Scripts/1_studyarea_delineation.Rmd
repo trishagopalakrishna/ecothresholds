@@ -144,7 +144,7 @@ p<- p+scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = 
   theme_classic()+
   theme(legend.title=element_blank())+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) 
-ggsave(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "area_anthropic.png"),p, 
+ggsave(here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "area_anthropic.png"),p, 
        dpi=700, height = 12, width = 12, units = "cm")
 remove(p, pivot_area_anthropic_df, area_anthropic_df)
 
@@ -217,10 +217,28 @@ mapbiomas_mask
 names(mapbiomas_mask)
 tp_mapbiomas_mask<- mapbiomas_mask[[18:37]]
 
-#2. Exclude all pixels where pixel value in any year >0.1
-threshold_function<- function (i){
-  ifelse(max(i)>0.3, NA, i) #change threshold to 0.1,0.2....
+#2. Exclude all pixels where pixel value in any year >0.1,0.2,0.3.....1
+x_thresholds<- seq(0,1,0.01)
+for (i in x_thresholds){
+  print (paste0("Threshold= ",i))
+  
+  threshold_function<- function (x){
+  ifelse(max(x)>i, NA, x) 
+  }
+  
+  threshold_mapbiomas_mask<- terra::app(tp_mapbiomas_mask, fun= threshold_function)
+  print ("App function complete")
+  
+  writeRaster(threshold_mapbiomas_mask, here("Data", "Masks_to_define_pixelsofinterest", 
+                                             "Mapbiomas_anthropic_mask","thresholded_mapbiomas_masks", paste0("thresholded_masks_",i, ".tif")))
+                                             
+  print ("Next i")
 }
+
+threshold_function<- function (x){
+  ifelse(max(x)>i, NA, x) #change threshold to 0.1,0.2....
+  }
+
 Sys.time(); threshold_mapbiomas_mask_10<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
 #writeRaster(threshold_mapbiomas_mask_10, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_10.tif"))
 Sys.time(); threshold_mapbiomas_mask_20<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
@@ -229,7 +247,7 @@ Sys.time(); threshold_mapbiomas_mask_30<- terra::app(tp_mapbiomas_mask, fun= thr
 #writeRaster(threshold_mapbiomas_mask_30, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_30.tif"))
 remove(threshold_function)
 
-#3. Map of thresholded rasters
+#3. Example map of thresholded rasters
 #lines 51- 57
 thresh10_mapbiomas_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
   tm_shape( threshold_mapbiomas_mask_10)+
