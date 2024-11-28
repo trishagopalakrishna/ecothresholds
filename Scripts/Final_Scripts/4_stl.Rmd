@@ -44,7 +44,7 @@ foreach::getDoParWorkers() #should give numCores
 
 
 Sys.time()
-file_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/Max_consecutive_missingNA/meanfill_central_dfs/",pattern='.rds$', all.files=TRUE, full.names=TRUE)
+file_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/Max_consecutive_missingNA/meanfill_central_dfs/",pattern='.rds$', all.files=TRUE, full.names=TRUE) #changed file address manually
 rds_list<-lapply(file_list, read_rds)
 Sys.time()
 length(rds_list)
@@ -70,7 +70,7 @@ stl<- function (split_pivot_df){
         dplyr::select(-c(Year, Month, raw))
     }
   message("Stl decomposition complete")
-  write_rds(results, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/STL_Decomposition/swindow_11/stl_central11001_end.rds")
+  write_rds(results, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/STL_Decomposition/swindow_11/stl_central11001_end.rds")#changed output file address manually
   message ("rds written out")
 }
 
