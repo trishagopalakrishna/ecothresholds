@@ -307,7 +307,7 @@ ggsave(here("Data", "Indices", "seasonal_mean_indices_throughmonths_zone.png"),q
 remove(p,q, add_timestamp, mean_raster_function)
 ```
 
-#3. Matching of anisoEVI and NDVI with ground truth points
+#3. Matching of anisoEVI, EVI and NDVI with ground truth points
 Lewis et al., 2020 includes ground truth points with vegetation physiognomy information. Hence, I extract time series anisoEVI and NSVI for the ground
 truth points to better understand the range of anisoEVI and NDVI values for each vegetation physiognomy, through time
 ```{r}
@@ -388,8 +388,8 @@ summary_df<- summary_df %>% mutate(Time= as_date(Time))
 #have been excluded. So theoretically the grenness values should not exist for these points, but they do.
 summary_df_without_waternonveg<- summary_df %>% filter(Name!="nonveg" & Name!="water")
 
-############## Line graph comparing anisoEVI & NDVI through months by "name" in Lewisetal data by taking mean across all 
-############## points in each "name
+############## Line graph comparing anisoEVI, EVI & NDVI through months by "name" in Lewisetal data by taking mean across all 
+############## points in each "name"
 pivot_summary_df1<- summary_df_without_waternonveg %>% dplyr::select(c(Name, Year, Month, Time, meananiso_acrosspoints, meanNDVI_acrosspoints, meanEVI_acrosspoints)) %>%
   pivot_longer(5:7)
 pivot_summary_df1<- pivot_summary_df1 %>% mutate(name=case_when(name=="meanEVI_acrosspoints"~"EVI",
@@ -408,7 +408,7 @@ ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "anisoEVI_NDVI_ac
 remove(a, pivot_summary_df1)
 remove(summary_df, evi_summary_statistics, ndvi_summary_statistics, summary_df_without_waternonveg)
 
-############## Line graph comparing anisoEVI & NDVI for all Jans, all Febs by "name" in Lewisetal data with CI ribbon
+############## Line graph comparing anisoEVI, EVI & NDVI for all Jans, all Febs by "name" in Lewisetal data with CI ribbon
 aniso_summary_statistics2<- pivot_extracted_aniso_df %>% group_by(Name, Month) %>%
   summarise(mean=mean(value,  na.rm=T),
             sd=sd(value, na.rm=T)) %>% mutate(Index="anisoEVI")
