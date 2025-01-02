@@ -33,7 +33,7 @@ processing this data such that the resulting product is a multiband image at 1km
 where each band denotes a year (1985-2023) and each pixel value is a proportion. The 
 proportion is the % of total Mapbiomas pixels within the 1km pixel that are anthropic (as per
 Mapbiomas typology)
-https://code.earthengine.google.com/45f7edff88db11aab8a1be5f522e6653
+https://code.earthengine.google.com/f7e17500a39018685d022f079335ac51
 
 In the first chunk below, I do some EDA and make plots to better understand anthropic area
 ```{r}
