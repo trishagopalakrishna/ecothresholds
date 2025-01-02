@@ -1,0 +1,87 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I calcualte the distance to the closest anthropic land use pixel.
+I use the same inputs from 1_studyarea_delineation.Rmd ie I use the output
+from the GEE script https://code.earthengine.google.com/f7e17500a39018685d022f079335ac51
+
+I use the Mapbiomas vegetation product that is commonly used across Brazil and its biomes. 
+This product is at 30m spatial resolution, derived from Landsat imagergy. In GEE, I completed 
+processing this data such that the resulting product is a multiband image at 1km resolution,
+where each band denotes a year (1985-2023) and each pixel value is a proportion. The 
+proportion is the % of total Mapbiomas pixels within the 1km pixel that are anthropic (as per
+Mapbiomas typology)
+https://code.earthengine.google.com/f7e17500a39018685d022f079335ac51
+
+Data input- crop/mask to Cerrado and set time period 2002-2021 (rename layers to 2002,2003...2021)
+```{r}
+#Border input
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+#Mapbiomas mask
+mapbiomas_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask.tif"))
+Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic, cerrado)
+mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
+remove(mapbiomas_anthropic, mapbiomas_crop)
+
+#Timepriod 2002-2021
+mapbiomas_mask_timeperiod<- mapbiomas_mask[[18:37]]
+remove(mapbiomas_mask)
+names(mapbiomas_mask_timeperiod)<- c("2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010",
+                                 "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019",
+                                 "2020", "2021")
+mapbiomas_mask_timeperiod
+```
+
+Anthropic mask processing
+The above chunk output has annual raster where each pixel value is the proportion of the pixel
+that is anthropic. Since the natural area mask threshold is 10% (0.1), then any pixel
+with >0.1 value is considered anthropic and hence distance can be calculated to these pixels
+```{r}
+m <- c(0.1 ,1, NA)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+reclass_anthropic<- terra::classify(mapbiomas_mask_timeperiod, rclmat, others=0)
+```
+
+Distance to closest anthropic land use pixel
+```{r}
+Sys.time(); trial<- terra::gridDist(reclass_anthropic, target=NA); Sys.time()
+
+trial_crop<- terra::crop(trial, cerrado)
+trial_mask<- terra::mask(trial_crop, vect(cerrado))
+#writeRaster(trial_mask, here("Scratch", "distanthropic1.tif"))
+
+meandistanthropic<- terra::app(trial_mask, fun="mean")
+#writeRaster(meandistanthropic, here("Outputs", "OtherVariables", "AnthropicDist", "meandist_anthropicpixel.tif"))
+
+map_distanthropic<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (meandistanthropic)+
+  tm_raster(style = "cont", palette ="Reds", title="Mean distance to anthropic use (m)")  
+tmap_save(map_distanthropic, here("Outputs", "OtherVariables", "AnthropicDist", "map_meandist_anthropicpixel.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+```
