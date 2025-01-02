@@ -1,0 +1,192 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+
+#Introduction 
+In this script I process MODIS fire data for various analyses. 
+
+I processed MODIS fire data in GEE-https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fdefault%3AAbruptChanges_Cerrado%2FDisturbances%2FMODIS_firefrequency
+The output from GEE is an image collection, where each band is a year 2002-2021 and pixel
+value is number a times a pixel burned in the year. Firstly, reading the exported data and mosaicing.
+
+<<<<<<<<<< DO NOT RUN, OUTPUT WRITTEN OUT
+```{r}
+#raster_filepath <- list.files(path = here("Data", "Fire", "MODIS"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+#raster_list<-lapply(raster_filepath, rast)
+#tic(); modis_fire<- do.call(mosaic,raster_list); toc() #6.5 hours
+#writeRaster(modis_fire, here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
+
+```
+
+#Whole Cerrado analyses
+```{r}
+########################## 1- Crop, mask to Cerrado  and rename raster layers to years
+# modis_fire<- rast(here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
+# d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+# d_trans<- st_transform(d_trans, crs = 4326)
+# cerrado<- d_trans %>% st_union()
+# 
+# modis_fire_crop<- terra::crop(modis_fire, vect(cerrado))
+# modis_fire_mask<- terra::mask(modis_fire_crop, vect(cerrado))
+# remove(modis_fire_crop)
+# names(modis_fire_mask)<- c("2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010",
+#                                 "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019",
+#                                 "2020", "2021")
+# #writeRaster(modis_fire_mask, here("Outputs", "OtherVariables", "Fire", "modis_fire2002_2021.tif"))
+# remove(modis_fire)
+# 
+# # #Anmation map of fires 2002- 2021
+# # animation_x_time_map<-
+# #   tm_shape(cerrado)+ tm_fill()+
+# #   tm_shape (modis_fire_mask)+
+# #   tm_raster(style = "cont", get_brewer_pal("Oranges"),title="Fire frequency") +
+# #   tm_layout (legend.position = c("left", "top"))+
+# #               tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+# #   tm_shape(cerrado)+ tm_borders() 
+# # tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Fire", "modisfire_2002_2021.gif"),
+# #                delay = 50, loop = TRUE, restart.delay = 500,
+# #                width = 900, height = 900, dpi = 150)
+# # remove(animation_x_time_map)
+# 
+########################### 2- Fire frequency  
+# modis_fire_mask_0_1<- terra::classify(modis_fire_mask, cbind(NA,0) )
+# firefrequency<- terra::app(modis_fire_mask_0_1, fun="sum")
+# firefrequency_crop<- terra::crop(firefrequency, vect(cerrado))
+# firefrequency_mask<- terra::mask(firefrequency_crop, vect(cerrado))
+# remove(firefrequency_crop)
+# writeRaster(firefrequency_mask, here("Outputs", "OtherVariables", "Fire", "firefrequency2002_2021.tif"))
+
+########################### 3- Fire return period
+# From Libonati et al 2022- fire return period= study time period/fire frequency. 
+# Hypotheses- pixels with high fire return will probably be less stable then pixels with low fire return
+
+study_time_period<- (2021-2002)
+firefrequency_mask<- rast(here("Outputs", "OtherVariables", "Fire", "firefrequency2002_2021.tif"))
+
+fire_return<- study_time_period/firefrequency_mask
+#Pixels that had 0 fire frequency ie never burned will result in infinity fire return
+#So reclassifying these pixels to 0
+fire_return_reclass<- classify(fire_return,cbind(Inf, 0))
+#writeRaster(fire_return_reclass, here("Outputs", "OtherVariables", "Fire", "firereturn.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+formap_firereturn<- classify(fire_return,cbind(Inf, NA))
+
+map_return<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (formap_firereturn)+
+  tm_raster(style = "cont", palette ="div", title="Fire Return" ) + 
+  tm_layout(aes.palette = list(seq = "-RdGy"))
+
+formap_frequency<- classify(firefrequency_mask,cbind(0, NA))
+map_frequency<- 
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (formap_frequency)+
+  tm_raster(style = "cont", palette ="div", title="Fire Frequency" ) + 
+  tm_layout(aes.palette = list(seq = "-RdGy"))
+
+x<- tmap_arrange(map_frequency, map_return)
+tmap_save(x, here("Outputs", "OtherVariables", "Fire", "map_frequency_return.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+remove(formap_firereturn, formap_frequency, map_return, map_frequency, x)
+
+
+```
+
+
+
+#CVNP analyses
+```{r}
+modis_fire<- rast(here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
+cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) #cannot remember where this polygon comes from, maybe GEE?
+
+#CVNP MODIS fire 
+cvnp_modis_fire_crop<- terra::crop(modis_fire, vect(cvnp_shp))
+cvnp_modis_fire_mask<- terra::mask(cvnp_modis_fire_crop, vect(cvnp_shp))
+remove(cvnp_modis_fire_crop)
+names(cvnp_modis_fire_mask)<- c("2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010",
+                                "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019",
+                                "2020", "2021")
+writeRaster(cvnp_modis_fire_mask, here("Outputs", "OtherVariables", "CVNP", "cvnp_modis_fire2002_2021.tif"))
+
+#Anmation map of fires 2002- 2021
+animation_x_time_map<-
+  tm_shape(cvnp_shp)+ tm_fill()+
+  tm_shape (cvnp_modis_fire_mask)+
+  tm_raster(style = "cont", get_brewer_pal("Oranges"),title="Fire occurence") +
+  tm_layout (legend.position = c("left", "top"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(cvnp_shp)+ tm_borders() 
+tmap_animation(animation_x_time_map, filename = here("Outputs", "Final_TrajShape_Models", "CVNP_results", "modisfire_2002_2021.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150)
+
+
+#Map of pixels that burned before 2017, in 2017 and after 2017
+before2017_cvnp_fire<- terra::app(cvnp_modis_fire_mask[[1:15]], fun="sum", na.rm=T)
+before2017_cvnp_fire[before2017_cvnp_fire>=1]<-1
+#writeRaster(before2017_cvnp_fire, here("Scratch", "before2017fire.tif"))
+year2017_cvnp_fire<- cvnp_modis_fire_mask[[16]]
+#writeRaster(year2017_cvnp_fire, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "modis_fire_only2017.tif"))
+after2017_cvnp_fire<- terra::app(cvnp_modis_fire_mask[[17:20]], fun="sum", na.rm=T)
+after2017_cvnp_fire[after2017_cvnp_fire>=1]<-1
+#writeRaster(after2017_cvnp_fire, here("Scratch", "after2017fire.tif"))
+
+cvnp_2017beforeafter_map<-
+  tm_shape(cvnp_shp)+ tm_fill()+
+  tm_shape (before2017_cvnp_fire)+
+  tm_raster(col = "sum", style = "cat", palette ="grey", legend.show = F) +
+  tm_shape (year2017_cvnp_fire)+
+  tm_raster(col = "15_BurnDate_sum", style = "cat", palette ="red", alpha=0.5, legend.show = F) +
+  tm_shape (after2017_cvnp_fire)+
+  tm_raster(col = "sum", style = "cat", palette ="blue", alpha=0.3,  legend.show = F) +
+  tm_layout(main.title="CVNP MODIS fire occurence",legend.text.size = 0.8)+
+  tm_add_legend(type = "fill", 
+                labels = c("before 2017", 
+                           "year 2017",
+                           "after 2017"),
+                col = c("grey", "red", "blue"))   
+tmap_save(cvnp_2017beforeafter_map, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_fire_beforeafteryear2017.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+cvnp_2017fire_map<-
+  tm_shape(cvnp_shp)+ tm_fill()+
+  tm_shape (year2017_cvnp_fire)+
+  tm_raster(col = "15_BurnDate_sum", style = "cat", palette ="red", alpha=0.5, legend.show = F) +
+  tm_layout(main.title="CVNP MODIS fire occurence 2017 only",legend.text.size = 0.8)
+tmap_save(cvnp_2017fire_map, here("Outputs", "Final_TrajShape_Models", "CVNP_results", "cvnp_fire_year2017.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+
+
+
+```
+
+
+
+
+
