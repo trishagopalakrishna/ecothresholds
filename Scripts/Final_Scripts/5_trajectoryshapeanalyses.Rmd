@@ -32,7 +32,8 @@ library(MuMIn)
 
 class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
   dataset<- dataset %>% mutate(Months= 1:nrow(dataset))
-  #Trajectory fitting
+  
+  message("Trajectory fitting")
   null_mod<- lm(trend ~ 1, data = dataset) ##1. No intercept
   summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
   nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2)/length(dataset$trend))/sd(dataset$trend)
@@ -76,7 +77,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
 
   polynomial_orthonormal_basis <- lm(Y2~poly(dataset$Months,2, raw=T))$coefficients
 
-  # Quadratic model output:
+  message("Quadratic model output")
   classification <-
     data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
                first_order_pvalue =
@@ -102,7 +103,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                SDbef = NA,
                SDaft = NA)
   
-  # Linear model output:
+  message("Linear model output")
   classification[2,] <-
     data.frame(first_order_coefficient = delta*alpha,
                first_order_pvalue =
@@ -125,7 +126,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                SDbef = NA,
                SDaft = NA)
 
-  # No change model output:
+  message("No change model output")
   classification[3,] <-
     data.frame(first_order_coefficient = 0,
                first_order_pvalue =
@@ -149,7 +150,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                SDaft = NA)
 
 
-  # Classification of each model fitted:
+  message("Classification of each model fitted")
   for (i in 1:3){
 
     # Compute the derivative at xm-delta and at xm + delta with delta being
@@ -227,7 +228,7 @@ class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
                                              sep="_")
   }
   
-  # Abrupt breakpoint analyses
+  message ("Abrupt breakpoint analyses")
   chng_fit<- chngpt::chngptm(formula.1=trend~1,
                       formula.2=~Months,
                       family="gaussian", data=dataset,
@@ -296,9 +297,6 @@ doParallel::registerDoParallel(cl = my.cluster)
 foreach::getDoParRegistered() #should be TRUE
 foreach::getDoParWorkers() #should give numCores
 
-
-rds_list<- rds_list %>% discard(is.null)
-
 ##Converting above to nested parallelized foreach loop
 Sys.time(); x<- foreach(
   i= 1:length(split_pivot_df),
@@ -347,7 +345,7 @@ model_select<- function(models_pixel_df){
 Applying the above function
 ```{r}
 rds_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/swindow_7/", 
-                       pattern='trajshape_eastern$', all.files=TRUE, full.names=TRUE) #manually changed to read all files of each region
+                       pattern='trajshape_eastern', all.files=TRUE, full.names=TRUE) #manually changed to read all files of each region
 
 data_rds_list<- list()
 for (i in 1:length(rds_list)){
@@ -385,3 +383,1840 @@ Sys.time(); y<- foreach (
 
 write_rds(y, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/swindow_7/finalshape_eastern.rds") #manually changed to make one file per region
 ```
+
+
+##Results compilation
+##Result 1- where (map) and how much of the total area (barplot) is no change, 
+linear, quadratic and abrupt in all regions. Considering only anisoEVI results in this chunk. 
+```{r}
+swin11_southern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_southern11.rds"))
+swin11_eastern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_eastern11.rds"))
+swin11_central<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_central11.rds"))
+
+nostl_southern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_southern_nostl.rds"))
+nostl_eastern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_eastern_nostl.rds"))
+nostl_central<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_central_nostl.rds"))
+
+
+tic(); finalmodel_df<- rbind(swin11_southern, swin11_eastern, swin11_central); toc()
+tic(); nostl_finalmodel_df<- rbind(nostl_southern, nostl_eastern, nostl_central); toc()
+
+remove(swin11_central, swin11_eastern, swin11_southern, nostl_southern, nostl_eastern, nostl_central)
+
+detrended_final_model<- finalmodel_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+           "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+detrended_final_model<- detrended_final_model %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName))
+detrended_final_model2<- detrended_final_model %>% dplyr::select(c(cell,DetrendedResults, Detrended_LocBrk))
+pivot_df<- detrended_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+nostl_final_model<- nostl_finalmodel_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "NoSTL_ModelOrder"="model_order", "NoSTL_ShapeClass"="shape_class",
+           "NoSTL_TrendName"="trend_name", "NoSTL_LocBrk"="loc_brk"))
+nostl_final_model<- nostl_final_model %>% mutate(NoSTLResults = paste0(NoSTL_ModelOrder,"_", NoSTL_ShapeClass,"_", NoSTL_TrendName))
+nostl_final_model2<- nostl_final_model %>% dplyr::select(c(cell, NoSTLResults, NoSTL_LocBrk))
+nostl_pivot_df<- nostl_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#First comparison barplot- basic visualization of results
+#where yaxis- % of total area and xaxis are all trajctory shapes
+result1a_plot_df<- pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(finalmodel_df))*100) 
+names(result1a_plot_df)<- c("TrajShape", "STL11Count", "STL11Percentage")
+
+nostlresult_df<- nostl_pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(nostl_finalmodel_df))*100) 
+names(nostlresult_df)<- c("TrajShape", "NoSTLCount", "NoSTLPercentage")
+
+allclasses_df<- full_join(result1a_plot_df, nostlresult_df)
+pivot_allclasses_df<- allclasses_df %>% dplyr::select(c("TrajShape","STL11Percentage", "NoSTLPercentage")) %>%
+  pivot_longer(2:3)
+
+Set1palette<- brewer.pal(n=8, "Set1")
+
+r1a<- pivot_allclasses_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r1a<- r1a + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models", "s11_nostl_comparison_alltrajresults_barplot.png"),
+       r1a,dpi = 700, height = 20, width=20, units = "cm")
+
+#Second result- reclassify all "stable" trajectory shapes to be the same ie
+# linear stable, null stable, quad concave and convex stable are all
+# pixels with no trend. Redo above graph
+pivot_allclasses_df2<- pivot_allclasses_df %>%mutate(TrajShape=ifelse(TrajShape=="Lin_stable_constant_NA","No_trend",TrajShape))
+pivot_allclasses_df2<- pivot_allclasses_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Null_stable_constant_NA","No_trend",TrajShape))
+pivot_allclasses_df2<- pivot_allclasses_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_concave_NA","No_trend",TrajShape))
+pivot_allclasses_df2<- pivot_allclasses_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_convex_NA","No_trend",TrajShape))
+pivot_allclasses_df2<- pivot_allclasses_df2 %>% group_by(TrajShape, name) %>% summarise(value=sum(value, na.rm = T))
+
+r2a<- pivot_allclasses_df2 %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r2a<- r2a + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models", "s11_nostl_comparison_reducedtrajresults_barplot.png"),
+       r2a,dpi = 700, height = 20, width=20, units = "cm")
+
+
+#Map version of above plot ie reduced trajectory shapes where all the 
+# no trend classes are one class
+#Creating an empty raster of cerrado
+#Border input
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+Sys.time(); evi<- terra::crop(evi[[262]], vect(cerrado)); Sys.time()
+Sys.time(); evi<- terra::mask(evi, vect(cerrado)); Sys.time()
+
+s11_map_data<- finalmodel_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class)) %>%
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"~1,
+                              model_order=="Lin" & shape_class== "increase_constant"~2,
+                              model_order=="Lin" & shape_class== "stable_constant"~3, #note all stable pixels are one class
+                              model_order=="Null" & shape_class== "stable_constant"~3,
+                               model_order=="Quad" & shape_class== "stable_concave"~3,
+                               model_order=="Quad" & shape_class== "stable_convex"~3)) %>%
+  dplyr::select(-c(model_order, shape_class)) #note Linear & Null stable is same category
+
+s11_map_vector<- terra::vect(s11_map_data, geom=c("x", "y"), crs="epsg:4326")
+
+Sys.time(); s11_map_results<- terra::rasterize(s11_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(s11_map_results, here("Outputs", "Final_TrajShape_Models", "s11_trajresults.tif"), overwrite=T)
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+Set1palette<- brewer.pal(n=3, "Set1")
+Set1palette[[3]]<- "grey" #changing so that Null model reuslts are grey instead of purple
+tmap_mode("plot")
+modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (s11_map_results)+
+  tm_raster(col = "max", style = "cat", palette =Set1palette, legend.show = F) +
+  tm_layout(legend.text.size = 1)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend"),
+                col = Set1palette)
+tmap_save(modelselect_map, here("Outputs", "Final_TrajShape_Models", "s11_resducedtrajresults_map_grey.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+#Map version of no stl model
+nostl_map_data<- nostl_finalmodel_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>%
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name)~2,
+                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Null" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~3,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~4,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~5)) %>%
+  dplyr::select(-c(model_order, shape_class,trend_name)) #note Linear & Null stable is same category
+
+nostl_map_vector<- terra::vect(nostl_map_data, geom=c("x", "y"), crs="epsg:4326")
+
+Sys.time(); nostl_map_results<- terra::rasterize(nostl_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(nostl_map_results, here("Outputs", "Final_TrajShape_Models", "nostl_trajresults.tif"), overwrite=T)
+
+NoSTLSet1palette<- brewer.pal(n=5, "Set1")
+NoSTLSet1palette[[3]]<- "grey" #changing so that Null model reuslts are grey instead of purple
+tmap_mode("plot")
+nostl_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (nostl_map_results)+
+  tm_raster(col = "max", style = "cat", palette =NoSTLSet1palette, legend.show = F) +
+  tm_layout(legend.text.size = 1)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Increase",
+                           "Step- Decrease"),
+                col = NoSTLSet1palette)
+tmap_save(nostl_modelselect_map, here("Outputs", "Final_TrajShape_Models", "nostl_reducedtrajresults_map_grey.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+```
+Note below description is only considering anisoEVI.
+As expected from previous run, there are no abrupt shift pixels when using detrended
+data with swin=11. There are pixels that are undergoing linear and quadratic changes.
+And same as previous results, the amount of negative and positive changes
+in both categories is suspiciously almost the same ie almost the same number of pixels
+have negative and positive linear change and negative and positive quadratic change.
+
+97% of the total cerrado area is stable, which does not make sense! This is because
+I have not excluded anthropic area, so how can so much of the area be stable! 
+I think this means that anisoEVI is not doing a good job picking up trends in 
+land use conversion to ag or urban areas.
+
+The map is random- the non-null pixels are everywhere, so its about figuring out
+the patterns.
+
+##Result 2- do the trajectories results from above change if the 
+detrending settings are different (sensitivity analyses). Again considering only anisoEVI
+```{r}
+############################################### Sensitivity analyses of annual mean trends with no stl and with 3 different s.win settings
+swin7_southern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_southern7.rds"))
+swin7_eastern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_eastern7.rds"))
+swin7_central<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_central7.rds"))
+
+tic(); model7_df<- rbind(swin7_southern, swin7_eastern, swin7_central); toc()
+
+swinperiodic_southern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_southernperiodic.rds"))
+swinperiodic_eastern<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_easternperiodic.rds"))
+swinperiodic_central<- read_rds(here("Outputs","Final_TrajShape_Models","finalshape_centralperiodic.rds"))
+
+tic(); modelperiodic_df<- rbind(swinperiodic_southern, swinperiodic_eastern, swinperiodic_central); toc()
+
+remove(swin7_southern, swinperiodic_southern, swin7_eastern, swinperiodic_eastern, swin7_central, swinperiodic_central)
+
+d7_final_model<- model7_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+           "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+d7_final_model<- d7_final_model %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName))
+d7_final_model2<- d7_final_model %>% dplyr::select(c(cell,DetrendedResults, Detrended_LocBrk))
+pivot_df_7<- d7_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+pivot_df_7<- pivot_df_7 %>% mutate(value=ifelse(value=="Lin_stable_constant_NA","Null_stable_constant_NA",value))
+
+sensitivity7<- pivot_df_7 %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(model7_df))*100) 
+names(sensitivity7)<- c("Trajectory_Shape", "PixelCount_swin7", "Percentage_swin7")
+
+dperiodic_final_model<- modelperiodic_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+           "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+dperiodic_final_model<- dperiodic_final_model %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName))
+dperiodic_final_model2<- dperiodic_final_model %>% dplyr::select(c(cell,DetrendedResults, Detrended_LocBrk))
+pivot_df_periodic<- dperiodic_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+pivot_df_periodic<- pivot_df_periodic %>% mutate(value=ifelse(value=="Lin_stable_constant_NA","Null_stable_constant_NA",value))
+
+sensitivity_periodic<- pivot_df_periodic %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(modelperiodic_df))*100) 
+names(sensitivity_periodic)<- c("Trajectory_Shape", "PixelCount_swinperiodic", "Percentage_swinperiodic")
+
+sensitivity_df<- full_join(sensitivity_periodic, sensitivity7)
+names(result1a_plot_df)<- c("Trajectory_Shape", "PixelCount_swin11", "Percentage_swin11")
+sensitivity_df<- full_join(sensitivity_df, result1a_plot_df)
+names(nostlresult_df)<- c("Trajectory_Shape", "PixelCount_nostl", "Percentage_nostl")
+sensitivity_df<- full_join(sensitivity_df, nostlresult_df)
+
+#Barplot comparison of trajectory classes of different detrending windows
+sensitivity_barplot<- sensitivity_df %>% 
+  dplyr::select(Trajectory_Shape, Percentage_swin11, Percentage_swin7, Percentage_swinperiodic, Percentage_nostl) %>%
+  pivot_longer(2:5) %>%
+  ggplot(aes(x=name, y=value, fill= name)) +
+  geom_bar(position=position_dodge(width=0.9), stat="identity")+
+  facet_grid(.~Trajectory_Shape, scales = "free_y") +
+  geom_text(aes(label=round(value, 2), fontface="bold", vjust=2), position=position_dodge(width=0.9), size=2.75)+
+  ylab("Percentage Cerrado Area") + xlab("Detrending seasonal windows")+
+  theme_bw()+
+   theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        legend.title = element_blank())
+sensitivity_barplot<- sensitivity_barplot + scale_fill_brewer(palette = "Set1")
+ggsave(here("Outputs", "Final_TrajShape_Models", "sensitivity_barplot.png"),
+       sensitivity_barplot,dpi = 700, height = 30, width=50, units = "cm")
+
+```
+Basically when using different detrending seasonal windows, the results do not change
+significantly. The difference is so insignificant that it is not worth making
+a map of which pixels differ.
+
+##Result 3- Annually aggregated analyses
+Akin to the entire project needs to be at the same spatial resolution, I have
+realized that the entire project also needs to have the same temporal resolution. 
+Mapbiomass which is the "true"/verification product being used is at annual
+time steps. I think I need to aggregate the anisoEVI values to annual timesteps
+to proceed ultimately. I do two things- obtain annual mean of the trend (after
+stl with swindow=11) and then fit trajectories and get the annual mean of the 
+value_int (ie no stl) and fit trajectories. I do this by modifying the trajectory
+and model selection functions and compile results below. 
+
+```{r}
+######## I considered annual mean without stl and with swin=11 for anisoEVI
+am_trend_southern<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annuals11_southern.rds"))
+am_trend_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annuals11_eastern.rds"))
+am_trend_central<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annuals11_central.rds"))
+
+am_southern<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annualmean_southern.rds"))
+am_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annualmean_eastern.rds"))
+am_central<- read_rds(here("Outputs", "Final_TrajShape_Models", "Annual", "finalshape_annualmean_central.rds"))
+
+tic(); annualmean_trend_df<- rbind(am_trend_southern, am_trend_eastern, am_trend_central); toc()
+tic(); annualmean_df<- rbind(am_southern, am_eastern, am_central); toc()
+
+remove(am_trend_central, am_trend_eastern, am_trend_southern)
+remove(am_central, am_eastern, am_southern)
+
+am_trend_final_model<- annualmean_trend_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "AnnualMean_Detrended_ModelOrder"="model_order", "AnnualMean_Detrended_ShapeClass"="shape_class",
+           "AnnualMean_Detrended_TrendName"="trend_name", "AnnualMean_Detrended_LocBrk"="loc_brk"))
+am_trend_final_model<- am_trend_final_model %>% 
+  mutate(AnnualMean_DetrendedResults = paste0(AnnualMean_Detrended_ModelOrder,"_", AnnualMean_Detrended_ShapeClass,"_", AnnualMean_Detrended_TrendName))
+am_trend_final_model2<- am_trend_final_model %>% dplyr::select(c(cell, AnnualMean_DetrendedResults, AnnualMean_Detrended_LocBrk))
+amtrend_pivot_df<- am_trend_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+am_final_model<- annualmean_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "AnnualMean_ModelOrder"="model_order", "AnnualMean_ShapeClass"="shape_class",
+           "AnnualMean_TrendName"="trend_name", "AnnualMean_LocBrk"="loc_brk"))
+am_final_model<- am_final_model %>% 
+  mutate(AnnualMean_Results = paste0(AnnualMean_ModelOrder,"_", AnnualMean_ShapeClass,"_", AnnualMean_TrendName))
+am_final_model2<- am_final_model %>% dplyr::select(c(cell, AnnualMean_Results, AnnualMean_LocBrk))
+am_pivot_df<- am_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#barplot results
+am_trend_plot_df<- amtrend_pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(annualmean_trend_df))*100) 
+names(am_trend_plot_df)<- c("TrajShape", "AMT_STL11Count", "AMT_STL11Percentage")
+
+am_plot_df<- am_pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(annualmean_df))*100) 
+names(am_plot_df)<- c("TrajShape", "AM_Count", "AM_Percentage")
+
+am_allclasses_df<- full_join(am_trend_plot_df, am_plot_df)
+pivot_am_allclasses_df<- am_allclasses_df %>% dplyr::select(c("TrajShape","AMT_STL11Percentage", "AM_Percentage")) %>%
+  pivot_longer(2:3)
+
+pivot_am_trend_plot_df<- am_trend_plot_df %>% dplyr::select(c("TrajShape","AMT_STL11Percentage")) %>%
+  pivot_longer(2)
+
+Set1palette<- brewer.pal(n=8, "Set1")
+
+r3a<- pivot_am_allclasses_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r3a<- r3a + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual", "am_s11_nostl_comparison_alltrajresults_barplot.png"),
+       r3a,dpi = 700, height = 20, width=20, units = "cm")
+
+only_amtrendresults<- pivot_am_trend_plot_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+only_amtrendresults<- only_amtrendresults + scale_fill_manual(values=Set1palette)
+
+#Similar to previous results compilation, I aggregate all the "stable classes"
+pivot_am_allclasses_df2<- pivot_am_allclasses_df %>% mutate(TrajShape=ifelse(TrajShape=="Lin_stable_constant_NA","No_trend",TrajShape))
+pivot_am_allclasses_df2<- pivot_am_allclasses_df2 %>% mutate(TrajShape=ifelse(TrajShape=="Null_stable_constant_NA","No_trend",TrajShape))
+pivot_am_allclasses_df2<- pivot_am_allclasses_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_concave_NA","No_trend",TrajShape))
+pivot_am_allclasses_df2<- pivot_am_allclasses_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_convex_NA","No_trend",TrajShape))
+pivot_am_allclasses_df2<- pivot_am_allclasses_df2 %>% group_by(TrajShape, name) %>% summarise(value=sum(value, na.rm = T))
+
+pivot_am_trend_plot_df2<- pivot_am_trend_plot_df %>% mutate(TrajShape=ifelse(TrajShape=="Lin_stable_constant_NA","No_trend",TrajShape))
+pivot_am_trend_plot_df2<- pivot_am_trend_plot_df2 %>% mutate(TrajShape=ifelse(TrajShape=="Null_stable_constant_NA","No_trend",TrajShape))
+pivot_am_trend_plot_df2<- pivot_am_trend_plot_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_concave_NA","No_trend",TrajShape))
+pivot_am_trend_plot_df2<- pivot_am_trend_plot_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_convex_NA","No_trend",TrajShape))
+pivot_am_trend_plot_df2<- pivot_am_trend_plot_df2 %>% group_by(TrajShape, name) %>% summarise(value=sum(value, na.rm = T))
+
+r4a<- pivot_am_allclasses_df2 %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r4a<- r4a + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual", "am_s11_nostl_comparison_reducedtrajresults_barplot.png"),
+       r4a,dpi = 700, height = 20, width=20, units = "cm")
+
+only_amtrendresults_reduced<- pivot_am_trend_plot_df2 %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+only_amtrendresults_reduced<- only_amtrendresults_reduced + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual", "only_am_s11_reducedtrajresults_barplot.png"),
+       only_amtrendresults_reduced, dpi = 700, height = 20, width=20, units = "cm")
+
+#map of reduced trajectory classes
+#Border input
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+Sys.time(); evi<- terra::crop(evi[[262]], vect(cerrado)); Sys.time()
+Sys.time(); evi<- terra::mask(evi, vect(cerrado)); Sys.time()
+
+amtrend_map_data<- annualmean_trend_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>%
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name)~2,
+                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Null" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~3,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~4,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~5)) %>%
+  dplyr::select(-c(model_order, shape_class,trend_name)) #note Linear & Null stable is same category
+
+amtrend_map_vector<- terra::vect(amtrend_map_data, geom=c("x", "y"), crs="epsg:4326")
+
+Sys.time(); amtrend_map_results<- terra::rasterize(amtrend_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(amtrend_map_results, here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"), overwrite=T)
+
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+tmap_mode("plot")
+amtrend_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (amtrend_map_results)+
+  tm_raster(col = "max", style = "cat", palette =Set1palette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase"),
+                col = Set1palette)
+tmap_save(amtrend_modelselect_map, here("Outputs", "Final_TrajShape_Models", "Annual", "amtrend_s11_reducedtrajresults_map_grey.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+
+######## In Phase 1- I considered annual mean without stl and annual means after stl with 3 stl windows
+#1. No stl
+nostl_central<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/no_detrending/finalshape_annualmean_central.rds")
+nostl_southern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/no_detrending/finalshape_annualmean_southern.rds")
+nostl_eastern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/no_detrending/finalshape_annualmean_eastern.rds")
+
+#2. swin=11
+swin11_central<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_11/finalshape_annuals11_central.rds")
+swin11_southern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_11/finalshape_annuals11_southern.rds")
+swin11_eastern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_11/finalshape_annuals11_eastern.rds")
+
+#3. swin=7
+swin7_central<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_7/finalshape_annuals7_central.rds")
+swin7_southern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_7/finalshape_annuals7_southern.rds")
+swin7_eastern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_7/finalshape_annuals7_eastern.rds")
+
+#4. swin=periodic
+swinperiodic_central<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_periodic/finalshape_annualsperiodic_central.rds")
+swinperiodic_southern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_periodic/finalshape_annualsperiodic_southern.rds")
+swinperiodic_eastern<- read_rds("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_periodic/finalshape_annualsperiodic_eastern.rds")
+
+swin11_df<- rbind(swin11_southern, swin11_eastern, swin11_central)
+swin7_df<- rbind(swin7_southern, swin7_eastern, swin7_central)
+swinperiodic_df<- rbind(swinperiodic_southern, swinperiodic_eastern, swinperiodic_central)
+nostl_df<- rbind(nostl_southern, nostl_eastern, nostl_central)
+
+remove(nostl_central, nostl_southern, nostl_eastern, swin11_central, swin11_southern, swin11_eastern, swin7_central, swin7_southern, swin7_eastern, swinperiodic_central, swinperiodic_southern, swinperiodic_eastern)
+
+print ("Data read")
+
+## Data processing
+
+#1. no stl
+nostl_final_model<- nostl_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "NoSTL_ModelOrder"="model_order", "NoSTL_ShapeClass"="shape_class",
+           "NoSTL_TrendName"="trend_name", "NoSTL_LocBrk"="loc_brk"))
+nostl_final_model<- nostl_final_model %>% mutate(NoSTLResults = paste0(NoSTL_ModelOrder,"_", NoSTL_ShapeClass,"_", NoSTL_TrendName))
+nostl_final_model2<- nostl_final_model %>% dplyr::select(c(cell, NoSTLResults, NoSTL_LocBrk))
+nostl_pivot_df<- nostl_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#2. swin=11
+swin11_final_model<- swin11_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Swin11_ModelOrder"="model_order", "Swin11_ShapeClass"="shape_class",
+           "Swin11_TrendName"="trend_name", "Swin11_LocBrk"="loc_brk"))
+swin11_final_model<- swin11_final_model %>% mutate(Swin11Results = paste0(Swin11_ModelOrder,"_", Swin11_ShapeClass,"_", Swin11_TrendName))
+swin11_final_model2<- swin11_final_model %>% dplyr::select(c(cell,Swin11Results, Swin11_LocBrk))
+pivot_swin11_df<- swin11_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#3.swin=7
+swin7_final_model<- swin7_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Swin7_ModelOrder"="model_order", "Swin7_ShapeClass"="shape_class",
+           "Swin7_TrendName"="trend_name", "Swin7_LocBrk"="loc_brk"))
+swin7_final_model<- swin7_final_model %>% mutate(Swin7Results = paste0(Swin7_ModelOrder,"_", Swin7_ShapeClass,"_", Swin7_TrendName))
+swin7_final_model2<- swin7_final_model %>% dplyr::select(c(cell,Swin7Results, Swin7_LocBrk))
+pivot_swin7_df<- swin7_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#4. swin=periodic
+swinperiodic_final_model<- swinperiodic_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "Swinperiodic_ModelOrder"="model_order", "Swinperiodic_ShapeClass"="shape_class",
+           "Swinperiodic_TrendName"="trend_name", "Swinperiodic_LocBrk"="loc_brk"))
+swinperiodic_final_model<- swinperiodic_final_model %>% mutate(SwinperiodicResults = paste0(Swinperiodic_ModelOrder,"_", Swinperiodic_ShapeClass,"_", Swinperiodic_TrendName))
+swinperiodic_final_model2<- swinperiodic_final_model %>% dplyr::select(c(cell,SwinperiodicResults, Swinperiodic_LocBrk))
+pivot_swinperiodic_df<- swinperiodic_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+print ("Data prep 1 complete")
+
+#barplot data prep 
+nostl_plot_df<- nostl_pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(nostl_df))*100) 
+names(nostl_plot_df)<- c("TrajShape", "AM_Count", "AM_Percentage")
+
+swin11_plot_df<- pivot_swin11_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(swin11_df))*100) 
+names(swin11_plot_df)<- c("TrajShape", "AMSwin11_Count", "AMSwin11_Percentage")
+
+swin7_plot_df<- pivot_swin7_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(swin7_df))*100) 
+names(swin7_plot_df)<- c("TrajShape", "AMSwin7_Count", "AMSwin7_Percentage")
+
+swinperiodic_plot_df<- pivot_swinperiodic_df %>% group_by(value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(swinperiodic_df))*100) 
+names(swinperiodic_plot_df)<- c("TrajShape", "AMSwinperiodic_Count", "AMSwinperiodic_Percentage")
+
+am_allclasses_df<- full_join(nostl_plot_df, swin11_plot_df, by=join_by(TrajShape))
+am_allclasses_df<- full_join(am_allclasses_df, swin7_plot_df, by=join_by(TrajShape))
+am_allclasses_df<- full_join(am_allclasses_df, swinperiodic_plot_df, by=join_by(TrajShape))
+pivot_am_allclasses_df<- am_allclasses_df %>% dplyr::select(c("TrajShape", "AM_Percentage", "AMSwin11_Percentage", "AMSwin7_Percentage", "AMSwinperiodic_Percentage")) %>%
+  pivot_longer(2:5)
+
+Set1palette<- brewer.pal(n=8, "Set1")
+
+r3a<- pivot_am_allclasses_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r3a<- r3a + scale_fill_manual(values=Set1palette)
+ggsave("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/comparison_plot.png",
+       r3a,dpi = 700, height = 20, width=20, units = "cm")
+
+remove(r3a, nostl_plot_df, swin11_plot_df, swin7_plot_df, swinperiodic_plot_df, am_allclasses_df, Set1palette)
+#################################### Aggregating no trend classes
+nostl_plot_df<- nostl_pivot_df %>% group_by(value) %>% 
+  summarise(count= n()) 
+nostl_plot_df<- nostl_plot_df %>% mutate(value=case_when(value=="Lin_decrease_constant_NA"~"Linear decrease",
+                                                         value=="Lin_increase_constant_NA"~"Linear increase",
+                                                         value=="Step_NA_decrease"~"Step decrease",
+                                                         value=="Step_NA_increase"~"Step increase",
+                                                         TRUE~"No trend"))
+nostl_plot_df<- nostl_plot_df %>% group_by(value) %>% 
+  summarise(totalcount= sum(count)) %>% 
+  mutate(percentage= (totalcount/nrow(nostl_df))*100)
+names(nostl_plot_df)<- c("TrajShape", "NoSTL_Count", "NoSTL_Percentage")
+
+swin11_plot_df<- pivot_swin11_df %>% group_by(value) %>% 
+  summarise(count= n())
+swin11_plot_df<- swin11_plot_df %>% mutate(value=case_when(value=="Lin_decrease_constant_NA"~"Linear decrease",
+                                                         value=="Lin_increase_constant_NA"~"Linear increase",
+                                                         value=="Step_NA_decrease"~"Step decrease",
+                                                         value=="Step_NA_increase"~"Step increase",
+                                                         TRUE~"No trend"))
+swin11_plot_df<- swin11_plot_df %>% group_by(value) %>% 
+  summarise(totalcount= sum(count)) %>% 
+  mutate(percentage= (totalcount/nrow(swin11_df))*100)
+names(swin11_plot_df)<- c("TrajShape", "Swin11_Count", "Swin11_Percentage")
+
+swin7_plot_df<- pivot_swin7_df %>% group_by(value) %>% 
+  summarise(count= n())
+swin7_plot_df<- swin7_plot_df %>% mutate(value=case_when(value=="Lin_decrease_constant_NA"~"Linear decrease",
+                                                           value=="Lin_increase_constant_NA"~"Linear increase",
+                                                           value=="Step_NA_decrease"~"Step decrease",
+                                                           value=="Step_NA_increase"~"Step increase",
+                                                           TRUE~"No trend"))
+swin7_plot_df<- swin7_plot_df %>% group_by(value) %>% 
+  summarise(totalcount= sum(count)) %>% 
+  mutate(percentage= (totalcount/nrow(swin7_df))*100)
+names(swin7_plot_df)<- c("TrajShape", "Swin7_Count", "Swin7_Percentage")
+
+swinperiodic_plot_df<- pivot_swinperiodic_df %>% group_by(value) %>% 
+  summarise(count= n())
+swinperiodic_plot_df<- swinperiodic_plot_df%>% mutate(value=case_when(value=="Lin_decrease_constant_NA"~"Linear decrease",
+                                                         value=="Lin_increase_constant_NA"~"Linear increase",
+                                                         value=="Step_NA_decrease"~"Step decrease",
+                                                         value=="Step_NA_increase"~"Step increase",
+                                                         TRUE~"No trend"))
+swinperiodic_plot_df<- swinperiodic_plot_df %>% group_by(value) %>% 
+  summarise(totalcount= sum(count)) %>% 
+  mutate(percentage= (totalcount/nrow(swinperiodic_df))*100)
+names(swinperiodic_plot_df)<- c("TrajShape", "Swinperiodic_Count", "Swinperiodic_Percentage")
+
+am_allclasses_df<- full_join(nostl_plot_df, swin11_plot_df, by=join_by(TrajShape))
+am_allclasses_df<- full_join(am_allclasses_df, swin7_plot_df, by=join_by(TrajShape))
+am_allclasses_df<- full_join(am_allclasses_df, swinperiodic_plot_df, by=join_by(TrajShape)) 
+pivot_am_allclasses_df<- am_allclasses_df %>% dplyr::select(c("TrajShape", "NoSTL_Percentage", "Swin11_Percentage", "Swin7_Percentage", "Swinperiodic_Percentage")) %>%
+  pivot_longer(2:5)
+
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+r3a<- pivot_am_allclasses_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r3a<- r3a + scale_fill_manual(values=Set1palette)
+ggsave("/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/aggtrajshapes_comparison_plot.png",
+       r3a,dpi = 700, height = 20, width=20, units = "cm")
+
+
+#am_map_data<- annualmean_df %>% ungroup() %>%
+#  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>%
+#  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+#                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name)~2,
+#                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name)~3,
+#                              model_order=="Null" & shape_class== "stable_constant" & is.na(trend_name)~3,
+#                              model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name)~3,
+#                              model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~3,
+#                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~4,
+#                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~5)) %>%
+#  dplyr::select(-c(model_order, shape_class,trend_name)) #note Linear & Null stable is same category
+
+#am_map_vector<- terra::vect(am_map_data, geom=c("x", "y"), crs="epsg:4326")
+
+#Sys.time(); am_map_results<- terra::rasterize(am_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(am_map_results, here("Outputs", "Final_TrajShape_Models", "Annual", "am_trajresults.tif"), overwrite=T) #moved to archive folder
+
+#tmap_mode("plot")
+#am_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+#  tm_shape (am_map_results)+
+#  tm_raster(col = "max", style = "cat", palette =Set1palette, legend.show = F) +
+#  tm_layout(legend.text.size = 1.5)+
+#  tm_add_legend(type = "fill", 
+#                labels = c("Linear- Decrease, Constant", 
+#                           "Linear- Increase, Constant",
+#                           "No trend",
+#                           "Step- Decrease",
+#                           "Step- Increase"),
+#                col = Set1palette)
+#tmap_save(am_modelselect_map, here("Outputs", "Final_TrajShape_Models", "Annual", "am_reducedtrajresults_map_grey.png"),
+#        height = 30, width = 30, units = "cm", dpi=700) #moved to archive in same folder
+
+#####Cross tab of the pixels classified into different trajectories from the 
+#data which is annual mean and the annual mean after stl decomposition
+#am_map_results
+#amtrend_map_results
+
+#crosstab_stack<- c(amtrend_map_results, am_map_results )
+#names(crosstab_stack)<- c("STLAnnualMean", "AnnualMean")
+#Sys.time(); x<- terra::crosstab(crosstab_stack, long = TRUE, useNA= FALSE); Sys.time()
+# above output only gives me count. But I think showing % will be more intuitive
+
+#To calculate %, I need to first find the total n of each class of stl annual mean
+#x<- x %>% group_by(STLAnnualMean) %>% mutate(totalSTL_AM_n= sum(n))
+#x<- x %>% mutate(percentage= (n/totalSTL_AM_n)*100)
+#x<- x%>% mutate(STLAnnualMean=case_when(STLAnnualMean == 1~"Lin_dec",
+#                                        STLAnnualMean== 2~ "Lin_inc",
+#                                        STLAnnualMean==3~ "No trend",
+#                                        STLAnnualMean==4~ "Step_dec",
+#                                        STLAnnualMean==5~ "Step_inc"))
+#x<- x%>% mutate(AnnualMean=case_when(AnnualMean == 1~"Lin_dec",
+#                                        AnnualMean== 2~ "Lin_inc",
+#                                        AnnualMean==3~ "No trend",
+#                                        AnnualMean==4~ "Step_dec",
+#                                        AnnualMean==5~ "Step_inc"))
+#x2<- x %>% dplyr::select(-c(n, totalSTL_AM_n))
+
+
+
+```
+
+#Marie Curie proposal fig- do not run again
+```{r}
+#running code from above chunk realted to amtrend
+am_trend_plot_df
+
+am_trend_plot_df<- am_trend_plot_df %>% mutate(TrajShape=ifelse(TrajShape=="Lin_stable_constant_NA","Stable",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>% mutate(TrajShape=ifelse(TrajShape=="Null_stable_constant_NA","Stable",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_concave_NA","Stable",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_convex_NA","Stable",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>% group_by(TrajShape) %>% summarise(AMT_STL11Percentage=sum(AMT_STL11Percentage, na.rm = T),
+                                                                          AMT_STL11Count=sum(AMT_STL11Count, na.rm = T))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Step_NA_decrease","Abrupt shift (decrease)",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Step_NA_increase","Abrupt shift (increase)",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Lin_decrease_constant_NA","Linear deccrease",TrajShape))
+am_trend_plot_df<- am_trend_plot_df %>%mutate(TrajShape=ifelse(TrajShape=="Lin_increase_constant_NA","Linear increase",TrajShape))
+
+
+brewer.pal(n=5,"Dark2")
+Set1palette<- c("#1B9E77" ,"#D95F02", "#7570B3", "#E7298A", "grey90")
+
+mcplot<- am_trend_plot_df %>% dplyr::select(-c(AMT_STL11Count)) %>%
+  ggplot(aes(x=reorder(TrajShape,-AMT_STL11Percentage), AMT_STL11Percentage, fill = TrajShape)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+   ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 15, angle = 90),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "none")
+
+mcplot<- mcplot + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs","mariecurie_barplot.png"),
+       mcplot,dpi = 700, height = 5, width=5, units = "cm")
+
+map_palette<- c("#7570B3", "#E7298A","grey90", "#1B9E77" ,"#D95F02")
+amtrend_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (amtrend_map_results, legend.show= F)+
+  tm_raster(col = "max", style = "cat", palette =map_palette, 
+            legend.show = F)+
+  tm_layout(legend.text.size = 1.3, frame= FALSE)
+  #tm_add_legend(type = "fill", 
+  #              labels = c("Abrupt shift (decrease)", 
+  #                         "Abrupt shift (increase)",
+  #                        "Linear decrease", 
+  #                         "Linear increase",
+  #                         "Stable"),
+  #              col = Set1palette)
+tmap_save(amtrend_modelselect_map, here("Outputs", "mariecurie_map2.png"),
+        height = 10, width = 10, units = "cm", dpi=700)
+
+```
+
+
+##Results compilation-Result 4- Annually aggregated analyses but by climate regions
+```{r}
+#run lines 670-673 to read annual mean trajectory result of swin=11 for each region seperately
+am_trend_central<- am_trend_central %>% mutate(climate_region="central")
+am_trend_eastern<- am_trend_eastern %>% mutate(climate_region="eastern")
+am_trend_southern<- am_trend_southern %>% mutate(climate_region="southern")
+
+
+tic(); annualmean_trend_df<- rbind(am_trend_southern, am_trend_eastern, am_trend_central); toc()
+
+am_trend_final_model<- annualmean_trend_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, climate_region)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "AnnualMean_Detrended_ModelOrder"="model_order", "AnnualMean_Detrended_ShapeClass"="shape_class",
+           "AnnualMean_Detrended_TrendName"="trend_name", "AnnualMean_Detrended_LocBrk"="loc_brk","Region"="climate_region"))
+am_trend_final_model<- am_trend_final_model %>% 
+  mutate(AnnualMean_DetrendedResults = paste0(AnnualMean_Detrended_ModelOrder,"_", AnnualMean_Detrended_ShapeClass,"_", AnnualMean_Detrended_TrendName))
+am_trend_final_model2<- am_trend_final_model %>% dplyr::select(c(cell, AnnualMean_DetrendedResults, AnnualMean_Detrended_LocBrk, Region))
+#amtrend_pivot_df<- am_trend_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+am_trend_final_model2<- am_trend_final_model2 %>% mutate(AnnualMean_DetrendedResults=case_when(AnnualMean_DetrendedResults=="Lin_decrease_constant_NA"~"Linear decrease",
+                                                         AnnualMean_DetrendedResults=="Lin_increase_constant_NA"~"Linear increase",
+                                                         AnnualMean_DetrendedResults=="Step_NA_decrease"~"Step decrease",
+                                                         AnnualMean_DetrendedResults=="Step_NA_increase"~"Step increase",
+                                                         TRUE~"No trend"))
+
+region_results<- am_trend_final_model2 %>% group_by(AnnualMean_DetrendedResults, Region) %>% 
+  summarise(count= n()) 
+region_results<- region_results %>% group_by(Region) %>% mutate(region_count=sum(count))
+region_results<- region_results %>% mutate(percentage_of_region= (count/region_count)*100) 
+
+
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+r4<- region_results %>% 
+  ggplot(aes(AnnualMean_DetrendedResults, percentage_of_region, fill = AnnualMean_DetrendedResults, group=Region, alpha=as.factor(Region))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area in region")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r4<- r4 + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models", "Annual", "comparison_trajshapes_climateregions_amtrendswin11.png"),
+       r4,dpi = 700, height = 20, width=20, units = "cm")
+
+```
+
+##Results compilation-Result 5- understanding the distribution of the step/linear pixels
+independently (by plottign seperately) and by lat/long
+```{r}
+amtrend_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+
+df<- terra::as.data.frame(amtrend_map_results, xy=TRUE)
+
+
+####### South to North
+df2<- df %>% ungroup() %>% mutate(CutNumber= cut_interval(y, n=30))
+trajtype_count <- df2 %>% group_by(CutNumber,max) %>%
+  summarise(count=n())
+trajtype_count <- trajtype_count  %>% group_by(CutNumber) %>% mutate(totalpixels=sum(count))
+trajtype_count <- trajtype_count  %>% mutate(percentage=(count/totalpixels)*100)
+trajtype_count<- trajtype_count %>% mutate(max=case_when(max==1~"Lienar decrease",
+                                                         max==2~"Linear increase",
+                                                         max==4~"Step decrease",
+                                                         max==5~"Step increase",
+                                                         TRUE~"No trend"))
+
+
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+p2<- trajtype_count %>%
+  ggplot(aes(CutNumber, percentage, fill = max)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  facet_wrap(~max, scales = "free_y", ncol=1) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none")
+p2<- p2 + scale_fill_manual(values=c("#E41A1C", "#377EB8", "grey","#984EA3","#FF7F00"))
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual", "distribution_ston_amtrendswin11.png"), plot = p2,
+       height = 30, width = 30, units = "cm", dpi=700) 
+
+remove(df2, trajtype_count, Set1palette, p2)
+###### East to West
+df3<- df %>% ungroup() %>% mutate(CutNumber= cut_interval(x, n=30))
+trajtype_count <- df3 %>% group_by(CutNumber,max) %>%
+  summarise(count=n())
+trajtype_count <- trajtype_count  %>% group_by(CutNumber) %>% mutate(totalpixels=sum(count))
+trajtype_count <- trajtype_count  %>% mutate(percentage=(count/totalpixels)*100)
+trajtype_count<- trajtype_count %>% mutate(max=case_when(max==1~"Lienar decrease",
+                                                         max==2~"Linear increase",
+                                                         max==4~"Step decrease",
+                                                         max==5~"Step increase",
+                                                         TRUE~"No trend"))
+
+
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+p3<- trajtype_count %>%
+  ggplot(aes(CutNumber, percentage, fill = max)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  facet_wrap(~max, scales = "free_y", ncol=1) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position = "none")
+p3<- p3 + scale_fill_manual(values=c("#E41A1C", "#377EB8", "grey","#984EA3","#FF7F00"))
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual", "distribution_etow_amtrendswin11.png"), plot = p3,
+       height = 30, width = 30, units = "cm", dpi=700) 
+
+
+
+```
+
+##Results compilation-Result 6- results from NDVI trajectory shape analyses (annual after stl decomposition swin=11)
+<<<<<<<<<<<<<<<< DO NOT RUN NEXT CHUNK, READ EXPLANATION AFTER CHUNK AND PROCEED >>>>>>>>>>>>>>>>>>>>>>>>
+I processed NDVI trajectory shapes on dungbeetle, and transferred the final files to this laptop
+```{r}
+#Data 
+swin11_southern<-read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_southern.rds"))
+swin11_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_eastern.rds"))
+swin11_central<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "finalshape_annuals11_central.rds"))
+
+finalmodel_df<- rbind(swin11_southern, swin11_eastern, swin11_central)
+ 
+detrended_final_model<- finalmodel_df %>% 
+   dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk)) %>%
+   rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+            "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+detrended_final_model<- detrended_final_model %>% mutate(DetrendedResults = paste0(Detrended_ModelOrder,"_", Detrended_ShapeClass,"_", Detrended_TrendName))
+detrended_final_model2<- detrended_final_model %>% dplyr::select(c(cell,DetrendedResults, Detrended_LocBrk))
+pivot_df<- detrended_final_model2 %>% pivot_longer(2) %>% dplyr::select(-c(name))
+
+#Barplot with area results of all trajectory shapes
+result1a_plot_df<- pivot_df %>% group_by(value) %>% 
+   summarise(count= n()) %>%
+   mutate(percentage= (count/nrow(finalmodel_df))*100) 
+names(result1a_plot_df)<- c("TrajShape", "STL11Count", "STL11Percentage")
+nb.cols <- 10
+mycolors <- colorRampPalette(brewer.pal(9, "Set1"))(nb.cols)
+ 
+pivot_result1a_plot_df<- result1a_plot_df  %>% dplyr::select(c("TrajShape","STL11Percentage")) %>%
+  pivot_longer(2)
+
+r1a<- pivot_result1a_plot_df %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+ r1a<- r1a + scale_fill_manual(values=mycolors)
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "ndvionly_s11_alltrajresults_barplot.png"),
+        r1a,dpi = 700, height = 20, width=20, units = "cm")
+
+
+#Barplot with reduced trajectories ie merging all the "stable" trajectories
+pivot_result1a_plot_df2<- pivot_result1a_plot_df %>% mutate(TrajShape=ifelse(TrajShape=="Lin_stable_constant_NA","No_trend",TrajShape))
+pivot_result1a_plot_df2<- pivot_result1a_plot_df2 %>% mutate(TrajShape=ifelse(TrajShape=="Null_stable_constant_NA","No_trend",TrajShape))
+pivot_result1a_plot_df2<- pivot_result1a_plot_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_concave_NA","No_trend",TrajShape))
+pivot_result1a_plot_df2<- pivot_result1a_plot_df2 %>%mutate(TrajShape=ifelse(TrajShape=="Quad_stable_convex_NA","No_trend",TrajShape))
+pivot_result1a_plot_df2<- pivot_result1a_plot_df2 %>% group_by(TrajShape, name) %>% summarise(value=sum(value, na.rm = T))
+
+r1b<- pivot_result1a_plot_df2 %>% 
+  ggplot(aes(TrajShape, value, fill = TrajShape, group=name)) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of total area of Cerrado")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+r1b<- r1b + scale_fill_manual(values=Set1palette)
+ggsave(here("Outputs", "Final_TrajShape_Models","Annual_NDVI", "ndvionly_s11_reducedtrajresults_barplot.png"),
+        r1b,dpi = 700, height = 20, width=20, units = "cm")
+
+##Map of reduced trajectories output
+#rerun lines 799-806
+ndvi_amswin11_trendmap<- finalmodel_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>%
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name)~2,
+                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Null" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~3,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~4,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~5,
+                              model_order=="Quad" & shape_class=="decrease_accelerated" & is.na(trend_name)~6,
+                              model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend_name)~7)) %>%
+  dplyr::select(-c(model_order, shape_class,trend_name)) #note Linear & Null stable is same category
+
+ndvi_amswin11_map_vector<- terra::vect(ndvi_amswin11_trendmap, geom=c("x", "y"), crs="epsg:4326")
+
+Sys.time(); ndviamswin11_map_results<- terra::rasterize(ndvi_amswin11_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(ndviamswin11_map_results, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "ndvi_amtrends11_trajresults.tif"), overwrite=T)
+
+mappalette<- brewer.pal(n=7, "Set1")
+mappalette[[3]]<- "grey"
+mappalette[[4]]<-  "#984EA3"
+mappalette[[5]]<-  "#FF7F00"
+mappalette[[6]]<- "#FFFF33"
+mappalette[[7]]<- "#A65628"
+
+tmap_mode("plot")
+ndvi_amswin11_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (ndviamswin11_map_results)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+tmap_save(ndvi_amswin11_modelselect_map, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "ndvi_amtrend_s11_reducedtrajresults_map_grey.png"),
+        height = 30, width = 30, units = "cm", dpi=700) ####I moved to Archive because of new map, see next chunk
+```
+
+However the main problem is that the geographic area of interest (inside the Cerrado) is not the same when looking at the result maps of anisoEVI and NDVI! And this is the main reason for NDVI being huge rasters, having more nrows than anisoEVI etc
+
+Firstly, the water bodies have not been excluded from the MODIS NDVI product! I looked at my original script in GEE and yes I have NOT excluded water bodies, similar to anisoEVI. AnisoEVI inherently masked out water bodies and then created the anisoEVI values per remaining
+pixels, which is not the case for NDVI. Next reason is that when I decided to keep only pixels that have less than 4 consecutive missing monthly values, a lot of pixels in anisoEVI got excluded (especially in the north), but a lot of pixels in the NDVI still remained because
+it clearly has no consecutive missing values. 
+
+So moving ahead I have retained only pixels from NDVI that are in the anisoEVI final results. This way the results for NDVI (area barplot,maps) and combination results with anisoEVI will be consistently including same geographic area of interest (ie no water bodies and only pixels with less than 4 missing consecutive monthly anisoEVI values)
+
+```{r}
+##reading rasters of anisoEVI and NDVI annual mean with stl decomposition swin=11
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+
+ndvi_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "ndvi_amtrends11_trajresults.tif"))
+#from line 1371  1-Lineardecrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
+
+masked_ndvi<- terra::crop(ndvi_map_results, anisoEVI_map_results)
+masked_ndvi<- terra::mask(masked_ndvi, anisoEVI_map_results)
+#writeRaster(masked_ndvi, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "masked_ndvi_amtrends11_trajresults.tif"), overwrite=T)
+
+#New map of NDVI trajectory shape results because now the study area is the same
+tmap_mode("plot")
+new_ndvi_amswin11_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (masked_ndvi)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+tmap_save(new_ndvi_amswin11_modelselect_map, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "NEW_ndvi_amtrend_s11_reducedtrajresults_map_grey.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+#Comparison barplot of anisoEVI and NDVI annual mean trajectory results after stl decomposition swin=11
+df_masked_ndvi<- terra::as.data.frame(masked_ndvi, cells=TRUE, xy=TRUE)
+df_anisoevi<- terra::as.data.frame(anisoEVI_map_results, cells=TRUE, xy=TRUE)
+#### anisoEVI has more pixels by a bit! There are 1456 more pixels in anisoEVI than ndvi
+
+#anisoevi_cells<- df_anisoevi$cell
+#ndvi_cells<- df_masked_ndvi$cell
+#valuesinanisoevi_notinndvi<-setdiff(anisoevi_cells, ndvi_cells)
+#anisoevi_notinndvi_df<- df_anisoevi[df_anisoevi$cell %in% valuesinanisoevi_notinndvi,]
+#run lines 799-806
+#anisoevi_notinndvi_vector<- terra::vect(anisoevi_notinndvi_df, geom=c("x", "y"), crs="epsg:4326")
+#Sys.time(); anisoevi_notinndvi_map_results<- terra::rasterize(anisoevi_notinndvi_vector, evi, "max", fun="max"); Sys.time()
+#writeRaster(anisoevi_notinndvi_map_results, here("Scratch", "anisoevi_notinndvi.tif"), overwrite=T)
+#I checked these 1454 pixels in QGIS and these pixels are literally in the border areas, so I remove them
+#remove(anisoevi_cells, ndvi_cells, valuesinanisoevi_notinndvi, anisoevi_notinndvi_df, anisoevi_notinndvi_vector, anisoevi_notinndvi_map_results)
+
+names(df_masked_ndvi)<- c("cell", "x", "y", "NDVI")
+names(df_anisoevi)<- c("cell", "x", "y", "anisoEVI")
+
+df_join<- inner_join(df_masked_ndvi, df_anisoevi)
+pivot_df<- df_join %>% pivot_longer(4:5)
+pivot_df<- pivot_df %>% mutate(value=case_when(value==1~"Linear-decrease",
+                                               value==2~"Linear-increase",
+                                               value==4~"Step-decrease",
+                                               value==5~"Step-increase",
+                                               value==6~"Quad-decrease accelerated",
+                                               value==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+##Comparison barplot reduced trajectories
+comparison_barplot_df <- pivot_df %>% group_by(name, value) %>%
+  summarise(count=n())
+comparison_barplot_df <- comparison_barplot_df  %>% mutate(percentage=(count/nrow(df_join))*100)
+
+comparison_barplot<- comparison_barplot_df %>% 
+  ggplot(aes(value, percentage, fill = value, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of study area")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+
+comparisonpalette<- brewer.pal(n=7, "Set1")
+comparisonpalette[[3]]<- "grey"
+comparisonpalette[[4]]<-  "#FFFF33" 
+comparisonpalette[[5]]<-  "#A65628"
+comparisonpalette[[6]]<-  "#984EA3"
+comparisonpalette[[7]]<-   "#FF7F00"
+
+comparison_barplot<- comparison_barplot+ scale_fill_manual(values=comparisonpalette)
+ggsave(here("Outputs", "Final_TrajShape_Models", "comparison_indices_am_swin11.png"),
+       comparison_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+##Comparison confusion matrices ie crosstab
+df_join
+
+df_join<- df_join %>% mutate(NDVI=case_when(NDVI==1~"Linear-decrease",
+                                            NDVI==2~"Linear-increase",
+                                            NDVI==4~"Step-decrease",
+                                            NDVI==5~"Step-increase",
+                                            NDVI==6~"Quad-decrease accelerated",
+                                            NDVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+df_join<- df_join %>% mutate(anisoEVI=case_when(anisoEVI==1~"Linear-decrease",
+                                            anisoEVI==2~"Linear-increase",
+                                            anisoEVI==4~"Step-decrease",
+                                            anisoEVI==5~"Step-increase",
+                                            anisoEVI==6~"Quad-decrease accelerated",
+                                            anisoEVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+trial_crosstab<- df_join %>% group_by(NDVI, anisoEVI) %>%
+  summarise(percentage=(n()/nrow(df_join))*100)
+crosstab_display<- trial_crosstab %>% pivot_wider(names_from = NDVI, values_from = percentage)
+#write.csv(crosstab_display, here("Outputs", "Final_TrajShape_Models", "anisoevi_ndvi_reducedtrajshape_percentage_crosstab.csv"))
+```
+
+##Results compilation- Result 7- Results for EVI similar to NDVI 
+```{r}
+#Data 
+swin11_southern<-read_rds(here("Outputs", "Final_TrajShape_Models","Annual_EVI", "finalshape_annuals11_southern.rds"))
+swin11_eastern<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_EVI", "finalshape_annuals11_eastern.rds"))
+swin11_central<- read_rds(here("Outputs", "Final_TrajShape_Models","Annual_EVI", "finalshape_annuals11_central.rds"))
+
+finalmodel_df<- rbind(swin11_southern, swin11_eastern, swin11_central)
+
+evi_amswin11_trendmap<- finalmodel_df %>% ungroup() %>%
+  dplyr::select(c(x, y, model_order, shape_class, trend_name)) %>%
+  mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend_name)~1,
+                              model_order=="Lin" & shape_class== "increase_constant" & is.na(trend_name)~2,
+                              model_order=="Lin" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Null" & shape_class== "stable_constant" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_concave" & is.na(trend_name)~3,
+                              model_order=="Quad" & shape_class== "stable_convex" & is.na(trend_name)~3,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "decrease" ~4,
+                              model_order=="Step" & is.na(shape_class) & trend_name == "increase" ~5,
+                              model_order=="Quad" & shape_class=="decrease_accelerated" & is.na(trend_name)~6,
+                              model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend_name)~7)) %>%
+  dplyr::select(-c(model_order, shape_class,trend_name)) #note Linear & Null stable is same category
+
+evi_amswin11_map_vector<- terra::vect(evi_amswin11_trendmap, geom=c("x", "y"), crs="epsg:4326")
+
+#lines 485-492 for evi
+Sys.time(); eviamswin11_map_results<- terra::rasterize(evi_amswin11_map_vector, evi, "pixelvalue", fun="max"); Sys.time()
+#writeRaster(eviamswin11_map_results, here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "evi_amtrends11_trajresults.tif"), overwrite=T)
+
+##reading rasters of anisoEVI with stl decomposition swin=11
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+
+masked_evi<- terra::crop(eviamswin11_map_results, anisoEVI_map_results)
+masked_evi<- terra::mask(masked_evi, anisoEVI_map_results)
+#writeRaster(masked_evi, here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "masked_evi_amtrends11_trajresults.tif"), overwrite=T)
+
+#New map of NDVI trajectory shape results because now the study area is the same
+mappalette #lines 1371-1376
+
+tmap_mode("plot")
+new_evi_amswin11_modelselect_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (masked_evi)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+tmap_save(new_evi_amswin11_modelselect_map, here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "NEW_evi_amtrend_s11_reducedtrajresults_map_grey.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+```
+
+
+##Results compilation-Result 8- from the final results after masking using anisoEVI for both indices, I exclude anthropic area processed in 1_studyarea_delineation.Rmd
+```{r}
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+
+masked_ndvi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "masked_ndvi_amtrends11_trajresults.tif"))
+#from line 1371  1-Lineardecrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
+
+masked_evi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "masked_evi_amtrends11_trajresults.tif"))
+#from line 1546  same legend as above NDVI
+
+
+#Mapbiomas anthropic thresholds- pixel value is percent anthropic 
+threshold_mapbiomas_mask_10<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_10.tif"))
+threshold_mapbiomas_mask_20<-rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_20.tif"))
+threshold_mapbiomas_mask_30<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_30.tif"))
+
+#masking
+Sys.time(); aniso10<- terra::mask(anisoEVI_map_results, threshold_mapbiomas_mask_10); Sys.time()
+Sys.time(); aniso20<- terra::mask(anisoEVI_map_results, threshold_mapbiomas_mask_20); Sys.time()
+writeRaster(aniso20, here("Outputs", "Final_TrajShape_Models", "Annual", "excludeanthropic20_aniso_trajectoryshapes.tif"))
+Sys.time(); aniso30<- terra::mask(anisoEVI_map_results, threshold_mapbiomas_mask_30); Sys.time()
+
+Sys.time(); ndvi10<- terra::mask(masked_ndvi_results, threshold_mapbiomas_mask_10); Sys.time()
+Sys.time(); ndvi20<- terra::mask(masked_ndvi_results, threshold_mapbiomas_mask_20); Sys.time()
+writeRaster(ndvi20, here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "excludeanthropic20_ndvi_trajectoryshapes.tif"))
+Sys.time(); ndvi30<- terra::mask(masked_ndvi_results, threshold_mapbiomas_mask_30); Sys.time()
+
+Sys.time(); evi10<- terra::mask(masked_evi_results, threshold_mapbiomas_mask_10); Sys.time()
+Sys.time(); evi20<- terra::mask(masked_evi_results, threshold_mapbiomas_mask_20); Sys.time()
+writeRaster(evi20, here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "excludeanthropic20_evi_trajectoryshapes.tif"))
+Sys.time(); evi30<- terra::mask(masked_evi_results, threshold_mapbiomas_mask_30); Sys.time()
+
+#Map results of above rasters
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+mappalette #lines 1373 - 1378
+
+aniso10_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (aniso10)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 0.8) +
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+              col = mappalette)
+
+aniso20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (aniso20)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+aniso30_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (aniso30)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+all_aniso_maps<- tmap_arrange(aniso10_map, aniso20_map, aniso30_map)
+tic();tmap_save(all_aniso_maps, 
+filename = here("Outputs","Final_TrajShape_Models", "Annual", "excludeanthropic_aniso_trajshapes_annualswin11.png"),
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+ndvi10_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (ndvi10)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 0.8) +
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+              col = mappalette)
+
+ndvi20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (ndvi20)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+ndvi30_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (ndvi30)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+all_ndvi_maps<- tmap_arrange(ndvi10_map, ndvi20_map, ndvi30_map)
+tic();tmap_save(all_ndvi_maps, 
+filename = here("Outputs","Final_TrajShape_Models", "AnnualNDVI", "excludeanthropic_ndvi_trajshapes_annualswin11.png"),
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+evi10_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (evi10)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 0.8) +
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+              col = mappalette)
+
+evi20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (evi20)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+evi30_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (evi30)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  tm_layout(legend.text.size = 1.5)
+
+all_evi_maps<- tmap_arrange(evi10_map, evi20_map, evi30_map)
+tic();tmap_save(all_evi_maps, 
+filename = here("Outputs","Final_TrajShape_Models", "Annual_EVI", "excludeanthropic_evi_trajshapes_annualswin11.png"),
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+remove(aniso10_map, aniso20_map, aniso30_map, all_aniso_maps, ndvi10_map, ndvi20_map, ndvi30_map, all_ndvi_maps, evi10_map, evi20_map, evi30_map, all_evi_maps)
+remove(aniso10, aniso30, ndvi10, ndvi30, evi10, evi30)
+remove(threshold_mapbiomas_mask_10, threshold_mapbiomas_mask_30)
+
+#Comparison maps of anisoEVI & NDVI when using threshold of 20%
+Set1palette<- brewer.pal(n=5, "Set1")
+Set1palette[[3]]<- "grey"
+
+tmap_mode("plot")
+aniso20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (aniso20)+
+  tm_raster(col = "max", style = "cat", palette =Set1palette, legend.show = F) +
+  #tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase"),
+                col = Set1palette)
+
+mappalette<- brewer.pal(n=7, "Set1")
+mappalette[[3]]<- "grey"
+mappalette[[4]]<-  "#984EA3"
+mappalette[[5]]<-  "#FF7F00"
+mappalette[[6]]<- "#FFFF33"
+mappalette[[7]]<- "#A65628"
+
+ndvi20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (ndvi20)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  #tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+
+evi20_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (evi20)+
+  tm_raster(col = "max", style = "cat", palette =mappalette, legend.show = F) +
+  #tm_layout(legend.text.size = 1.5)+
+  tm_add_legend(type = "fill", 
+                labels = c("Linear- Decrease, Constant", 
+                           "Linear- Increase, Constant",
+                           "No trend",
+                           "Step- Decrease",
+                           "Step- Increase",
+                           "Quad- Decrease, Accelerated",
+                           "Quad- Decrease, Decelerated"),
+                col = mappalette)
+
+
+threshold20_maps<- tmap_arrange(aniso20_map, ndvi20_map, evi20_map)
+tmap_save(threshold20_maps, here("Outputs", "Final_TrajShape_Models", "excludeanthropic20_indices_annualswin11.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+remove(mappalette, Set1palette, threshold20_maps, threshold_mapbiomas_mask_20, ndvi20_map, aniso20_map, evi20_map)
+
+#Comparison barplots
+df_ndvi20<- terra::as.data.frame(ndvi20, cells=TRUE, xy=TRUE)
+df_ansio20<- terra::as.data.frame(aniso20, cells=TRUE, xy=TRUE)
+df_evi20<- terra::as.data.frame(evi20, cells=TRUE, xy=TRUE)
+#As expeceted, both have EVI & NDVI have exact same nrow, which is different to anisoEVU. Hence I check why below. But below I compare only anisoEVI and NDVI because that would be as good as comparing anisoEVI
+#to EVI
+
+#anisoevi_cells<- df_ansio20$cell
+#ndvi_cells<- df_ndvi20$cell
+#valuesinanisoevi_notinndvi<-setdiff(anisoevi_cells, ndvi_cells)
+#anisoevi_notinndvi_df<- df_ansio20[df_ansio20$cell %in% valuesinanisoevi_notinndvi,]
+#run lines 799-806
+#anisoevi_notinndvi_vector<- terra::vect(anisoevi_notinndvi_df, geom=c("x", "y"), crs="epsg:4326")
+#Sys.time(); anisoevi_notinndvi_map_results<- terra::rasterize(anisoevi_notinndvi_vector, evi, "max", fun="max"); Sys.time()
+#writeRaster(anisoevi_notinndvi_map_results, here("Scratch", "anisoevi_notinndvi.tif"), overwrite=T)
+#I checked these 319 pixels in QGIS and these pixels are literally in the border areas, so I remove them
+#remove(anisoevi_cells, ndvi_cells, valuesinanisoevi_notinndvi, anisoevi_notinndvi_df, anisoevi_notinndvi_vector, anisoevi_notinndvi_map_results)
+
+names(df_ndvi20)<- c("cell", "x", "y", "NDVI")
+names(df_ansio20)<- c("cell", "x", "y", "anisoEVI")
+names(df_evi20)<- c("cell", "x", "y", "EVI")
+
+df_join<- inner_join(df_ndvi20, df_ansio20)
+df_join<- inner_join(df_join, df_evi20)
+pivot_df<- df_join %>% pivot_longer(4:6)
+pivot_df<- pivot_df %>% mutate(value=case_when(value==1~"Linear-decrease",
+                                               value==2~"Linear-increase",
+                                               value==4~"Step-decrease",
+                                               value==5~"Step-increase",
+                                               value==6~"Quad-decrease accelerated",
+                                               value==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+comparison_barplot_df <- pivot_df %>% group_by(name, value) %>%
+  summarise(count=n())
+comparison_barplot_df <- comparison_barplot_df  %>% mutate(percentage=(count/nrow(df_join))*100)
+
+comparison_barplot<- comparison_barplot_df %>% 
+  ggplot(aes(value, percentage, fill = value, group=name, alpha=as.factor(name))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  #facet_grid(~value, scales = "free_x", switch = "x") +
+  xlab("Trajectory Shape")+ ylab ("% of study area")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+
+comparisonpalette<- brewer.pal(n=7, "Set1")
+comparisonpalette[[3]]<- "grey"
+comparisonpalette[[4]]<-  "#FFFF33" 
+comparisonpalette[[5]]<-  "#A65628"
+comparisonpalette[[6]]<-  "#984EA3"
+comparisonpalette[[7]]<-   "#FF7F00"
+
+comparison_barplot<- comparison_barplot+ scale_fill_manual(values=comparisonpalette)
+ggsave(here("Outputs", "Final_TrajShape_Models", "excludeanthropic20_comparison_indices_am_swin11.png"),
+       comparison_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+remove(df_ansio20, df_ndvi20, df_evi20, df_join, pivot_df, evi)
+remove(comparisonpalette)
+
+
+##################### Area results for each traj shape and each index for 1-100% anthropic area masks
+anisoEVI_map_results
+masked_evi_results
+masked_ndvi_results #from beginning of this chunk
+
+anthropic_thresholds_list<- list.files(path = here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "thresholded_mapbiomas_masks"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+anthropic_thresholds_list<-gtools::mixedsort(anthropic_thresholds_list) #arranging rasters chronologically
+anthropic_thresholds_raster_list<-lapply(anthropic_thresholds_list, rast)
+
+x_thresholds<- seq(0,1,0.01) 
+
+comparison_df_list<- list()
+Sys.time() 
+for (i in 1:length(anthropic_thresholds_list)){
+  print ("Masking index rasters with anthropic")
+  aniso_mask<-  terra::mask(anisoEVI_map_results, anthropic_thresholds_raster_list[[i]])
+  evi_mask<-  terra::mask(masked_evi_results, anthropic_thresholds_raster_list[[i]])
+  ndvi_mask<-  terra::mask(masked_ndvi_results, anthropic_thresholds_raster_list[[i]])
+  
+  print ("Convertsing to df")
+  df_aniso_mask<- terra::as.data.frame(aniso_mask, cells=TRUE, xy=TRUE)
+  df_evi_mask<- terra::as.data.frame(evi_mask, cells=TRUE, xy=TRUE)
+  df_ndvi_mask<- terra::as.data.frame(ndvi_mask, cells=TRUE, xy=TRUE)
+  
+  print ("Renaming columns")
+  names(df_aniso_mask)<- c("cell", "x", "y", "anisoEVI")
+  names(df_evi_mask)<- c("cell", "x", "y", "EVI")
+  names(df_ndvi_mask)<- c("cell", "x", "y", "NDVI")
+  
+  print ("Joining to one df")
+  df_join<- inner_join(df_aniso_mask, df_evi_mask)
+  df_join<- inner_join(df_join, df_ndvi_mask)
+  
+  print ("Pivoting joined df and including trajectory shapes")
+  pivot_df<- df_join %>% pivot_longer(4:6)
+  pivot_df<- pivot_df %>% mutate(value=case_when(value==1~"Linear-decrease",
+                                               value==2~"Linear-increase",
+                                               value==4~"Step-decrease",
+                                               value==5~"Step-increase",
+                                               value==6~"Quad-decrease accelerated",
+                                               value==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+  
+  print ("Calculating area as %")
+  x_df <- pivot_df %>% group_by(name, value) %>% summarise(count=n())
+  x_df  <- x_df %>% mutate(percentage=(count/nrow(df_join))*100)
+  x_df <- x_df  %>% mutate(Anthropic_percent=x_thresholds[[i]])
+
+  comparison_df_list[[i]]<- x_df
+  
+  print ("Next i")
+}
+Sys.time() #15 min
+
+linplot_df<- bind_rows(comparison_df_list)
+
+p<-ggplot(linplot_df, aes(x=Anthropic_percent, y=percentage, group=name)) +
+  geom_line(aes(color=name))+ scale_color_brewer(palette = "Dark2")+
+  #geom_point(aes(color=name))+
+  facet_wrap(~value, scales="free") +theme_minimal() +xlab("%anthropic in a 1sqkm pixel")+
+  ylab("% of study area")+theme(legend.title=element_blank())
+p
+ggsave(here("Outputs", "Final_TrajShape_Models", "trajareas_allindices_anthropicthreshold.png"),
+       p,dpi = 700, height = 30, width=30, units = "cm")
+
+
+
+```
+The second plot says that irrespective of the anthropic threshold % chosen, the area classified into 
+each of the trajectories is the same i.e. anthropic threshold area does not make any difference. 
+Quadratic trajectories are the ones for which the threshold matters, but since this trajectory
+is present only when using NDVI, I wouldn't think this is robust. But also goes to show
+how NDVI results are weird. 
+
+
+##Result 9- After excluding anthropic area from the results of all indices, I complete (1) cross tab analyses between NDVI & EVI, (2) make a map of difference pixels between NDVI & EVI and (3) find where and how much pixels match across all three indices
+
+```{r}
+aniso20<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "excludeanthropic20_aniso_trajectoryshapes.tif"))
+ndvi20<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "excludeanthropic20_ndvi_trajectoryshapes.tif"))
+evi20<-rast(here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "excludeanthropic20_evi_trajectoryshapes.tif"))
+
+#### Cross tab across all indices
+threshold20<-c(aniso20, ndvi20, evi20)
+Sys.time(); trial_crosstab<- terra::crosstab(threshold20, long=TRUE, useNA=FALSE); Sys.time()
+names(trial_crosstab)<- c("anisoEVI_trajshape", "NDVI_trajshape", "EVI_trajshape", "Count")
+
+df_nrow<- terra::as.data.frame(evi20, cells=TRUE, xy=TRUE) 
+dim(df_nrow)[1]
+
+trial_crosstab<- trial_crosstab %>% mutate(Percentage= (Count/dim(df_nrow)[1])*100)
+trial_crosstab<- trial_crosstab %>% mutate(anisoEVI_trajshape=case_when(anisoEVI_trajshape==1~"Linear-decrease",
+                                            anisoEVI_trajshape==2~"Linear-increase",
+                                            anisoEVI_trajshape==4~"Step-decrease",
+                                            anisoEVI_trajshape==5~"Step-increase",
+                                            anisoEVI_trajshape==6~"Quad-decrease accelerated",
+                                            anisoEVI_trajshape==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+trial_crosstab<- trial_crosstab %>% mutate(NDVI_trajshape=case_when(NDVI_trajshape==1~"Linear-decrease",
+                                            NDVI_trajshape==2~"Linear-increase",
+                                            NDVI_trajshape==4~"Step-decrease",
+                                            NDVI_trajshape==5~"Step-increase",
+                                            NDVI_trajshape==6~"Quad-decrease accelerated",
+                                            NDVI_trajshape==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+trial_crosstab<- trial_crosstab %>% mutate(EVI_trajshape=case_when(EVI_trajshape==1~"Linear-decrease",
+                                            EVI_trajshape==2~"Linear-increase",
+                                            EVI_trajshape==4~"Step-decrease",
+                                            EVI_trajshape==5~"Step-increase",
+                                            EVI_trajshape==6~"Quad-decrease accelerated",
+                                            EVI_trajshape==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+trial_crosstab<- trial_crosstab %>% arrange(desc(Percentage)) 
+write.csv(trial_crosstab, here("Outputs", "Final_TrajShape_Models", "crosstab_indices_trajshape.csv"))
+
+
+#Difference map
+#Using logic in https://stackoverflow.com/questions/4752275/test-for-equality-among-all-elements-of-a-single-numeric-vector
+
+difference_function<- function (x){
+  y<- is.na(x)
+  if (sum(y)==0){
+    if(var(x)==0){
+      x<-mean(x)
+    } else{
+      x<-999
+    }
+  } else {
+    x<- NA
+  }
+}
+
+Sys.time(); trial_difference<- terra::app(threshold20, fun= difference_function); Sys.time()
+#writeRaster(trial_difference, here("Scratch", "difference_map2.tif"))
+
+#### Cross tab across between NDVI & EVI results
+df_ndvi<- terra::as.data.frame(ndvi20, cells=TRUE, xy=TRUE)
+df_evi<- terra::as.data.frame(evi20, cells=TRUE, xy=TRUE)
+
+names(df_ndvi)<- c("cell", "x", "y", "NDVI")
+names(df_evi)<- c("cell", "x", "y", "EVI")
+
+df_join<- inner_join(df_ndvi, df_evi)
+df_join<- df_join %>% mutate(NDVI=case_when(NDVI==1~"Linear-decrease",
+                                            NDVI==2~"Linear-increase",
+                                            NDVI==4~"Step-decrease",
+                                            NDVI==5~"Step-increase",
+                                            NDVI==6~"Quad-decrease accelerated",
+                                            NDVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+df_join<- df_join %>% mutate(EVI=case_when(EVI==1~"Linear-decrease",
+                                            EVI==2~"Linear-increase",
+                                            EVI==4~"Step-decrease",
+                                            EVI==5~"Step-increase",
+                                            EVI==6~"Quad-decrease accelerated",
+                                            EVI==7~"Quad-decrease deccelerated",
+                                               TRUE~"No trend"))
+
+trial_crosstab<- df_join %>% group_by(NDVI, EVI) %>%
+  summarise(percentage=(n()/nrow(df_join))*100)
+crosstab_display<- trial_crosstab %>% pivot_wider(names_from = NDVI, values_from = percentage)
+#write.csv(crosstab_display, here("Outputs", "Final_TrajShape_Models", "evi_ndvi_reducedtrajshape_percentage_crosstab.csv"))
+
+ndvi_evi_stack<- c(ndvi20, evi20)
+Sys.time(); ndvi_evi_difference<- terra::app(ndvi_evi_stack, fun= difference_function); Sys.time()
+#writeRaster(ndvi_evi_difference, here("Scratch", "ndvi_evi_difference_map.tif"))
+
+```
+
+##Results 10- Example time series for step pixels (inc/dec) across all indices
+```{r}
+################ Reading files
+#lines 668-670, 
+am_trend_central<- am_trend_central %>% mutate(Region="central")
+am_trend_eastern<- am_trend_eastern %>% mutate(Region="eastern")
+am_trend_southern<- am_trend_southern %>% mutate(Region="southern")
+annualmean_trend_df<- bind_rows(am_trend_southern, am_trend_eastern, am_trend_central); toc()
+
+am_trend_final_model<- annualmean_trend_df %>% 
+  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
+  rename(c("cell"="cell","x"="x", "y"="y", "AnnualMean_Detrended_ModelOrder"="model_order", "AnnualMean_Detrended_ShapeClass"="shape_class",
+           "AnnualMean_Detrended_TrendName"="trend_name", "AnnualMean_Detrended_LocBrk"="loc_brk"))
+remove(annualmean_trend_df)
+am_trend_final_model<- am_trend_final_model %>% 
+  mutate(aniso_trajtype_numeric= case_when(AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass == "decrease_constant"& is.na(AnnualMean_Detrended_TrendName)~1,
+                              AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass== "increase_constant" & is.na(AnnualMean_Detrended_TrendName)~2,
+                              AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass== "stable_constant" & is.na(AnnualMean_Detrended_TrendName)~3,
+                              AnnualMean_Detrended_ModelOrder=="Null" & AnnualMean_Detrended_ShapeClass== "stable_constant" & is.na(AnnualMean_Detrended_TrendName)~3,
+                              AnnualMean_Detrended_ModelOrder=="Quad" & AnnualMean_Detrended_ShapeClass== "stable_concave" & is.na(AnnualMean_Detrended_TrendName)~3,
+                              AnnualMean_Detrended_ModelOrder=="Quad" & AnnualMean_Detrended_ShapeClass== "stable_convex" & is.na(AnnualMean_Detrended_TrendName)~3,
+                              AnnualMean_Detrended_ModelOrder=="Step" & is.na(AnnualMean_Detrended_ShapeClass) & AnnualMean_Detrended_TrendName == "decrease" ~4,
+                              AnnualMean_Detrended_ModelOrder=="Step" & is.na(AnnualMean_Detrended_ShapeClass) & AnnualMean_Detrended_TrendName == "increase" ~5)) %>%
+  dplyr::select(-c(AnnualMean_Detrended_ModelOrder, AnnualMean_Detrended_ShapeClass, AnnualMean_Detrended_TrendName)) #note Linear & Null stable is same category
+anisoEVI_trajectories<- am_trend_final_model
+remove(am_trend_final_model, am_trend_central, am_trend_eastern, am_trend_southern)
+
+
+#lines 1283-1285,
+swin11_central<- swin11_central %>% mutate(Region="central")
+swin11_eastern<- swin11_eastern %>% mutate(Region="eastern")
+swin11_southern<- swin11_southern %>% mutate(Region="southern")
+
+ndvi_df<- bind_rows(swin11_central, swin11_eastern,swin11_southern); toc()
+ndvi_df2<- ndvi_df %>% 
+   dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
+   rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+            "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+
+ndvi_df2<- ndvi_df2 %>% #1 hr
+  mutate(ndvi_trajtype_numeric= case_when(Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "decrease_constant"& is.na(Detrended_TrendName)~1,
+                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "increase_constant" & is.na(Detrended_TrendName)~2,
+                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Null" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_concave" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_convex" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "decrease" ~4,
+                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "increase" ~5,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_accelerated" & is.na(Detrended_TrendName)~6,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_decelerated" & is.na(Detrended_TrendName)~7)) %>%
+  dplyr::select(-c(Detrended_ModelOrder, Detrended_ShapeClass, Detrended_TrendName)) #note Linear & Null stable is same category
+
+
+ndvi_trajectories<- ndvi_df2
+remove(swin11_central, swin11_eastern, swin11_southern, ndvi_df, ndvi_df2)
+
+#lines 1520-1522
+swin11_central<- swin11_central %>% mutate(Region="central")
+swin11_eastern<- swin11_eastern %>% mutate(Region="eastern")
+swin11_southern<- swin11_southern %>% mutate(Region="southern")
+
+evi_df<- bind_rows(swin11_central, swin11_eastern,swin11_southern); toc()
+evi_df2<- evi_df %>% 
+   dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
+   rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
+            "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
+
+evi_df2<- evi_df2 %>% #1 hr
+  mutate(evi_trajtype_numeric= case_when(Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "decrease_constant"& is.na(Detrended_TrendName)~1,
+                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "increase_constant" & is.na(Detrended_TrendName)~2,
+                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Null" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_concave" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_convex" & is.na(Detrended_TrendName)~3,
+                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "decrease" ~4,
+                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "increase" ~5,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_accelerated" & is.na(Detrended_TrendName)~6,
+                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_decelerated" & is.na(Detrended_TrendName)~7)) %>%
+  dplyr::select(-c(Detrended_ModelOrder, Detrended_ShapeClass, Detrended_TrendName)) #note Linear & Null stable is same category
+
+evi_trajectories<- evi_df2
+remove(evi_df, evi_df2, swin11_central, swin11_eastern, swin11_southern)
+
+
+################ TEST- to check if the cell numbers across all indices are consistent
+test_filter_step_evi<- evi_trajectories %>% filter(evi_trajtype_numeric==4)
+
+test_join<- left_join(test_filter_step_evi, anisoEVI_trajectories, by=c("cell", "Region"))
+test_join2<- test_join %>% filter(!is.na(aniso_trajtype_numeric))
+#I examined the x y from evi and anisoEVI in the test_join2 df and clearly joining on cell and region
+#is not consistent! Thi smeans that cell number =580 "Central" in EVI is not cell number=580 "Central" in anisoEVI
+remove(test_filter_step_evi, test_join, test_join2)
+######################################################################################
+
+################ Solution trial 1- convert to point shp and st_join (or equivalent in QGIS)
+step_aniso<- anisoEVI_trajectories %>% filter(aniso_trajtype_numeric==4 | aniso_trajtype_numeric==5)
+shp_step_aniso<- st_as_sf(step_aniso, coords = c("x", "y"), crs= "EPSG:4326") 
+#st_write(shp_step_aniso, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_aniso.shp"))
+step_evi<-evi_trajectories %>% filter(evi_trajtype_numeric==4 | evi_trajtype_numeric==5)
+shp_step_evi<- st_as_sf(step_evi, coords = c("x", "y"), crs= "EPSG:4326")
+#st_write(shp_step_evi, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_evi.shp"))
+step_ndvi<-ndvi_trajectories %>% filter(ndvi_trajtype_numeric==4 | ndvi_trajtype_numeric==5)
+shp_step_ndvi<- st_as_sf(step_ndvi, coords = c("x", "y"), crs= "EPSG:4326")
+st_write(shp_step_ndvi, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_ndvi.shp"))
+
+
+
+
+anisoEVI_trajectories2<- anisoEVI_trajectories %>% dplyr::select(c(cell,x,y,aniso_trajtype_numeric))
+evi_trajectories2<- evi_trajectories %>% dplyr::select(c(cell,evi_trajtype_numeric))
+ndvi_trajectories2<- ndvi_trajectories %>% dplyr::select(c(cell,ndvi_trajtype_numeric))
+
+trajectories_all<- left_join(anisoEVI_trajectories2, evi_trajectories2, by="cell")
+##For some reason when doing the joins using "cell" column, there in not a clean
+#one-to-one relationship. So I exclude all cells where there is no value for evi
+trajectories_all<- trajectories_all %>% filter(!is.na(evi_trajtype_numeric))
+
+trajectories_all<- left_join(trajectories_all,ndvi_trajectories2, by="cell")
+#Again when doing the last join, there is many-to-one relationships when joining by "cell",
+#which I cannot explain. For now I continue to get pixels that are step (values 4 or 5) across
+#all three columns of indices
+
+step_trajectories<- trajectories_all %>% 
+  filter(aniso_trajtype_numeric==evi_trajtype_numeric & aniso_trajtype_numeric==ndvi_trajtype_numeric & aniso_trajtype_numeric %in% c(4,5))
+#1955 pixels in which all indices assign step trajectory 
+
+d_trans #lines 1612-1615
+
+shp_step_trajectories<- st_as_sf(step_trajectories, coords=c("x", "y"), crs=st_crs(d_trans) )
+shp_step_trajectories<- st_join(shp_step_trajectories, d_trans)
+st_write(shp_step_trajectories, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "step_pixels_all_indices.shp"))
+sample<- shp_step_trajectories %>% group_by(region) %>% slice_sample(n=5)
+#there are points with region NA which I inspect in QGIS
+#st_write(sample, here("Scratch", "sample_step_NA.shp"))
+#Checked on QGIS and the 5 pixels are literally at the border of the d_trans shp
+sample<- sample %>% filter(!is.na(region))
+st_write(sample, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "sample_step.shp"))
+sample<- st_read(here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "sample_step.shp"))
+
+remove(anisoEVI_trajectories2, evi_trajectories2, ndvi_trajectories2, trajectories_all)
+
+
+#linking to STL decomposed time series
+trajectory_function<- function(file_name, column_name){
+  df_list<-lapply(file_name, read_rds)
+  all_df<- bind_rows(df_list)
+  
+  sample_df<- left_join(sample, all_df, by="cell")
+  sample_df<- sample_df %>% filter(!is.na(x))
+  sample_df<- sample_df %>% dplyr::select(-c(ID, area_km, value, value_int, seasonal, remainder))
+  names(sample_df)[10]<- coloumn_name
+  
+  sample_df
+
+}
+aniso<- list.files(path = here("Outputs", "STL", "anisoEVI" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
+evi<- list.files(path = here("Outputs", "STL", "evi" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
+ndvi<- list.files(path = here("Outputs", "STL", "ndvi" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
+
+sample_aniso_southern<- trajectory_function(aniso, "aniso_trend")
+sample_evi_southern<- trajectory_function(evi, "evi_trend")
+sample_ndvi_southern<- trajectory_function(ndvi, "ndvi_trend")
+remove(aniso, evi, ndvi)
+
+
+
+
+```
+
+
+
+##Result 11- Calculation of area at each step of analyses
+I have realized that since the y axis of the barplots I have created which show the
+proportion of the different trajectory shapes are in % of the study area, I need
+to figure out what is the study area (sqkm)
+```{r}
+total_cerrado_area<-sum(d_trans$area_km) #2.04 million sqkm
+
+#NDVI, anisoEVI area ie before anthropic exclusion but after exclusion
+#of pixels that do not have continous anisoEVI values etc (see 3_prep_indices.Rmd)
+#rerun lines 1409, 1412 and 1415-1416 to get masked_ndvi
+cellsize_maskedndvi<- terra::cellSize(masked_ndvi, unit="km", mask=TRUE)
+trial_sum<- terra::global(cellsize_maskedndvi, fun="sum", na.rm=TRUE) 
+#I chose masked-ndvi because as per lines 1444-1453, ndvi results &
+#anisoevi did not quite align. And when I joined df in the next couple of lines
+#since masked_ndvi has lesser number of pixels, the inner join joined based on
+#masked ndvi
+trial_sum #1.96 million sqkm
+remove(anisoEVI_map_results, cellsize_maskedndvi, masked_ndvi, ndvi_map_results)
+
+#Final area of results after exclusion of anthropic area (20% threshold from Mapbiomas)
+#run lines 1527, 1532, 1541 for same reason as above
+cellsize_ndvi20<- terra::cellSize(ndvi20, unit="km", mask=TRUE)
+trial_sum2<- terra::global(cellsize_ndvi20, fun="sum", na.rm=TRUE) #0.6 million sqkm (29.4% of Cerrado)
+
+
+
+```
+
+
