@@ -1,0 +1,448 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I delineate the study area within the Cerrado (Brazilian savanna) biome. The aim is to 
+exclude all anthropic area and focus only on native savannas. However, I need to figure out how to 
+delineate anthropic and native areas.
+
+#Data processing
+I use the Mapbiomas vegetation product that is commonly used across Brazil and its biomes. 
+This product is at 30m spatial resolution, derived from Landsat imagergy. In GEE, I completed 
+processing this data such that the resulting product is a multiband image at 1km resolution,
+where each band denotes a year (1985-2023) and each pixel value is a proportion. The 
+proportion is the % of total Mapbiomas pixels within the 1km & 5km pixel that are anthropic (as per
+Mapbiomas typology)
+https://code.earthengine.google.com/f7e17500a39018685d022f079335ac51
+
+In the first chunk below, I do some EDA and make plots to better understand anthropic area
+```{r}
+#Border input
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+#Mapbiomas mask at 1km resolution
+# mapbiomas_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask.tif"))
+# Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic, cerrado)
+# mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
+# remove(mapbiomas_anthropic, mapbiomas_crop)
+
+#5km resolution
+mapbiomas_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask_5km.tif"))
+Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic, cerrado)
+mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
+remove(mapbiomas_anthropic, mapbiomas_crop)
+mapbiomas_mask #resolution is 0.044 deg. 
+
+#To align with stability rasters at 0.05 degrees, resampling
+ndvi_agg_stability<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"))
+mapbiomas_mask<- terra::resample(mapbiomas_mask, ndvi_agg_stability)
+
+#1. Animation of anthropic areas through time
+library(magick) #for animation
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+tmap_mode("plot")
+mapbiomas_animation_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape( mapbiomas_mask)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="%pixel that is anthropic") + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(d_trans)+ tm_borders()
+  
+tic();tmap_animation(mapbiomas_animation_map, filename = here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_5km_LULC_mask.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150) ;toc() 
+remove(neighbors, map_extent, mapbiomas_animation_map)
+
+#2. % of climate zone that is anthropic (any proportion) per year in each climate zone
+calc_df<- tibble(year= 1985:2023)
+list_rasters<- list()
+for(i in 1:nlyr(mapbiomas_mask)){
+  list_rasters[[i]]<- mapbiomas_mask[[i]]
+}
+calc_df<- calc_df %>% mutate(anthropic_raster= list_rasters)
+remove(list_rasters,i)
+
+central_cropmask_function<- function (raster){
+  x_crop<- terra::crop(raster, vect(d_trans$geometry[[1]]))
+  x_mask<- terra::mask(x_crop, vect(d_trans$geometry[[1]]))
+  x_mask
+}
+southern_cropmask_function<- function (raster){
+  x_crop<- terra::crop(raster, vect(d_trans$geometry[[2]]))
+  x_mask<- terra::mask(x_crop, vect(d_trans$geometry[[2]]))
+  x_mask
+}
+eastern_cropmask_function<- function (raster){
+  x_crop<- terra::crop(raster, vect(d_trans$geometry[[3]]))
+  x_mask<- terra::mask(x_crop, vect(d_trans$geometry[[3]]))
+  x_mask
+}
+Sys.time(); calc_df<- calc_df %>% mutate(central= purrr::map(anthropic_raster, central_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(southern= purrr::map(anthropic_raster, southern_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(eastern= purrr::map(anthropic_raster, eastern_cropmask_function)); Sys.time()
+remove(central_cropmask_function, southern_cropmask_function, eastern_cropmask_function)
+
+reclass_function<- function(regional_raster){
+  reclass_raster <- classify(regional_raster, cbind(0, NA)) #pixels that have 0% anthropic is made NA
+}
+Sys.time(); calc_df<- calc_df %>% mutate(central_reclass= purrr::map(central, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(southern_reclass= purrr::map(southern, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(eastern_reclass= purrr::map(eastern, reclass_function)); Sys.time()
+remove(reclass_function)
+
+area_function<- function(reclass_raster){
+    terra::cellSize(reclass_raster, mask=T, unit="km")
+}
+Sys.time(); calc_df<- calc_df %>% mutate(central_anthropic_areakm= purrr::map(central_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(southern_anthropic_areakm= purrr::map(southern_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(eastern_anthropic_areakm= purrr::map(eastern_reclass, area_function)); Sys.time()
+remove(area_function)
+
+total_area_function<- function (area_raster){
+  sum(terra::values(area_raster), na.rm = T)
+}
+Sys.time(); calc_df<- calc_df %>% mutate(central_anthropic_totalareakm= purrr::map(central_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(southern_anthropic_totalareakm= purrr::map(southern_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(eastern_anthropic_totalareakm= purrr::map(eastern_anthropic_areakm, total_area_function)); Sys.time()
+remove(total_area_function)
+
+area_anthropic_df<- calc_df %>% dplyr::select(c(year, central_anthropic_totalareakm, southern_anthropic_totalareakm, eastern_anthropic_totalareakm)) 
+area_anthropic_df$central_anthropic_totalareakm<- unlist(area_anthropic_df$ central_anthropic_totalareakm)
+area_anthropic_df$southern_anthropic_totalareakm<- unlist(area_anthropic_df$southern_anthropic_totalareakm)
+area_anthropic_df$eastern_anthropic_totalareakm<- unlist(area_anthropic_df$eastern_anthropic_totalareakm)
+
+area_anthropic_df<- area_anthropic_df %>% mutate(central_percent_anthropic= (central_anthropic_totalareakm/d_trans$area_km[[1]])*100)
+area_anthropic_df<- area_anthropic_df %>% mutate(southern_percent_anthropic= (southern_anthropic_totalareakm/d_trans$area_km[[2]])*100)
+area_anthropic_df<- area_anthropic_df %>% mutate(eastern_percent_anthropic= (eastern_anthropic_totalareakm/d_trans$area_km[[3]])*100)
+
+
+pivot_area_anthropic_df<- pivot_longer(area_anthropic_df %>% dplyr::select(year, central_percent_anthropic, 
+                                                                           southern_percent_anthropic, eastern_percent_anthropic), 2:4)
+p<-ggplot(pivot_area_anthropic_df, aes(x=factor(year), y=value, group=name)) +
+  geom_line(aes(color=name))+
+  geom_point(aes(color=name))+
+  ylab("% of pixels in region that are anthropic (any proportion)") +
+  xlab("Year")
+p<- p+scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = "Dark2") +
+  theme_classic()+
+  theme(legend.title=element_blank())+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) 
+ggsave(here("Data", "Masks_to_define_pixelsofinterest", "Mapbiomas_anthropic_mask", "area_anthropic_5km.png"),p, 
+       dpi=700, height = 12, width = 12, units = "cm")
+remove(p, pivot_area_anthropic_df, area_anthropic_df)
+
+#3. Boxplot of non-zero pixels per year per climate zone
+calc_df<- calc_df %>% dplyr::select(-c(central_anthropic_areakm, southern_anthropic_areakm, eastern_anthropic_areakm,
+                                       central_anthropic_totalareakm, southern_anthropic_totalareakm, eastern_anthropic_totalareakm))
+
+values_function<- function (reclass_raster){
+  x<- terra::values(reclass_raster, dataframe= T, na.rm=T)
+  names(x)<- "frac_anthropic"
+  x
+}
+Sys.time(); calc_df <- calc_df %>% mutate(central_values= purrr::map(central_reclass, values_function)); Sys.time()
+Sys.time(); calc_df <- calc_df %>% mutate(southern_values= purrr::map(southern_reclass, values_function)); Sys.time()
+Sys.time(); calc_df <- calc_df %>% mutate(eastern_values= purrr::map(eastern_reclass, values_function)); Sys.time()
+remove(values_function)
+
+boxplot_df<- calc_df %>% dplyr::select(c(year, central_values, southern_values, eastern_values))
+pivot_boxplot_df<- pivot_longer(boxplot_df, 2:4)
+pivot_boxplot_df<- pivot_boxplot_df %>% unnest(value)
+q<-ggplot(pivot_boxplot_df, aes(x=factor(year), y=frac_anthropic, group= factor(year))) +
+  geom_boxplot(aes(color=name)) + facet_grid(name~.)+
+  ylab("Anthropic Fraction (0% removed)") +xlab("Year")
+q<- q+scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = "Dark2") +
+  theme_classic()+
+  theme(legend.title=element_blank())+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) 
+ggsave(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "fraction_anthropic_5km_boxplot.png"),q, 
+       dpi=700, height = 20, width = 20, units = "cm")
+remove(q, pivot_boxplot_df, boxplot_df)
+
+#4. Histogram of %anthropic through time (animation)
+histogram_df<- calc_df %>% dplyr::select(c(year, central_values, southern_values, eastern_values))
+pivot_histogram_df<- pivot_longer(histogram_df, 2:4)
+pivot_histogram_df<- pivot_histogram_df %>% unnest(value)
+#pivot_histogram_df<- pivot_histogram_df %>% filter(frac_anthropic<1) #excluding pixels where 100% is anthropic because
+#I will exclude these for sure
+
+library(gganimate)
+r<- ggplot(pivot_histogram_df, aes(x=frac_anthropic, color=name, fill=name)) + 
+  geom_histogram(fill="white") + 
+  #scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = "Dark2")+
+  transition_time(year)+ facet_grid(name~.)+
+  ylab("Pixel count") +xlab("%Anthropic")+
+  labs(title = "Year: {frame_time}")
+r<- r+scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = "Dark2") +
+  theme_classic()+
+  theme(legend.title=element_blank())+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) 
+anim_save(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "histogram_%anthropic_5km_no0&1.gif"),r)
+remove(r, histogram_df, pivot_histogram_df)
+
+```
+
+According to Mattos et al., 2023, "we use an 80% valid threshold to avoid small 
+sample sizes inside each larger pixel."I interpret this as 80% is the cut-off i.e. 
+more than 80% of larger pixel is natural. Hence 20% the limit for anthropic in larger pixel. 
+
+From area_anthropic output figure, >90% of southern region is anthropic, central region was already
+about 70% anthropic in 1985 and eastern region was about 55% anthropic in 1985. So choosing a 20%
+threshold like Mattos et al will mean that very,very little "native" area will remain. 
+
+I can make a decision, like Mattos et al, I will retain pixels across all 3 zones
+such that 20% is the maximum anthropic area. I also use 10% & 30% as a threshold.
+
+```{r}
+mapbiomas_mask
+
+#1. Keep layers 2002-2021
+names(mapbiomas_mask)
+tp_mapbiomas_mask<- mapbiomas_mask[[18:37]]
+
+#2. Exclude all pixels where pixel value in any year >0.1,0.2,0.3.....1
+x_thresholds<- seq(0,1,0.01)
+for (i in x_thresholds){
+  print (paste0("Threshold= ",i))
+  
+  threshold_function<- function (x){
+  ifelse(max(x)>i, NA, x) 
+  }
+  
+  threshold_mapbiomas_mask<- terra::app(tp_mapbiomas_mask, fun= threshold_function)
+  print ("App function complete")
+  
+  writeRaster(threshold_mapbiomas_mask, here("Data", "Masks_to_define_pixelsofinterest", 
+                                             "Mapbiomas_anthropic_mask","5km_thresholded_mapbiomas_masks", paste0("5km_thresholded_masks_",i, ".tif")))
+                                             
+  print ("Next i")
+}
+
+threshold_function<- function (x){
+  ifelse(max(x)>0.3, NA, x) #change threshold to 0.1,0.2....
+  }
+
+Sys.time(); threshold_mapbiomas_mask_10<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
+#writeRaster(threshold_mapbiomas_mask_10, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_10.tif"))
+Sys.time(); threshold_mapbiomas_mask_20<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
+#writeRaster(threshold_mapbiomas_mask_20, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+Sys.time(); threshold_mapbiomas_mask_30<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
+#writeRaster(threshold_mapbiomas_mask_30, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_30.tif"))
+remove(threshold_function)
+
+threshold_map_function<- function (thresholded_raster, title){
+  tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape( threshold_raster)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("Reds"), n=5, breaks = seq(0,0.3,0.05), title=title) + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(d_trans)+ tm_borders()
+}
+
+map_thresh10_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "10% threshold")
+map_thresh20_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "20% threshold")
+map_thresh30_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "30% threshold")
+
+all_maps<- tmap_arrange(map_thresh10_mapbiomas, map_thresh20_mapbiomas, map_thresh30_mapbiomas)
+tic();tmap_save(all_maps, 
+filename = here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_threshold_Mapbiomass_anthropic_LULC_mask.png"),
+               width = 900, height = 900, dpi = 150) ;toc() 
+remove(threshold_map_function, neighbors, map_extent, map_thresh10_mapbiomas, map_thresh20_mapbiomas, map_thresh30_mapbiomas, all_maps)
+
+#4. Area after excluding pixels with >10%, >20% and 30% anthropic (anytime)
+calc_df<- calc_df %>% dplyr::select(-c(central_values, southern_values, eastern_values))
+list_threshold10_rasters<- list()
+for(i in 1:nlyr(threshold_mapbiomas_mask_10)){
+  list_threshold10_rasters[[i]]<- threshold_mapbiomas_mask_10[[i]]
+}
+calc_df<- calc_df %>% mutate(thresh10_anthropic_raster= list_threshold10_rasters)
+remove(list_threshold10_rasters,i)
+
+list_threshold20_rasters<- list()
+for(i in 1:nlyr(threshold_mapbiomas_mask_20)){
+  list_threshold20_rasters[[i]]<- threshold_mapbiomas_mask_20[[i]]
+}
+calc_df<- calc_df %>% mutate(thresh20_anthropic_raster= list_threshold20_rasters)
+remove(list_threshold20_rasters,i)
+
+list_threshold30_rasters<- list()
+for(i in 1:nlyr(threshold_mapbiomas_mask_30)){
+  list_threshold30_rasters[[i]]<- threshold_mapbiomas_mask_30[[i]]
+}
+calc_df<- calc_df %>% mutate(thresh30_anthropic_raster= list_threshold30_rasters)
+remove(list_threshold30_rasters,i)
+
+#lines 93-107
+Sys.time(); calc_df<- calc_df %>% mutate(threshold10_central= purrr::map(thresh10_anthropic_raster, central_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold10_southern= purrr::map(thresh10_anthropic_raster, southern_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold10_eastern= purrr::map(thresh10_anthropic_raster, eastern_cropmask_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(threshold20_central= purrr::map(thresh20_anthropic_raster, central_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold20_southern= purrr::map(thresh20_anthropic_raster, southern_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold20_eastern= purrr::map(thresh20_anthropic_raster, eastern_cropmask_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(threshold30_central= purrr::map(thresh30_anthropic_raster, central_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold30_southern= purrr::map(thresh30_anthropic_raster, southern_cropmask_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(threshold30_eastern= purrr::map(thresh30_anthropic_raster, eastern_cropmask_function)); Sys.time()
+remove(central_cropmask_function, southern_cropmask_function, eastern_cropmask_function)
+
+#lines 113-115
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_reclass= purrr::map(threshold10_central, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_reclass= purrr::map(threshold10_southern, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_reclass= purrr::map(threshold10_eastern, reclass_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_central_reclass= purrr::map(threshold20_central, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_southern_reclass= purrr::map(threshold20_southern, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_eastern_reclass= purrr::map(threshold20_eastern, reclass_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_central_reclass= purrr::map(threshold30_central, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_southern_reclass= purrr::map(threshold30_southern, reclass_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_eastern_reclass= purrr::map(threshold30_eastern, reclass_function)); Sys.time()
+remove(reclass_function)
+
+#lines 121-123
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_anthropic_areakm= purrr::map(thresh10_central_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_anthropic_areakm= purrr::map(thresh10_southern_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_anthropic_areakm= purrr::map(thresh10_eastern_reclass, area_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_central_anthropic_areakm= purrr::map(thresh20_central_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_southern_anthropic_areakm= purrr::map(thresh20_southern_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_eastern_anthropic_areakm= purrr::map(thresh20_eastern_reclass, area_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_central_anthropic_areakm= purrr::map(thresh30_central_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_southern_anthropic_areakm= purrr::map(thresh30_southern_reclass, area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_eastern_anthropic_areakm= purrr::map(thresh30_eastern_reclass, area_function)); Sys.time()
+remove(area_function)
+
+#lines 129-131
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_anthropic_totalareakm= purrr::map(thresh10_central_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_anthropic_totalareakm= purrr::map(thresh10_southern_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_anthropic_totalareakm= purrr::map(thresh10_eastern_anthropic_areakm, total_area_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_central_anthropic_totalareakm= purrr::map(thresh20_central_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_southern_anthropic_totalareakm= purrr::map(thresh20_southern_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh20_eastern_anthropic_totalareakm= purrr::map(thresh20_eastern_anthropic_areakm, total_area_function)); Sys.time()
+
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_central_anthropic_totalareakm= purrr::map(thresh30_central_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_southern_anthropic_totalareakm= purrr::map(thresh30_southern_anthropic_areakm, total_area_function)); Sys.time()
+Sys.time(); calc_df<- calc_df %>% mutate(thresh30_eastern_anthropic_totalareakm= purrr::map(thresh30_eastern_anthropic_areakm, total_area_function)); Sys.time()
+remove(total_area_function)
+
+thresh_area_anthropic_df<- calc_df %>% dplyr::select(c(year, thresh10_central_anthropic_totalareakm, 
+                                                       thresh10_southern_anthropic_totalareakm, 
+                                                       thresh10_eastern_anthropic_totalareakm,
+                                                       thresh20_central_anthropic_totalareakm, 
+                                                       thresh20_southern_anthropic_totalareakm, 
+                                                       thresh20_eastern_anthropic_totalareakm,
+                                                       thresh30_central_anthropic_totalareakm,
+                                                       thresh30_southern_anthropic_totalareakm,
+                                                       thresh30_eastern_anthropic_totalareakm,
+                                                       )) 
+thresh_area_anthropic_df$thresh10_central_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh10_central_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh10_southern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh10_southern_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh10_eastern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh10_eastern_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh20_central_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh20_central_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh20_southern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh20_southern_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh20_eastern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh20_eastern_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh30_central_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh30_central_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh30_southern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh30_southern_anthropic_totalareakm)
+thresh_area_anthropic_df$thresh30_eastern_anthropic_totalareakm<- unlist(thresh_area_anthropic_df$thresh30_eastern_anthropic_totalareakm)
+
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh10_central_percent_anthropic= (thresh10_central_anthropic_totalareakm/d_trans$area_km[[1]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh10_southern_percent_anthropic= (thresh10_southern_anthropic_totalareakm/d_trans$area_km[[2]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh10_eastern_percent_anthropic= (thresh10_eastern_anthropic_totalareakm/d_trans$area_km[[3]])*100)
+
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh20_central_percent_anthropic= (thresh20_central_anthropic_totalareakm/d_trans$area_km[[1]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh20_southern_percent_anthropic= (thresh20_southern_anthropic_totalareakm/d_trans$area_km[[2]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh20_eastern_percent_anthropic= (thresh20_eastern_anthropic_totalareakm/d_trans$area_km[[3]])*100)
+
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh30_central_percent_anthropic= (thresh30_central_anthropic_totalareakm/d_trans$area_km[[1]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh30_southern_percent_anthropic= (thresh30_southern_anthropic_totalareakm/d_trans$area_km[[2]])*100)
+thresh_area_anthropic_df<- thresh_area_anthropic_df %>% 
+  mutate(thresh30_eastern_percent_anthropic= (thresh30_eastern_anthropic_totalareakm/d_trans$area_km[[3]])*100)
+
+
+pivot_thresharea_anthropic_df<- pivot_longer(thresh_area_anthropic_df %>% dplyr::select(year, thresh10_central_percent_anthropic, 
+                                                                           thresh10_southern_percent_anthropic, thresh10_eastern_percent_anthropic,
+                                                                           thresh20_central_percent_anthropic, thresh20_southern_percent_anthropic,
+                                                                           thresh20_eastern_percent_anthropic,
+                                                                           thresh30_eastern_percent_anthropic,
+                                                                           thresh30_southern_percent_anthropic,
+                                                                           thresh30_central_percent_anthropic
+                                                                           ), 2:10)
+
+pivot_thresharea_anthropic_df<- pivot_thresharea_anthropic_df %>% 
+  separate_wider_delim(cols = name, delim = "_", names = c("Thresh","Zone", "Percent","Anthropic"))
+pivot_thresharea_anthropic_df<- pivot_thresharea_anthropic_df %>% dplyr::select(-c(Percent, Anthropic))
+pivot_thresharea_anthropic_df<- pivot_wider(pivot_thresharea_anthropic_df, names_from = Thresh, values_from = value)
+#The values are repeated every year because that is the exclusion I have done
+#If a pixel in ANY year cross the 10%,20% or 30% anthropic threshold, that pixel through
+#time is removed. So the remaining area is the final area and is constant
+#through time. 
+
+
+#lines 85-148
+pivot_area_anthropic_df<- pivot_area_anthropic_df %>% 
+  separate_wider_delim(cols = name, delim = "_", names = c("Zone", "Percent","Anthropic"))
+pivot_area_anthropic_df<- pivot_area_anthropic_df %>% dplyr::select(-c(Percent, Anthropic))
+names(pivot_area_anthropic_df)[3]<- "value1"
+
+pivot_df<- full_join(pivot_area_anthropic_df, pivot_thresharea_anthropic_df, by=join_by(year==year, Zone==Zone))
+
+s<-ggplot(pivot_df, aes(x=factor(year), group=Zone)) +
+  geom_line(aes(y=value1, color=Zone))+
+  geom_point(aes(y=value1,color=Zone))+
+  geom_line(aes(y=thresh10, color=Zone), linetype= "dashed")+
+  geom_line(aes(y=thresh20, color=Zone), linetype="3313")+
+  geom_line(aes(y=thresh30, color=Zone))+
+  ylab("% of pixels in region that are anthropic (any proportion)") +
+  xlab("Year")
+s<- s+scale_color_brewer(labels= c("Central", "Eastern", "Southern"), palette = "Dark2") +
+  theme_classic()+
+  theme(legend.title=element_blank())+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) 
+ggsave(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_threshold_before_after_area.png"),s, 
+       dpi=700, height = 25, width = 25, units = "cm")
+
+remove(pivot_area_anthropic_df, pivot_df, pivot_thresharea_anthropic_df)
+remove(s)
+remove(area_anthropic_df, thresh_area_anthropic_df)
+```
+
+
