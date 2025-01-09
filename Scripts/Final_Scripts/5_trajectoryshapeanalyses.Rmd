@@ -1392,13 +1392,22 @@ tmap_save(ndvi_amswin11_modelselect_map, here("Outputs", "Final_TrajShape_Models
         height = 30, width = 30, units = "cm", dpi=700) ####I moved to Archive because of new map, see next chunk
 ```
 
-However the main problem is that the geographic area of interest (inside the Cerrado) is not the same when looking at the result maps of anisoEVI and NDVI! And this is the main reason for NDVI being huge rasters, having more nrows than anisoEVI etc
+However the main problem is that the geographic area of interest (inside the Cerrado) 
+is not the same when looking at the result maps of anisoEVI and NDVI! And this is the main reason 
+for NDVI being huge rasters, having more nrows than anisoEVI etc
 
-Firstly, the water bodies have not been excluded from the MODIS NDVI product! I looked at my original script in GEE and yes I have NOT excluded water bodies, similar to anisoEVI. AnisoEVI inherently masked out water bodies and then created the anisoEVI values per remaining
-pixels, which is not the case for NDVI. Next reason is that when I decided to keep only pixels that have less than 4 consecutive missing monthly values, a lot of pixels in anisoEVI got excluded (especially in the north), but a lot of pixels in the NDVI still remained because
+Firstly, the water bodies have not been excluded from the MODIS NDVI product! I looked at my
+original script in GEE and yes I have NOT excluded water bodies, similar to anisoEVI. 
+AnisoEVI inherently masked out water bodies and then created the anisoEVI values per remaining
+pixels, which is not the case for NDVI. Next reason is that when I decided to keep only pixels 
+that have less than 4 consecutive missing monthly values, a lot of pixels in anisoEVI got 
+excluded (especially in the north), but a lot of pixels in the NDVI still remained because
 it clearly has no consecutive missing values. 
 
-So moving ahead I have retained only pixels from NDVI that are in the anisoEVI final results. This way the results for NDVI (area barplot,maps) and combination results with anisoEVI will be consistently including same geographic area of interest (ie no water bodies and only pixels with less than 4 missing consecutive monthly anisoEVI values)
+So moving ahead I have retained only pixels from NDVI that are in the anisoEVI final results. 
+This way the results for NDVI (area barplot,maps) and combination results with anisoEVI will 
+be consistently including same geographic area of interest (ie no water bodies and only 
+pixels with less than 4 missing consecutive monthly anisoEVI values)
 
 ```{r}
 ##reading rasters of anisoEVI and NDVI annual mean with stl decomposition swin=11
@@ -1575,7 +1584,8 @@ tmap_save(new_evi_amswin11_modelselect_map, here("Outputs", "Final_TrajShape_Mod
 ```
 
 
-##Results compilation-Result 8- from the final results after masking using anisoEVI for both indices, I exclude anthropic area processed in 1_studyarea_delineation.Rmd
+##Results compilation-Result 8- from the final results after masking using anisoEVI for both indices, 
+I exclude anthropic area processed in 1_studyarea_delineation.Rmd
 ```{r}
 anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
 #from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
@@ -1923,7 +1933,9 @@ is present only when using NDVI, I wouldn't think this is robust. But also goes 
 how NDVI results are weird. 
 
 
-##Result 9- After excluding anthropic area from the results of all indices, I complete (1) cross tab analyses between NDVI & EVI, (2) make a map of difference pixels between NDVI & EVI and (3) find where and how much pixels match across all three indices
+##Result 9- After excluding anthropic area from the results of all indices, I complete 
+(1) cross tab analyses between NDVI & EVI, (2) make a map of difference pixels between NDVI & EVI and 
+(3) find where and how much pixels match across all three indices
 
 ```{r}
 aniso20<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "excludeanthropic20_aniso_trajectoryshapes.tif"))
@@ -2020,178 +2032,78 @@ Sys.time(); ndvi_evi_difference<- terra::app(ndvi_evi_stack, fun= difference_fun
 
 ```
 
-##Results 10- Example time series for step pixels (inc/dec) across all indices
+
+# Aggregation of trend resutls for all indices (excluding anthropic area masking)
+to 5 x 5km resolution
+To think about stability as the framing and not resilience, I have decided
+to aggregate linear, step and quadratic (if any) to one class ie "unstable" pixels
+and no trend to "stable" pixels. Then I aggregate by calculating the proportion of
+the larger 5x5km pixel that is stable. 
+
 ```{r}
-################ Reading files
-#lines 668-670, 
-am_trend_central<- am_trend_central %>% mutate(Region="central")
-am_trend_eastern<- am_trend_eastern %>% mutate(Region="eastern")
-am_trend_southern<- am_trend_southern %>% mutate(Region="southern")
-annualmean_trend_df<- bind_rows(am_trend_southern, am_trend_eastern, am_trend_central); toc()
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#from lines 808-823. 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
 
-am_trend_final_model<- annualmean_trend_df %>% 
-  dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
-  rename(c("cell"="cell","x"="x", "y"="y", "AnnualMean_Detrended_ModelOrder"="model_order", "AnnualMean_Detrended_ShapeClass"="shape_class",
-           "AnnualMean_Detrended_TrendName"="trend_name", "AnnualMean_Detrended_LocBrk"="loc_brk"))
-remove(annualmean_trend_df)
-am_trend_final_model<- am_trend_final_model %>% 
-  mutate(aniso_trajtype_numeric= case_when(AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass == "decrease_constant"& is.na(AnnualMean_Detrended_TrendName)~1,
-                              AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass== "increase_constant" & is.na(AnnualMean_Detrended_TrendName)~2,
-                              AnnualMean_Detrended_ModelOrder=="Lin" & AnnualMean_Detrended_ShapeClass== "stable_constant" & is.na(AnnualMean_Detrended_TrendName)~3,
-                              AnnualMean_Detrended_ModelOrder=="Null" & AnnualMean_Detrended_ShapeClass== "stable_constant" & is.na(AnnualMean_Detrended_TrendName)~3,
-                              AnnualMean_Detrended_ModelOrder=="Quad" & AnnualMean_Detrended_ShapeClass== "stable_concave" & is.na(AnnualMean_Detrended_TrendName)~3,
-                              AnnualMean_Detrended_ModelOrder=="Quad" & AnnualMean_Detrended_ShapeClass== "stable_convex" & is.na(AnnualMean_Detrended_TrendName)~3,
-                              AnnualMean_Detrended_ModelOrder=="Step" & is.na(AnnualMean_Detrended_ShapeClass) & AnnualMean_Detrended_TrendName == "decrease" ~4,
-                              AnnualMean_Detrended_ModelOrder=="Step" & is.na(AnnualMean_Detrended_ShapeClass) & AnnualMean_Detrended_TrendName == "increase" ~5)) %>%
-  dplyr::select(-c(AnnualMean_Detrended_ModelOrder, AnnualMean_Detrended_ShapeClass, AnnualMean_Detrended_TrendName)) #note Linear & Null stable is same category
-anisoEVI_trajectories<- am_trend_final_model
-remove(am_trend_final_model, am_trend_central, am_trend_eastern, am_trend_southern)
+masked_ndvi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "masked_ndvi_amtrends11_trajresults.tif"))
+#from line 1371  1-Lineardecrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
 
+masked_evi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "masked_evi_amtrends11_trajresults.tif"))
+#from line 1546  same legend as above NDVI
 
-#lines 1283-1285,
-swin11_central<- swin11_central %>% mutate(Region="central")
-swin11_eastern<- swin11_eastern %>% mutate(Region="eastern")
-swin11_southern<- swin11_southern %>% mutate(Region="southern")
+##### Reclassification into stable and unstable pixels where stable is 1 and unstable is 2
+m <- rbind(c(1, 2), c(2, 2), c(3,1), c(4,2), c(5,2), c(6,2), c(7,2))
 
-ndvi_df<- bind_rows(swin11_central, swin11_eastern,swin11_southern); toc()
-ndvi_df2<- ndvi_df %>% 
-   dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
-   rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
-            "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
-
-ndvi_df2<- ndvi_df2 %>% #1 hr
-  mutate(ndvi_trajtype_numeric= case_when(Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "decrease_constant"& is.na(Detrended_TrendName)~1,
-                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "increase_constant" & is.na(Detrended_TrendName)~2,
-                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Null" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_concave" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_convex" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "decrease" ~4,
-                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "increase" ~5,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_accelerated" & is.na(Detrended_TrendName)~6,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_decelerated" & is.na(Detrended_TrendName)~7)) %>%
-  dplyr::select(-c(Detrended_ModelOrder, Detrended_ShapeClass, Detrended_TrendName)) #note Linear & Null stable is same category
-
-
-ndvi_trajectories<- ndvi_df2
-remove(swin11_central, swin11_eastern, swin11_southern, ndvi_df, ndvi_df2)
-
-#lines 1520-1522
-swin11_central<- swin11_central %>% mutate(Region="central")
-swin11_eastern<- swin11_eastern %>% mutate(Region="eastern")
-swin11_southern<- swin11_southern %>% mutate(Region="southern")
-
-evi_df<- bind_rows(swin11_central, swin11_eastern,swin11_southern); toc()
-evi_df2<- evi_df %>% 
-   dplyr::select(c(cell,x,y, model_order, shape_class, trend_name, loc_brk, Region)) %>%
-   rename(c("cell"="cell","x"="x", "y"="y", "Detrended_ModelOrder"="model_order", "Detrended_ShapeClass"="shape_class",
-            "Detrended_TrendName"="trend_name", "Detrended_LocBrk"="loc_brk"))
-
-evi_df2<- evi_df2 %>% #1 hr
-  mutate(evi_trajtype_numeric= case_when(Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "decrease_constant"& is.na(Detrended_TrendName)~1,
-                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "increase_constant" & is.na(Detrended_TrendName)~2,
-                              Detrended_ModelOrder=="Lin" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Null" & Detrended_ShapeClass== "stable_constant" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_concave" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass== "stable_convex" & is.na(Detrended_TrendName)~3,
-                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "decrease" ~4,
-                              Detrended_ModelOrder=="Step" & is.na(Detrended_ShapeClass) & Detrended_TrendName == "increase" ~5,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_accelerated" & is.na(Detrended_TrendName)~6,
-                              Detrended_ModelOrder=="Quad" & Detrended_ShapeClass=="decrease_decelerated" & is.na(Detrended_TrendName)~7)) %>%
-  dplyr::select(-c(Detrended_ModelOrder, Detrended_ShapeClass, Detrended_TrendName)) #note Linear & Null stable is same category
-
-evi_trajectories<- evi_df2
-remove(evi_df, evi_df2, swin11_central, swin11_eastern, swin11_southern)
-
-
-################ TEST- to check if the cell numbers across all indices are consistent
-test_filter_step_evi<- evi_trajectories %>% filter(evi_trajtype_numeric==4)
-
-test_join<- left_join(test_filter_step_evi, anisoEVI_trajectories, by=c("cell", "Region"))
-test_join2<- test_join %>% filter(!is.na(aniso_trajtype_numeric))
-#I examined the x y from evi and anisoEVI in the test_join2 df and clearly joining on cell and region
-#is not consistent! Thi smeans that cell number =580 "Central" in EVI is not cell number=580 "Central" in anisoEVI
-remove(test_filter_step_evi, test_join, test_join2)
-######################################################################################
-
-################ Solution trial 1- convert to point shp and st_join (or equivalent in QGIS)
-step_aniso<- anisoEVI_trajectories %>% filter(aniso_trajtype_numeric==4 | aniso_trajtype_numeric==5)
-shp_step_aniso<- st_as_sf(step_aniso, coords = c("x", "y"), crs= "EPSG:4326") 
-#st_write(shp_step_aniso, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_aniso.shp"))
-step_evi<-evi_trajectories %>% filter(evi_trajtype_numeric==4 | evi_trajtype_numeric==5)
-shp_step_evi<- st_as_sf(step_evi, coords = c("x", "y"), crs= "EPSG:4326")
-#st_write(shp_step_evi, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_evi.shp"))
-step_ndvi<-ndvi_trajectories %>% filter(ndvi_trajtype_numeric==4 | ndvi_trajtype_numeric==5)
-shp_step_ndvi<- st_as_sf(step_ndvi, coords = c("x", "y"), crs= "EPSG:4326")
-st_write(shp_step_ndvi, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "shp_step_ndvi.shp"))
-
-
-
-
-anisoEVI_trajectories2<- anisoEVI_trajectories %>% dplyr::select(c(cell,x,y,aniso_trajtype_numeric))
-evi_trajectories2<- evi_trajectories %>% dplyr::select(c(cell,evi_trajtype_numeric))
-ndvi_trajectories2<- ndvi_trajectories %>% dplyr::select(c(cell,ndvi_trajtype_numeric))
-
-trajectories_all<- left_join(anisoEVI_trajectories2, evi_trajectories2, by="cell")
-##For some reason when doing the joins using "cell" column, there in not a clean
-#one-to-one relationship. So I exclude all cells where there is no value for evi
-trajectories_all<- trajectories_all %>% filter(!is.na(evi_trajtype_numeric))
-
-trajectories_all<- left_join(trajectories_all,ndvi_trajectories2, by="cell")
-#Again when doing the last join, there is many-to-one relationships when joining by "cell",
-#which I cannot explain. For now I continue to get pixels that are step (values 4 or 5) across
-#all three columns of indices
-
-step_trajectories<- trajectories_all %>% 
-  filter(aniso_trajtype_numeric==evi_trajtype_numeric & aniso_trajtype_numeric==ndvi_trajtype_numeric & aniso_trajtype_numeric %in% c(4,5))
-#1955 pixels in which all indices assign step trajectory 
-
-d_trans #lines 1612-1615
-
-shp_step_trajectories<- st_as_sf(step_trajectories, coords=c("x", "y"), crs=st_crs(d_trans) )
-shp_step_trajectories<- st_join(shp_step_trajectories, d_trans)
-st_write(shp_step_trajectories, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "step_pixels_all_indices.shp"))
-sample<- shp_step_trajectories %>% group_by(region) %>% slice_sample(n=5)
-#there are points with region NA which I inspect in QGIS
-#st_write(sample, here("Scratch", "sample_step_NA.shp"))
-#Checked on QGIS and the 5 pixels are literally at the border of the d_trans shp
-sample<- sample %>% filter(!is.na(region))
-st_write(sample, here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "sample_step.shp"))
-sample<- st_read(here("Outputs", "Final_TrajShape_Models", "Step_pixels_all_indices_ofinterest", "sample_step.shp"))
-
-remove(anisoEVI_trajectories2, evi_trajectories2, ndvi_trajectories2, trajectories_all)
-
-
-#linking to STL decomposed time series
-trajectory_function<- function(file_name, column_name){
-  df_list<-lapply(file_name, read_rds)
-  all_df<- bind_rows(df_list)
-  
-  sample_df<- left_join(sample, all_df, by="cell")
-  sample_df<- sample_df %>% filter(!is.na(x))
-  sample_df<- sample_df %>% dplyr::select(-c(ID, area_km, value, value_int, seasonal, remainder))
-  names(sample_df)[10]<- coloumn_name
-  
-  sample_df
-
+classify_func<- function(raster){
+  terra::classify(raster, m, others=NA)
 }
-aniso<- list.files(path = here("Outputs", "STL", "anisoEVI" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
-evi<- list.files(path = here("Outputs", "STL", "evi" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
-ndvi<- list.files(path = here("Outputs", "STL", "ndvi" ), pattern= ".rds", all.files=TRUE, full.names=TRUE)
 
-sample_aniso_southern<- trajectory_function(aniso, "aniso_trend")
-sample_evi_southern<- trajectory_function(evi, "evi_trend")
-sample_ndvi_southern<- trajectory_function(ndvi, "ndvi_trend")
-remove(aniso, evi, ndvi)
+anisoEVI_stability<- classify_func(anisoEVI_map_results)
+#writeRaster(anisoEVI_stability,here("Outputs", "Final_TrajShape_Models", "Annual", "stability_am_11_trajresults.tif") )
+ndvi_stability<- classify_func(masked_ndvi_results)
+#writeRaster(ndvi_stability,here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "stability_masked_ndvi_11_trajresults.tif") )
+evi_stability<- classify_func(masked_evi_results)
+#writeRaster(evi_stability,here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "stability_masked_evi_11_trajresults.tif") )
 
+##### Aggregation of stable/unstable to 5 x 5km 
+prop_aggregate <- function(x, target_res) {
+  terra::project(
+    terra::segregate(x), terra::crs(x),
+    method = "average", res = target_res
+  )
+}
 
+anisoEVI_agg_stability<- prop_aggregate(anisoEVI_stability, 0.05) #0.05 is approximately 5x5km
+#writeRaster(anisoEVI_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
+ndvi_agg_stability<- prop_aggregate(ndvi_stability, 0.05)
+#writeRaster(ndvi_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"))
+evi_agg_stability<- prop_aggregate(evi_stability, 0.05)
+#writeRaster(evi_agg_stability[[1]], here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "agg_stability_masked_evi_11_trajresults.tif"))
 
+##### Maps
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
 
+map_function<- function(raster, title){
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (raster)+
+  tm_raster(style = "cont", palette ="Greens", title=title)  
+}
+
+map_anisoEVI_stability<- map_function(anisoEVI_agg_stability[[1]], "AnisoEVI")
+map_ndvi_stability<- map_function(ndvi_agg_stability[[1]], "NDVI")
+map_evi_stability<- map_function(evi_agg_stability[[1]], "EVI")
+
+aggregate_stability<- tmap_arrange(map_anisoEVI_stability, map_ndvi_stability, map_evi_stability)
+tmap_save(aggregate_stability, here("Outputs", "Final_TrajShape_Models", "map_stability_agg_allindices.png"),
+        height = 40, width = 40, units = "cm", dpi=700)
 ```
 
 
 
-##Result 11- Calculation of area at each step of analyses
+
+# Calculation of area at each step of analyses
 I have realized that since the y axis of the barplots I have created which show the
 proportion of the different trajectory shapes are in % of the study area, I need
 to figure out what is the study area (sqkm)
@@ -2214,8 +2126,6 @@ remove(anisoEVI_map_results, cellsize_maskedndvi, masked_ndvi, ndvi_map_results)
 #run lines 1527, 1532, 1541 for same reason as above
 cellsize_ndvi20<- terra::cellSize(ndvi20, unit="km", mask=TRUE)
 trial_sum2<- terra::global(cellsize_ndvi20, fun="sum", na.rm=TRUE) #0.6 million sqkm (29.4% of Cerrado)
-
-
 
 ```
 
