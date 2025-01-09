@@ -212,14 +212,10 @@ remove(r, histogram_df, pivot_histogram_df)
 
 According to Mattos et al., 2023, "we use an 80% valid threshold to avoid small 
 sample sizes inside each larger pixel."I interpret this as 80% is the cut-off i.e. 
-more than 80% of larger pixel is natural. Hence 20% the limit for anthropic in larger pixel. 
+more than 80% of larger pixel is natural. Hence 20% the limit for anthropic in larger pixel in Mattos et al. 
 
-From area_anthropic output figure, >90% of southern region is anthropic, central region was already
-about 70% anthropic in 1985 and eastern region was about 55% anthropic in 1985. So choosing a 20%
-threshold like Mattos et al will mean that very,very little "native" area will remain. 
-
-I can make a decision, like Mattos et al, I will retain pixels across all 3 zones
-such that 20% is the maximum anthropic area. I also use 10% & 30% as a threshold.
+I can make a decision, like Mattos et al, and retain pixels across all 3 zones
+such that 20% is the maximum anthropic area. For now I chose three thresholds- 10, 20 & 30% 
 
 ```{r}
 mapbiomas_mask
