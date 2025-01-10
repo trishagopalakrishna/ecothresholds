@@ -43,13 +43,13 @@ EGU poster made for this product (on Google scholar)
 GEE Google Groups query- https://groups.google.com/g/google-earth-engine-developers/c/RdEEfRt6Pzk
 
 I have decided to use the 90m spatial resolution HAND product because anyway I need
-to resample to the resolution of this project ~1 sqkm. In the 90m HAND product, the ~8 sqkm
+to resample to the resolution of this project ~5 sqkm. In the 90m HAND product, the ~8 sqkm
 means that 8 sqkm of upstream area was considered when calculating flow accumulation, flow path etc
 
 My GEE script- https://code.earthengine.google.com/e0927de9dfa81c2732df2d681d6376c5
 
 ```{r}
-gee_hand<- rast(here("Data", "HAND", "bufferCerrado_HAND.tif"))
+gee_hand<- rast(here("Data", "HAND", "bufferCerrado_HAND_5km.tif"))
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -58,7 +58,7 @@ cerrado<- d_trans %>% st_union()
 #1. Corp/mask
 crop_hand<- terra::crop(gee_hand, cerrado)
 crop_mask<- terra::mask(crop_hand, vect(cerrado))
-writeRaster(crop_mask, here("Outputs", "OtherVariables", "HAND", "cerrado_hand.tif"))
+writeRaster(crop_mask, here("Outputs", "OtherVariables", "HAND", "cerrado_hand_5km.tif"))
 remove(crop_hand)
 
 #2. Map
@@ -68,9 +68,8 @@ map_hand<-
   tm_shape(cerrado)+ tm_fill(title="")+
   tm_shape (formap_hand)+
   tm_raster(n=5, style = "quantile", palette=get_brewer_pal("Purples", n = 5, plot=FALSE),
-            title="Height above nearest drainage(m)" ) 
-tmap_save(map_hand, here("Outputs", "OtherVariables", "HAND", "map_hand.png"),
+            title="Height above nearest drainage(m) (5km resolution)" ) 
+tmap_save(map_hand, here("Outputs", "OtherVariables", "HAND", "map_hand_5km.png"),
         height = 30, width = 30, units = "cm", dpi=700)
-
 
 ```
