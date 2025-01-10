@@ -28,9 +28,9 @@ from the GEE script https://code.earthengine.google.com/f7e17500a39018685d022f07
 
 I use the Mapbiomas vegetation product that is commonly used across Brazil and its biomes. 
 This product is at 30m spatial resolution, derived from Landsat imagergy. In GEE, I completed 
-processing this data such that the resulting product is a multiband image at 1km resolution,
+processing this data such that the resulting product is a multiband image at 1km and 5km resolution,
 where each band denotes a year (1985-2023) and each pixel value is a proportion. The 
-proportion is the % of total Mapbiomas pixels within the 1km pixel that are anthropic (as per
+proportion is the % of total Mapbiomas pixels within the 1km & 5km pixel that are anthropic (as per
 Mapbiomas typology)
 https://code.earthengine.google.com/f7e17500a39018685d022f079335ac51
 
@@ -43,10 +43,16 @@ d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
 #Mapbiomas mask
-mapbiomas_anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask.tif"))
-Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic, cerrado)
+# mapbiomas_anthropic_1<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask.tif"))
+# Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic, cerrado)
+# mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
+# remove(mapbiomas_anthropic, mapbiomas_crop)
+
+mapbiomas_anthropic_5<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask_5km.tif"))
+Sys.time(); mapbiomas_crop<- terra::crop(mapbiomas_anthropic_5, cerrado)
 mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
-remove(mapbiomas_anthropic, mapbiomas_crop)
+remove(mapbiomas_anthropic_5, mapbiomas_crop)
+mapbiomas_mask
 
 #Timepriod 2002-2021
 mapbiomas_mask_timeperiod<- mapbiomas_mask[[18:37]]
@@ -59,29 +65,53 @@ mapbiomas_mask_timeperiod
 
 Anthropic mask processing
 The above chunk output has annual raster where each pixel value is the proportion of the pixel
-that is anthropic. Since the natural area mask threshold is 10% (0.1), then any pixel
-with >0.1 value is considered anthropic and hence distance can be calculated to these pixels
+that is anthropic. Currently, I have used the thresholds such that anything more than
+10%, 20% and 30% anthropic is excluded. So I calculate distances to any pixel with greater than
+these 3 thresholds 
+
 ```{r}
-m <- c(0.1 ,1, NA)
-rclmat <- matrix(m, ncol=3, byrow=TRUE)
-reclass_anthropic<- terra::classify(mapbiomas_mask_timeperiod, rclmat, others=0)
+m1 <- c(0.1 ,1, NA)
+m2<- c(0.2,1,NA)
+m3<- c(0.3,1,NA)
+
+classify_function<- function(thresh_classification){
+  rclmat <- matrix(thresh_classification, ncol=3, byrow=TRUE)
+  terra::classify(mapbiomas_mask_timeperiod, rclmat, others=0)
+}
+
+reclass_anthropic_10<- classify_function(m1)
+reclass_anthropic_20<- classify_function(m2)
+reclass_anthropic_30<- classify_function(m3)
+
 ```
 
 Distance to closest anthropic land use pixel
 ```{r}
-Sys.time(); trial<- terra::gridDist(reclass_anthropic, target=NA); Sys.time()
+distance_function<- function(reclass_anthropic_raster){
+  x_dist<- terra::gridDist(reclass_anthropic_raster, target=NA)
+  x_dist_crop<- terra::crop(x_dist, cerrado)
+  x_dist_mask<- terra::mask(x_dist_crop, vect(cerrado))
+  meandistanthropic<- terra::app(x_dist_mask, fun="mean")
+}
 
-trial_crop<- terra::crop(trial, cerrado)
-trial_mask<- terra::mask(trial_crop, vect(cerrado))
-#writeRaster(trial_mask, here("Scratch", "distanthropic1.tif"))
+meandistanthropic_10_5km<- distance_function(reclass_anthropic_10)
+writeRaster(meandistanthropic_10_5km, here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_10thresholdsanthropicpixel.tif"), overwrite=T)
+meandistanthropic_20_5km<- distance_function(reclass_anthropic_20)
+writeRaster(meandistanthropic_20_5km, here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"), overwrite=T)
+meandistanthropic_30_5km<- distance_function(reclass_anthropic_30)
+writeRaster(meandistanthropic_30_5km, here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_30thresholdsanthropicpixel.tif"), overwrite=T)
 
-meandistanthropic<- terra::app(trial_mask, fun="mean")
-#writeRaster(meandistanthropic, here("Outputs", "OtherVariables", "AnthropicDist", "meandist_anthropicpixel.tif"))
-
-map_distanthropic<-   
+map_distanthropic_function<- function (distance_raster, title){
   tm_shape(cerrado)+ tm_fill(title="")+
-  tm_shape (meandistanthropic)+
-  tm_raster(style = "cont", palette ="Reds", title="Mean distance to anthropic use (m)")  
-tmap_save(map_distanthropic, here("Outputs", "OtherVariables", "AnthropicDist", "map_meandist_anthropicpixel.png"),
-        height = 30, width = 30, units = "cm", dpi=700)
+  tm_shape (distance_raster)+
+  tm_raster(style = "cont", palette ="Reds", title=title)  
+}   
+
+map_distanthropic_10<- map_distanthropic_function(meandistanthropic_10_5km, "Distance to >10%anthropic pixel(m)")
+map_distanthropic_20<- map_distanthropic_function(meandistanthropic_20_5km, "Distance to >20%anthropic pixel(m)")
+map_distanthropic_30<- map_distanthropic_function(meandistanthropic_30_5km, "Distance to >30%anthropic pixel(m)")
+
+all_maps<- tmap_arrange(map_distanthropic_10,map_distanthropic_20,map_distanthropic_30)  
+tmap_save(all_maps, here("Outputs", "OtherVariables", "AnthropicDist", "map_5km_meandist_thresholdsanthropicpixel.png"),
+        height = 40, width = 40, units = "cm", dpi=700)
 ```
