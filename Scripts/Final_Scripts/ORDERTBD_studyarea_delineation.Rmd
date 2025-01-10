@@ -56,10 +56,6 @@ mapbiomas_mask<- terra::mask(mapbiomas_crop, vect(cerrado)); Sys.time()
 remove(mapbiomas_anthropic, mapbiomas_crop)
 mapbiomas_mask #resolution is 0.044 deg. 
 
-#To align with stability rasters at 0.05 degrees, resampling
-ndvi_agg_stability<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"))
-mapbiomas_mask<- terra::resample(mapbiomas_mask, ndvi_agg_stability)
-
 #1. Animation of anthropic areas through time
 library(magick) #for animation
 
@@ -79,7 +75,7 @@ mapbiomas_animation_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
 tic();tmap_animation(mapbiomas_animation_map, filename = here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_5km_LULC_mask.gif"),
                delay = 50, loop = TRUE, restart.delay = 500,
                width = 900, height = 900, dpi = 150) ;toc() 
-remove(neighbors, map_extent, mapbiomas_animation_map)
+remove( mapbiomas_animation_map)
 
 #2. % of climate zone that is anthropic (any proportion) per year in each climate zone
 calc_df<- tibble(year= 1985:2023)
@@ -237,7 +233,7 @@ for (i in x_thresholds){
   print ("App function complete")
   
   writeRaster(threshold_mapbiomas_mask, here("Data", "Masks_to_define_pixelsofinterest", 
-                                             "Mapbiomas_anthropic_mask","5km_thresholded_mapbiomas_masks", paste0("5km_thresholded_masks_",i, ".tif")))
+                                             "Mapbiomas_anthropic_mask","5km_thresholded_mapbiomas_masks", paste0("5km_thresholded_masks_",i, ".tif")), overwrite=TRUE)
                                              
   print ("Next i")
 }
@@ -247,25 +243,28 @@ threshold_function<- function (x){
   }
 
 Sys.time(); threshold_mapbiomas_mask_10<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
-#writeRaster(threshold_mapbiomas_mask_10, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_10.tif"))
+#writeRaster(threshold_mapbiomas_mask_10, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_10.tif"), overwrite=T)
 Sys.time(); threshold_mapbiomas_mask_20<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
-#writeRaster(threshold_mapbiomas_mask_20, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+#writeRaster(threshold_mapbiomas_mask_20, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"), overwrite=T)
 Sys.time(); threshold_mapbiomas_mask_30<- terra::app(tp_mapbiomas_mask, fun= threshold_function); Sys.time()#1min
-#writeRaster(threshold_mapbiomas_mask_30, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_30.tif"))
+#writeRaster(threshold_mapbiomas_mask_30, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_30.tif"), overwrite=T)
 remove(threshold_function)
 
-threshold_map_function<- function (thresholded_raster, title){
+threshold_map_function<- function (threshold_raster, title){
   tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
-  tm_shape( threshold_raster)+
-  tm_raster(style = 'cont',palette= get_brewer_pal("Reds"), n=5, breaks = seq(0,0.3,0.05), title=title) + 
+  tm_shape(threshold_raster)+
+  tm_raster(style = 'cont',
+            palette= get_brewer_pal("Reds"), 
+            n=5, breaks = seq(0,0.3,0.05), 
+            title=title) + 
               tm_layout (legend.position = c("left", "bottom"))+
               tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
   tm_shape(d_trans)+ tm_borders()
 }
 
 map_thresh10_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "10% threshold")
-map_thresh20_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "20% threshold")
-map_thresh30_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_10, "30% threshold")
+map_thresh20_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_20, "20% threshold")
+map_thresh30_mapbiomas<- threshold_map_function(threshold_mapbiomas_mask_30, "30% threshold")
 
 all_maps<- tmap_arrange(map_thresh10_mapbiomas, map_thresh20_mapbiomas, map_thresh30_mapbiomas)
 tic();tmap_save(all_maps, 
@@ -296,7 +295,7 @@ for(i in 1:nlyr(threshold_mapbiomas_mask_30)){
 calc_df<- calc_df %>% mutate(thresh30_anthropic_raster= list_threshold30_rasters)
 remove(list_threshold30_rasters,i)
 
-#lines 93-107
+#run lines 89-103
 Sys.time(); calc_df<- calc_df %>% mutate(threshold10_central= purrr::map(thresh10_anthropic_raster, central_cropmask_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(threshold10_southern= purrr::map(thresh10_anthropic_raster, southern_cropmask_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(threshold10_eastern= purrr::map(thresh10_anthropic_raster, eastern_cropmask_function)); Sys.time()
@@ -310,7 +309,7 @@ Sys.time(); calc_df<- calc_df %>% mutate(threshold30_southern= purrr::map(thresh
 Sys.time(); calc_df<- calc_df %>% mutate(threshold30_eastern= purrr::map(thresh30_anthropic_raster, eastern_cropmask_function)); Sys.time()
 remove(central_cropmask_function, southern_cropmask_function, eastern_cropmask_function)
 
-#lines 113-115
+#run lines 109-111
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_reclass= purrr::map(threshold10_central, reclass_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_reclass= purrr::map(threshold10_southern, reclass_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_reclass= purrr::map(threshold10_eastern, reclass_function)); Sys.time()
@@ -324,7 +323,7 @@ Sys.time(); calc_df<- calc_df %>% mutate(thresh30_southern_reclass= purrr::map(t
 Sys.time(); calc_df<- calc_df %>% mutate(thresh30_eastern_reclass= purrr::map(threshold30_eastern, reclass_function)); Sys.time()
 remove(reclass_function)
 
-#lines 121-123
+#run lines 117-119
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_anthropic_areakm= purrr::map(thresh10_central_reclass, area_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_anthropic_areakm= purrr::map(thresh10_southern_reclass, area_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_anthropic_areakm= purrr::map(thresh10_eastern_reclass, area_function)); Sys.time()
@@ -338,7 +337,7 @@ Sys.time(); calc_df<- calc_df %>% mutate(thresh30_southern_anthropic_areakm= pur
 Sys.time(); calc_df<- calc_df %>% mutate(thresh30_eastern_anthropic_areakm= purrr::map(thresh30_eastern_reclass, area_function)); Sys.time()
 remove(area_function)
 
-#lines 129-131
+#lines 125-127
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_central_anthropic_totalareakm= purrr::map(thresh10_central_anthropic_areakm, total_area_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_southern_anthropic_totalareakm= purrr::map(thresh10_southern_anthropic_areakm, total_area_function)); Sys.time()
 Sys.time(); calc_df<- calc_df %>% mutate(thresh10_eastern_anthropic_totalareakm= purrr::map(thresh10_eastern_anthropic_areakm, total_area_function)); Sys.time()
@@ -413,7 +412,7 @@ pivot_thresharea_anthropic_df<- pivot_wider(pivot_thresharea_anthropic_df, names
 #through time. 
 
 
-#lines 85-148
+#lines 81-143
 pivot_area_anthropic_df<- pivot_area_anthropic_df %>% 
   separate_wider_delim(cols = name, delim = "_", names = c("Zone", "Percent","Anthropic"))
 pivot_area_anthropic_df<- pivot_area_anthropic_df %>% dplyr::select(-c(Percent, Anthropic))
