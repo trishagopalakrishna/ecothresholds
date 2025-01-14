@@ -1,0 +1,136 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I calculate relative entropy. 
+
+Firstly, using the analyses that Marina's group of Luis Catellan and Caio Mattos
+have done, I know that for the Cerrado IMERG and CHIRPS rainfall products
+are the best; howver CHIRPS does not chracterise interannual rainfall variability.
+I use CHIRPS data because, at this stage, I want to take advantage of the time period
+ie data from 1981 as opposed to IMERGE which is from 2000. Also, CHRIPS has finer
+spatial resolution that IMERG. I processed monthly rainfall for every month 1981-2021
+in GEE-https://code.earthengine.google.com/63b7aa4828e2d7046774a2f12c85a831
+
+##Data input- mosaicing- DO NOT RUN, OUTPUT WRITTEN OUT
+```{r}
+
+
+gee_chirps<- rast(here("Data", "Climate", "Rainfall", "CHIRPS", "CHIRPS_monthlyrainfall.tif"))
+gee_chirps
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+crop_rainfall<- terra::crop(gee_chirps, vect(cerrado))
+Sys.time(); mask_rainfall<- terra::mask(crop_rainfall, vect(cerrado)); Sys.time()#half hour
+writeRaster(mask_rainfall, here("Data", "Climate", "Rainfall", "cerrado_chirps_rainfall_1981_2021.tif"))
+
+remove(crop_rainfall, gee_chirps)
+```
+
+
+```{r}
+years<-  rep(1981:2021,each=12) 
+months<- rep(1:12,41)
+raster_names<- vector()
+for (i in 1:length(years)){
+  name<- paste0(years[[i]],"_", months[[i]])
+  raster_names[i]<-name
+}
+names(mask_rainfall)<- raster_names
+remove(i, months, name, raster_names, years)
+```
+
+##Processing-
+Adapting relative entropy code from Schwartz et al., 2020 
+```{r}
+#Feng's seasonality index requires a value for ARmax, or maximum annual rainfall in the dataset. This should be the wettest site if analyzing sites across space, or the wettest year, if analyzing multiple years of the same site.
+annual_years<- 1981:2021
+annual_df<- tibble(Year= annual_years) 
+rainfall_subset_stack<- function (Year){
+  terra::subset(mask_rainfall, grep(Year, names(mask_rainfall)))
+}
+
+annual_df<-annual_df %>% mutate(monthlyrainfall_by_year= map(Year,rainfall_subset_stack))
+
+annual_rainfall_stack<- function (rs){
+  terra::app(rs,sum)
+}
+Sys.time();annual_df<-annual_df %>% mutate(annual_rainfall=map(monthlyrainfall_by_year, annual_rainfall_stack)); Sys.time() 
+
+annual_rainfall_list<- annual_df$annual_rainfall
+r<-rast(annual_rainfall_list)
+armax<- terra::app(r, max)
+remove(annual_rainfall_list,r)
+
+seasonalityIndexFeng <- function(rainSeries){  
+  AR <- sum(rainSeries)
+  pm <- rainSeries/AR
+  D <- sum(pm*log2((pm+0.0001)/(1/12)))
+  seas <- D*AR/armax
+  return(seas)
+}
+
+Sys.time();annual_df<-annual_df %>% mutate(relative_entropy=map(monthlyrainfall_by_year, seasonalityIndexFeng)); Sys.time() #27 min
+
+annual_relative_entropy<- annual_df$relative_entropy
+annual_relative_entropy<- rast(annual_relative_entropy)
+
+remove(annual_rainfall_stack, rainfall_subset_stack, seasonalityIndexFeng)
+```
+
+
+Map of relative entropy and output annual relative entropy
+```{r}
+crop_relative_entropy<- terra::crop(annual_relative_entropy, vect(cerrado))
+mask_relative_entropy<- terra::mask(crop_relative_entropy, vect(cerrado))
+remove(crop_relative_entropy)
+#writeRaster(mask_relative_entropy, here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+raster_names<- vector()
+for (i in 1:length(annual_years)){
+  name<- paste0("RE_",annual_years[[i]])
+  raster_names[i]<-name
+}
+names(mask_relative_entropy)<- raster_names
+
+#Anmation map of relative entropy 1981-2021
+animation_x_time_map<-
+   tm_shape(cerrado)+ tm_fill()+
+   tm_shape (mask_relative_entropy)+
+   tm_raster(style = "quantile", get_brewer_pal("Oranges"),title="Annual relative entropy") +
+   tm_layout (legend.position = c("left", "top"))+
+               tm_facets(nrow=1, ncol=1, free.coords = TRUE)+
+   tm_shape(cerrado)+ tm_borders()
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_relative_entropy_1981_2021.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+remove(animation_x_time_map)
+
+```
+
+Mean RE and CV of RE
+```{r}
+mean_re<- terra::app(mask_relative_entropy, fun="mean")
+writeRaster(mean_re, here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+```
