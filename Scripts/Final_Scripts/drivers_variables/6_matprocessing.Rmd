@@ -1,0 +1,51 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I process MAT. I calcualted mean annual temperature
+using ERA4 temperature at 2m product 1981-2021 in GEE
+https://code.earthengine.google.com/f5e85af3715ad05850eaf497863cbc89
+
+```{r}
+gee_mat<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
+gee_mat
+plot(gee_mat)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+era_mat_crop<- terra::crop(gee_mat, vect(cerrado))
+era_mat_mask<- terra::mask(era_mat_crop, vect(cerrado))
+remove(era_mat_crop)
+writeRaster(era_mat_mask, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+
+map_mat<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (era_mat_mask)+
+  tm_raster(n=5, style = "quantile",palette = "Reds", title="MAT(K)" ) 
+tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+
+```
