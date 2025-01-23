@@ -1,0 +1,90 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I process SPEI as a pulse climate disturbance driver. 
+I processed SPEI in GEE-https://code.earthengine.google.com/d853defebf48fdf53d12dde88f4b083b
+I used the SPEI product based on CRU data and the output that I exported out of GEE
+is a multiband raster, in which each band is the monthly SPEI (Jan 2002- Dec 2021) calculated
+using 1 month accumulation (of PET etc)
+
+#Data input
+```{r}
+gee_spei<- rast(here("Data", "Climate", "SPEI", "monthlySPEI.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+cru_spei_crop<- terra::crop(gee_spei, vect(cerrado))
+cru_spei_mask<- terra::mask(cru_spei_crop, vect(cerrado))
+remove(cru_spei_crop)
+
+years<-  rep(2002:2021,each=12) 
+months<- rep(1:12,20)
+raster_names<- vector()
+for (i in 1:length(years)){
+  name<- paste0(years[[i]],"_", months[[i]])
+  raster_names[i]<-name
+}
+names(cru_spei_mask)<- raster_names
+
+writeRaster(cru_spei_mask, here("Data", "Climate", "SPEI" , "cerrado_spei_monthly_5km_2002_2021.tif"))
+
+# #Anmation map of spei 2002- 2021
+# animation_x_time_map<-
+#   tm_shape(cerrado)+ tm_fill()+
+#   tm_shape (cru_spei_mask)+
+#   tm_raster(style = "cont", get_brewer_pal("Blues"),title="SPEI") +
+#   tm_layout (legend.position = c("left", "top"))+
+#               tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+#   tm_shape(cerrado)+ tm_borders()
+# tmap_animation(animation_x_time_map, filename = here("Data", "Climate", "SPEI , "speimonthly_2002_2021.gif"),
+#                delay = 50, loop = TRUE, restart.delay = 500,
+#                width = 900, height = 900, dpi = 150)
+# remove(animation_x_time_map)
+remove(i, months, name, years, raster_names, gee_spei)
+
+```
+#Processing- annual spei
+```{r}
+cru_spei_mask
+
+annual_years<- 2002:2021
+annual_df<- tibble(Year= annual_years) 
+spei_subset_stack<- function (Year){
+  terra::subset(cru_spei_mask, grep(Year, names(cru_spei_mask)))
+}
+
+annual_df<-annual_df %>% mutate(monthlyspei_by_year= map(Year,spei_subset_stack))
+
+annual_spei_stack<- function (rs){
+  terra::app(rs,mean)
+}
+Sys.time();annual_df<-annual_df %>% mutate(annual_spei=map(monthlyspei_by_year, annual_spei_stack)); Sys.time()
+
+annual_spei_list<- annual_df$annual_spei
+annual_spei<- rast(annual_spei_list)
+remove(annual_spei_list, annual_spei_stack, spei_subset_stack)
+writeRaster(annual_spei, here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
+```
