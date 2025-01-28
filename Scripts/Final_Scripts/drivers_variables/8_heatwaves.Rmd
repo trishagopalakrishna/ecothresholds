@@ -1,0 +1,50 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I process heateaves. I number of heatwaves between 2002 and 2021
+as per Libonatti et al., 2024 using ERA4 temperature at 2m product in GEE
+https://code.earthengine.google.com/689bdfae966c1a4d69fb31a012632dc3
+
+```{r}
+gee_heatwave<- rast(here("Data", "Climate", "ERA5_Heatwave.tif"))
+gee_heatwave
+plot(gee_heatwave)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+heatwave_crop<- terra::crop(gee_heatwave, vect(cerrado))
+heatwave_mask<- terra::mask(heatwave_crop, vect(cerrado))
+remove(heatwave_crop)
+writeRaster(heatwave_mask, here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2021.tif"))
+
+map_hw<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (heatwave_mask)+
+  tm_raster(n=5, style = "quantile",palette = "Reds", title="#Heatwaves" ) 
+tmap_save(map_hw, here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2021.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+```
