@@ -30,17 +30,6 @@ By pixel heterogeniety, I mean natural cover variety but area weighted. So I do 
 ```{r}
 raster_list <- list.files(path = here("Data", "Mapbiomas_raw"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
 raster_list <-lapply(raster_list, rast)
-##tic(); lulc<- do.call(mosaic,raster_list); toc() 
-##writeRaster(lulc, here("Data", "Mapbiomas_raw", "mosaiced_lulc.tif"))
-
-# d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-# d_trans<- st_transform(d_trans, crs = 4326)
-# cerrado<- d_trans %>% st_union()
-# 
-# lulc_crop<- terra::crop(lulc, vect(cerrado))
-# lulc_mask<- terra::mask(lulc_crop, vect(cerrado))
-# remove(lulc_crop)
-# writeRaster(lulc_mask, here("Data", "Mapbiomas_raw", "cerrado_lulc.tif"))
 
 ```
 
@@ -114,8 +103,32 @@ Sys.time(); for ( i in 1:length(raster_list)){
 raster_list <- list.files(path = here("Outputs", "OtherVariables","PixelHeterogeniety"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
 raster_list <-lapply(raster_list, rast)
 
-tic(); lulc<- do.call(mosaic,raster_list); toc() 
-writeRaster(lulc, here("Data", "Mapbiomas_raw", "mosaiced_lulc.tif"))
+tic(); diversity<- do.call(mosaic,raster_list); toc() 
+#writeRaster(diversity, here("Outputs", "OtherVariables","PixelHeterogeniety", "mosaiced_diversity.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+diversity_crop<- terra::crop(diversity, vect(cerrado))
+diversity_mask<- terra::mask(diversity_crop, vect(cerrado))
+remove(diversity_crop)
+#writeRaster(diversity_mask,here("Outputs", "OtherVariables","PixelHeterogeniety", "cerrado_diversity_2002_2021.tif"))
+
+
+#Anmation map of diversity 2002- 2021
+animation_x_time_map<-
+  tm_shape(cerrado)+ tm_fill()+
+  tm_shape (diversity_mask)+
+  tm_raster(n=5, style = "quantile", palette = ("RdPu"),title = "PixelDiversity") +
+  tm_layout (legend.position = c("left", "top"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(cerrado)+ tm_borders()
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "PixelHeterogeniety", "diversity_2002_2021.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150)
+remove(animation_x_time_map)
+
 
 
 ```
