@@ -32,90 +32,104 @@ value is number a times a pixel burned in the year. Firstly, reading the exporte
 
 <<<<<<<<<< DO NOT RUN, OUTPUT WRITTEN OUT
 ```{r}
-#raster_filepath <- list.files(path = here("Data", "Fire", "MODIS"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
-#raster_list<-lapply(raster_filepath, rast)
-#tic(); modis_fire<- do.call(mosaic,raster_list); toc() #6.5 hours
-#writeRaster(modis_fire, here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
+# raster_filepath <- list.files(path = here("Data", "Fire", "MODIS", "OG_binaryburn_MODIS"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+# raster_list<-lapply(raster_filepath, rast)
+# tic(); modis_fire<- do.call(mosaic,raster_list); toc() #9.5 hours
+# writeRaster(modis_fire, here("Data", "Fire", "MODIS", "binaryburn_monthly_500m_2002_2021.tif"))
 
 ```
 
-#Whole Cerrado analyses
+#EDA
+<<<<<<<<<< DO NOT RUN, OUTPUT WRITTEN OUT
 ```{r}
 ########################## 1- Crop, mask to Cerrado  and rename raster layers to years
-# modis_fire<- rast(here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
-# d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-# d_trans<- st_transform(d_trans, crs = 4326)
-# cerrado<- d_trans %>% st_union()
-# 
-# modis_fire_crop<- terra::crop(modis_fire, vect(cerrado))
-# modis_fire_mask<- terra::mask(modis_fire_crop, vect(cerrado))
-# remove(modis_fire_crop)
-# names(modis_fire_mask)<- c("2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010",
-#                                 "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019",
-#                                 "2020", "2021")
-# #writeRaster(modis_fire_mask, here("Outputs", "OtherVariables", "Fire", "modis_fire2002_2021.tif"))
-# remove(modis_fire)
-# 
-# # #Anmation map of fires 2002- 2021
-# # animation_x_time_map<-
-# #   tm_shape(cerrado)+ tm_fill()+
-# #   tm_shape (modis_fire_mask)+
-# #   tm_raster(style = "cont", get_brewer_pal("Oranges"),title="Fire frequency") +
-# #   tm_layout (legend.position = c("left", "top"))+
-# #               tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
-# #   tm_shape(cerrado)+ tm_borders() 
-# # tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Fire", "modisfire_2002_2021.gif"),
-# #                delay = 50, loop = TRUE, restart.delay = 500,
-# #                width = 900, height = 900, dpi = 150)
-# # remove(animation_x_time_map)
-# 
-########################### 2- Fire frequency  
-# modis_fire_mask_0_1<- terra::classify(modis_fire_mask, cbind(NA,0) )
-# firefrequency<- terra::app(modis_fire_mask_0_1, fun="sum")
-# firefrequency_crop<- terra::crop(firefrequency, vect(cerrado))
-# firefrequency_mask<- terra::mask(firefrequency_crop, vect(cerrado))
-# remove(firefrequency_crop)
-# writeRaster(firefrequency_mask, here("Outputs", "OtherVariables", "Fire", "firefrequency2002_2021.tif"))
-
-########################### 3- Fire return period
-# From Libonati et al 2022- fire return period= study time period/fire frequency. 
-# Hypotheses- pixels with high fire return will probably be less stable then pixels with low fire return
-
-study_time_period<- (2021-2002)
-firefrequency_mask<- rast(here("Outputs", "OtherVariables", "Fire", "firefrequency2002_2021.tif"))
-
-fire_return<- study_time_period/firefrequency_mask
-#Pixels that had 0 fire frequency ie never burned will result in infinity fire return
-#So reclassifying these pixels to 0
-fire_return_reclass<- classify(fire_return,cbind(Inf, 0))
-#writeRaster(fire_return_reclass, here("Outputs", "OtherVariables", "Fire", "firereturn.tif"))
-
+modis_fire<- rast(here("Data", "Fire", "MODIS", "binaryburn_monthly_500m_2002_2021.tif"))
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 cerrado<- d_trans %>% st_union()
 
-formap_firereturn<- classify(fire_return,cbind(Inf, NA))
+modis_fire_crop<- terra::crop(modis_fire, vect(cerrado))
+modis_fire_mask<- terra::mask(modis_fire_crop, vect(cerrado))
+remove(modis_fire_crop)
 
-map_return<-   
+years<-  rep(2002:2021,each=12) 
+months<- rep(1:12,20)
+raster_names<- vector()
+for (i in 1:length(years)){
+  name<- paste0(years[[i]],"_", months[[i]])
+  raster_names[i]<-name
+}
+names(modis_fire_mask)<- raster_names
+##writeRaster(modis_fire_mask, here("Outputs", "OtherVariables", "Fire", "cerrado_binaryburn_monthly_500m_2002_2021.tif"))
+remove(modis_fire)
+
+```
+
+#Burned area processing
+```{r}
+binaryburn<-rast(here("Outputs", "OtherVariables", "Fire", "cerrado_binaryburn_monthly_500m_2002_2021.tif"))
+
+annual_years<- 2002:2021
+annual_df<- tibble(Year= annual_years) 
+
+subset<- function (Year){
+  terra::subset(binaryburn, grep(Year, names(binaryburn)))
+}
+
+annual_df<-annual_df %>% mutate(annual_burn= map(Year,subset))
+
+frequency<- function (monthly_burn_raster){
+   terra::app(monthly_burn_raster, fun="sum")
+}
+annual_df<-annual_df %>% mutate(frequency= map(annual_burn, frequency))
+
+binaryburn<- function (annual_frequency_raster){
+  as.numeric(annual_frequency_raster>0)
+}
+Sys.time(); annual_df<-annual_df %>% mutate(binaryburn= map(frequency, binaryburn)); Sys.time()
+
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+prop_aggregate <- function(binaryburn_raster) {
+  terra::project(
+    terra::segregate(binaryburn_raster), mat,# segregate()- binary (0/1) of classes 0,3,4,12
+    method = "average", res = res(mat)[1]
+  )
+}
+
+Sys.time(); annual_df<-annual_df %>% mutate(coarsened_binaryburn= map(binaryburn, prop_aggregate)); Sys.time()
+
+burnarea<- function (coarsened_binary_raster){
+  coarsened_binary_raster[[2]]
+}
+Sys.time(); annual_df<-annual_df %>% mutate(burnedarea= map(coarsened_binaryburn, burnarea)); Sys.time()
+
+burnedarea_list<- annual_df$burnedarea
+burnedarea<- rast(burnedarea_list)
+writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
+
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
+mean_burnarea<- terra::app(burnedarea, fun= "mean")
+
+map_burnedarea<-   
   tm_shape(cerrado)+ tm_fill(title="")+
-  tm_shape (formap_firereturn)+
-  tm_raster(style = "cont", palette ="div", title="Fire Return" ) + 
-  tm_layout(aes.palette = list(seq = "-RdGy"))
-
-formap_frequency<- classify(firefrequency_mask,cbind(0, NA))
-map_frequency<- 
-  tm_shape(cerrado)+ tm_fill(title="")+
-  tm_shape (formap_frequency)+
-  tm_raster(style = "cont", palette ="div", title="Fire Frequency" ) + 
-  tm_layout(aes.palette = list(seq = "-RdGy"))
-
-x<- tmap_arrange(map_frequency, map_return)
-tmap_save(x, here("Outputs", "OtherVariables", "Fire", "map_frequency_return.png"),
+  tm_shape (mean_burnarea)+
+  tm_raster(n=5, style = "quantile",palette = "YlOrBr", title="Burned Area (%)" ) 
+tmap_save(map_burnedarea, here("Outputs", "OtherVariables", "Fire", "burnearea_2002_2021.png"),
         height = 30, width = 30, units = "cm", dpi=700)
-remove(formap_firereturn, formap_frequency, map_return, map_frequency, x)
+
 
 
 ```
+
+
+
+
+
+
+
+
+
+
 
 
 
