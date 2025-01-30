@@ -2065,19 +2065,20 @@ evi_stability<- classify_func(masked_evi_results)
 #writeRaster(evi_stability,here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "stability_masked_evi_11_trajresults.tif") )
 
 ##### Aggregation of stable/unstable to 5 x 5km 
-prop_aggregate <- function(x, target_res) {
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif")) #from GEE
+prop_aggregate <- function(x) {
   terra::project(
-    terra::segregate(x), terra::crs(x),
-    method = "average", res = target_res
+    terra::segregate(x), mat,
+    method = "average", res = res(mat)[1]
   )
 }
 
-anisoEVI_agg_stability<- prop_aggregate(anisoEVI_stability, 0.05) #0.05 is approximately 5x5km
-#writeRaster(anisoEVI_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
-ndvi_agg_stability<- prop_aggregate(ndvi_stability, 0.05)
-#writeRaster(ndvi_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"))
-evi_agg_stability<- prop_aggregate(evi_stability, 0.05)
-#writeRaster(evi_agg_stability[[1]], here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "agg_stability_masked_evi_11_trajresults.tif"))
+anisoEVI_agg_stability<- prop_aggregate(anisoEVI_stability)
+writeRaster(anisoEVI_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"), overwrite=T)
+ndvi_agg_stability<- prop_aggregate(ndvi_stability)
+writeRaster(ndvi_agg_stability[[1]],here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"), overwrite=T)
+evi_agg_stability<- prop_aggregate(evi_stability)
+writeRaster(evi_agg_stability[[1]], here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "agg_stability_masked_evi_11_trajresults.tif"), overwrite=T)
 
 ##### Maps
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
