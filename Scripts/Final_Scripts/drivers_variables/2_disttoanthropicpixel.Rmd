@@ -70,9 +70,9 @@ that is anthropic. Currently, I have used the thresholds such that anything more
 these 3 thresholds 
 
 ```{r}
-m1 <- c(0.1 ,1, NA)
-m2<- c(0.2,1,NA)
-m3<- c(0.3,1,NA)
+m1 <- c(0.1 ,1, 999)
+m2<- c(0.2,1,999)
+m3<- c(0.3,1,999)
 
 classify_function<- function(thresh_classification){
   rclmat <- matrix(thresh_classification, ncol=3, byrow=TRUE)
@@ -88,10 +88,11 @@ reclass_anthropic_30<- classify_function(m3)
 Distance to closest anthropic land use pixel
 ```{r}
 distance_function<- function(reclass_anthropic_raster){
-  x_dist<- terra::gridDist(reclass_anthropic_raster, target=NA)
-  x_dist_crop<- terra::crop(x_dist, cerrado)
+  x_dist_crop<- terra::crop(reclass_anthropic_raster, cerrado)
   x_dist_mask<- terra::mask(x_dist_crop, vect(cerrado))
   meandistanthropic<- terra::app(x_dist_mask, fun="mean")
+  x_dist<- terra::gridDist(x_dist_mask, target=999)
+
 }
 
 meandistanthropic_10_5km<- distance_function(reclass_anthropic_10)
@@ -112,6 +113,6 @@ map_distanthropic_20<- map_distanthropic_function(meandistanthropic_20_5km, "Dis
 map_distanthropic_30<- map_distanthropic_function(meandistanthropic_30_5km, "Distance to >30%anthropic pixel(m)")
 
 all_maps<- tmap_arrange(map_distanthropic_10,map_distanthropic_20,map_distanthropic_30)  
-tmap_save(all_maps, here("Outputs", "OtherVariables", "AnthropicDist", "map_5km_meandist_thresholdsanthropicpixel.png"),
+tmap_save(all_maps, here("Outputs", "OtherVariables", "AnthropicDist", "map_5km_meandist_thresholdsanthropicpixel2.png"),
         height = 40, width = 40, units = "cm", dpi=700)
 ```
