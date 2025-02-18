@@ -2099,6 +2099,21 @@ map_evi_stability<- map_function(evi_agg_stability[[1]], "EVI")
 aggregate_stability<- tmap_arrange(map_anisoEVI_stability, map_ndvi_stability, map_evi_stability)
 tmap_save(aggregate_stability, here("Outputs", "Final_TrajShape_Models", "map_stability_agg_allindices.png"),
         height = 40, width = 40, units = "cm", dpi=700)
+
+threshold<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+
+thresh_aniso_stability<- terra::mask(anisoEVI_agg_stability[[1]], threshold)
+thresh_ndvi_stability<- terra::mask(ndvi_agg_stability[[1]], threshold)
+thresh_evi_stability<- terra::mask(evi_agg_stability[[1]], threshold)
+
+thresh_map_anisoEVI_stability<- map_function(thresh_aniso_stability, "AnisoEVI")
+thresh_map_ndvi_stability<- map_function(thresh_ndvi_stability, "NDVI")
+thresh_map_evi_stability<- map_function(thresh_evi_stability, "EVI")
+
+thresh_aggregate_stability<- tmap_arrange(thresh_map_anisoEVI_stability, thresh_map_ndvi_stability, thresh_map_evi_stability, nrow=1, ncol=3)
+tmap_save(thresh_aggregate_stability, here("Outputs", "Final_TrajShape_Models", "thresholded_map_stability_agg_allindices.png"),
+         height = 40, width = 80, units = "cm", dpi=700)
+
 ```
 
 
