@@ -1,0 +1,178 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I prepare "ground truth" ecological resilience data using meta analyses papers, primarily using Stevens et al., 2017.
+In the SI of the paper, there is information about the papers that were used including extraction of key information 
+(such as lat/long of plots researched in the paper) from the papers. I manually made a csv by copy pasting from the SI word doc to excel.
+
+7 papers basically have the same lat/long. These plots are in Assis, SP and are mostly Durigan plots. 
+
+I consider the rasters of the final trajectories after excluding anthropic area for all three indices at 1km scale. 
+
+```{r}
+stevens_si<- read_csv(here("Data","Stevensetal_woodyencroachment_metaanalyses_data", "si_plotinformation.csv"))
+names(stevens_si)[14]<-"y"
+names(stevens_si)[15]<-"x"
+stevens_si_removeNA<- stevens_si %>% filter(!is.na(x))
+stevens_si_removeNA<- stevens_si_removeNA %>% filter(Country!="Venezuela")
+stevens_si_vector<- sf::st_as_sf(stevens_si_removeNA, coords = c("x", "y"), crs="epsg:4326")
+stevens_si_vector<- stevens_si_vector %>% mutate(uniqueID= 1:nrow(stevens_si_vector))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+#tmap_mode("view")
+#tm_shape(d_trans)+ tm_fill()+ tm_shape(stevens_si_vector) + tm_dots(size="Annual_change")
+#st_write(stevens_si_vector, here("Data","Stevensetal_woodyencroachment_metaanalyses_data", "plotinformation.shp"))
+
+anisoEVI_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+# 1- Linear decrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step increase
+masked_ndvi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "masked_ndvi_amtrends11_trajresults.tif"))
+# 1-Lineardecrease, 2- linear increase, 3- no trend, 4- step decrease, 5- step_increase, 6- quad decrease accelerated, 7- quad-decrease decelerated
+masked_evi_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "masked_evi_amtrends11_trajresults.tif"))
+# same legend as above NDVI
+
+threshold<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "thresholded_mapbiomas_mask_20.tif"))
+
+trajectories<- c(anisoEVI_map_results, masked_evi_results, masked_ndvi_results)
+names(trajectories)<- c("anisoEVI", "EVI", "NDVI")
+final_trajectories<- terra::mask(trajectories, threshold)
+
+```
+
+
+I then find the closest trajectory shape (distance and type of trajectory) to each of the plots in the Stevens et al paper. 
+```{r}
+trajectory_segregate <- function(x) {
+    x_split<- terra::segregate(x, other=999)
+    x_split_crop<- terra::crop(x_split, vect(d_trans))
+    x_split_mask<- terra::mask(x_split_crop, vect(d_trans))
+    x_split_mask
+}
+
+anisoEVItrajectories_split<- trajectory_segregate(final_trajectories[[1]])
+EVItrajectories_split<- trajectory_segregate(final_trajectories[[2]])
+NDVItrajectories_split<- trajectory_segregate(final_trajectories[[3]])
+
+
+distance_function<- function(split_trajectory_raster){
+  meandistanthropic<- terra::app(split_trajectory_raster, fun="mean")
+  x_dist<- terra::gridDist(meandistanthropic, target=999)
+  
+}
+
+calculate_distances<- function (split_raster){
+  list_distance_raster<- list()
+  for (i in 1:nlyr(split_raster)){
+    x_distance<- distance_function(split_raster[[i]])
+    list_distance_raster[[i]]<- x_distance
+}
+  distance_raster<- rast(list_distance_raster)
+  names(distance_raster)<- 1:nlyr(split_raster)
+  distance_raster
+}
+
+Sys.time(); anisoEVI_distances<- calculate_distances(anisoEVItrajectories_split); Sys.time() 
+Sys.time(); EVI_distances<- calculate_distances(EVItrajectories_split); Sys.time() 
+Sys.time(); NDVI_distances<- calculate_distances(NDVItrajectories_split); Sys.time() 
+
+
+shortestdistance_trajectory<- function (distance_raster){
+  distance_df<- terra::extract(distance_raster, stevens_si_vector)
+  pivot_dist_df<- distance_df %>% pivot_longer(-1)
+  pivot_dist_df2<-pivot_dist_df  %>% group_by(as.factor(ID)) %>% summarise(min(value), name[which.min(value)])
+  names(pivot_dist_df2)<- c("uniqueID", "min_dist_m", "respective_trajshape")
+  pivot_dist_df2
+}
+
+Sys.time(); anisoEVI_closest_trajectory_df<- shortestdistance_trajectory(anisoEVI_distances); Sys.time()
+Sys.time(); EVI_closest_trajectory_df<- shortestdistance_trajectory(EVI_distances); Sys.time()
+Sys.time(); NDVI_closest_trajectory_df<- shortestdistance_trajectory(NDVI_distances); Sys.time()
+
+
+aniso_point_dist<- terra::extract(anisodist, stevens_si_vector)
+pivot_aniso_dist<- aniso_point_dist %>% pivot_longer(2:6)
+pivot_aniso_dist2<- pivot_aniso_dist %>% group_by(as.factor(ID)) %>% summarise(min(value), name[which.min(value)])
+names(pivot_aniso_dist2)<- c("uniqueID", "min_dist_m_include_notrend", "TrajShape_include_notrend")
+
+
+anisodist_nostable<- c(dist_1, dist_2, dist_4, dist_5)
+aniso_point_dist_nostable<- terra::extract(anisodist_nostable, stevens_si_vector)
+pivot_aniso_point_dist_nostable<- aniso_point_dist_nostable %>% pivot_longer(2:5)
+pivot_aniso_point_dist_nostable<- pivot_aniso_point_dist_nostable %>% group_by(as.factor(ID)) %>% summarise(min(value), name[which.min(value)])
+names(pivot_aniso_point_dist_nostable)<- c("uniqueID", "min_dist_m_exclude_notrend", "TrajShape_no_exclude_notrend")
+
+aniso_dist<- inner_join(pivot_aniso_dist2,pivot_aniso_point_dist_nostable)
+aniso_dist<- aniso_dist %>% mutate(TrajShape_include_notrend = case_when(TrajShape_include_notrend=="dist_3_proj_excludeanthropic20_aniso"~"No trend",
+                                                                         TrajShape_include_notrend=="dist_5_proj_excludeanthropic20_aniso"~"Step-increase",
+                                                                         TrajShape_include_notrend=="dist_4_proj_excludeanthropic20_aniso"~"Step-decrease"))
+
+aniso_dist<- aniso_dist %>% mutate(TrajShape_no_exclude_notrend = case_when(TrajShape_no_exclude_notrend=="dist_1_proj_excludeanthropic20_aniso"~"Linear-decrease",
+                                                                         TrajShape_no_exclude_notrend=="dist_2_proj_excludeanthropic20_aniso"~"Linear-increase",
+                                                                         TrajShape_no_exclude_notrend=="dist_4_proj_excludeanthropic20_aniso"~"Step-decrease",
+                                                                         TRUE~"Step-increase"))
+#write.csv(aniso_dist, here("Data", "Stevensetal_woodyencroachment_metaanalyses_data", "anisoEVI_closestdist.csv"))
+remove(aniso_point_dist, aniso_point_dist_nostable, anisodist, anisodist_nostable, dist_1, dist_2, dist_3, dist_4, dist_5, exclude20_aniso, pivot_aniso_dist, pivot_aniso_dist2, pivot_aniso_point_dist_nostable, proj_exclude20_aniso)
+
+
+
+#plotting results for interpretation
+stevens_si<- stevens_si_vector %>% st_drop_geometry() %>% mutate(uniqueID=as.factor(uniqueID))
+
+aniso_dist<- aniso_dist %>% mutate(Index="anisoEVI")
+aniso_dist<- full_join(aniso_dist, stevens_si)
+ndvi_dist<- ndvi_dist %>% mutate(Index="NDVI")
+ndvi_dist<- full_join(ndvi_dist, stevens_si)
+
+closest_aniso_dist<- aniso_dist %>% dplyr::select(-c(min_dist_m_exclude_notrend, TrajShape_no_exclude_notrend, Start_year, End_year, Startcover_percentage, Endcover_percentage, Continent, Country, Method, MAP))
+closest_ndvi_dist<- ndvi_dist %>% dplyr::select(-c(min_dist_m_exclude_notrend, TrajShape_no_exclude_notrend, Start_year, End_year, Startcover_percentage, Endcover_percentage, Continent, Country, Method, MAP))
+
+closest_df<- bind_rows(closest_aniso_dist, closest_ndvi_dist)
+
+
+p<- ggplot(closest_df, aes(x=Reference, y=min_dist_m_include_notrend, shape=Index, color=TrajShape_include_notrend)) +
+  geom_point(aes(size=Area_sqkm), position = position_jitterdodge(dodge.width = 0.9))
+
+
+pivot_aniso_dist<- aniso_dist %>% pivot_longer(2:5)
+pivot_aniso_dist<- pivot_aniso_dist %>% mutate(name=case_when(name=="TrajShape_include_notrend"~"Closest",
+                                                              TRUE~"Next closest"))
+
+pivot_ndvi_dist<- ndvi_dist %>% pivot_longer(c(3,5))
+pivot_ndvi_dist<- pivot_ndvi_dist %>% mutate(name=case_when(name=="TrajShape_include_notrend"~"Closest",
+                                                              TRUE~"Next closest"))
+
+dist_df<- bind_rows(pivot_aniso_dist, pivot_ndvi_dist)
+
+
+
+closest_dist_df2<- dist_df2 %>% dplyr::select(c(uniqueID,min_dist_m_include_notrend,  ))
+
+p<- ggplot(dist_df2, aes(x=Reference, y=) )
+
+
+```
+
+
