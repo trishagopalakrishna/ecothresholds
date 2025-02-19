@@ -193,7 +193,7 @@ Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndvistability,
                                      .R =10000,
                                      .seed= 1000); Sys.time()
 summarize(modeltrial4)
-assess(modeltrial4) #model fit statistics look goof
+x<-assess(modeltrial4) #model fit statistics look goof
 verify(modeltrial4) # model admissability looks good
 testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
 
