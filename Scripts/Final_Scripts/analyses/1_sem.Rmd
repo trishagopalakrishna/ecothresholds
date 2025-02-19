@@ -95,7 +95,7 @@ is run on Gaussian distributed data
 analyses_df
 
 set.seed(1000)
-sample_df<- analyses_df %>% slice_sample(prop=0.1, replace= FALSE) #10% randomly sampled
+sample_df<- analyses_df %>% slice_sample(prop=0.2, replace= FALSE) #10% randomly sampled
 summary(sample_df)
 
 #install.packages("PerformanceAnalytics")
@@ -120,7 +120,9 @@ no_outliers_sample_df2<- no_outliers_sample_df %>% drop_na()
 summary(no_outliers_sample_df2)
 
 analyses_ndvistability<- no_outliers_sample_df2 %>% dplyr::select(-c(aniso_stability, evi_stability))
-scaled_analyses_ndvistability<- data.frame(scale(analyses_ndvistability, center= TRUE, scale= TRUE)) #n = 1852
+scaled_analyses_ndvistability<- data.frame(scale(analyses_ndvistability, center= TRUE, scale= TRUE)) 
+chart.Correlation(scaled_analyses_ndvistability, histogram = TRUE, pch= 19)
+
 ```
 All response variables of stable area by index are right skewed (because most of the Cerrado is stable).
 Heatwaves# is normally distributed, while the remaining variables are not. I excluded outliers beyond the 
@@ -133,95 +135,70 @@ scaled_analyses_ndvistability
 
 #install.packages("lavaan", "piecewiseSEM")
 library(lavaan)
-library(piecewiseSEM)
-
-model1<- psem (
-  lm (ndvi_stability ~ hand, 
-      data= analyses_ndvistability),
-  data = analyses_ndvistability
-)
-summary(model1)
-
-model2<- psem (
-  lm(ndvi_stability ~ biodiversity + anthropic_dist, data = analyses_ndvistability),
-  lm (biodiversity ~ anthropic_dist, data = analyses_ndvistability),
-  data = analyses_ndvistability
-)
-summary(model2)
-
-model3<- psem (
-  lm(ndvi_stability ~ biodiversity + anthropic_dist + hand, data = analyses_ndvistability),
-  lm (biodiversity ~ anthropic_dist, data = analyses_ndvistability),
-  data = analyses_ndvistability
-)
-summary(model3)
-
-model4<- psem (
-  lm(ndvi_stability ~ biodiversity + anthropic_dist + hand + burnedarea, data = analyses_ndvistability),
-  lm (biodiversity ~ anthropic_dist, data = analyses_ndvistability),
-  data = analyses_ndvistability
-)
-summary(model4)
-
-model5<- psem (
-  lm(ndvi_stability ~ biodiversity + anthropic_dist + hand + burnedarea , data = analyses_ndvistability),
-  lm (biodiversity ~ anthropic_dist, data = analyses_ndvistability),
-  data = analyses_ndvistability
-)
-summary(model5)
 
 ### Modeling with composites of pulse stressors and background climate
-
-# From https://jslefche.github.io/sem_book/composite-variables.html#grace-keeley-revisited-a-worked-example
-composite_lm1<- lm (ndvi_stability ~ re + mat, scaled_analyses_ndvistability)
-summary(composite_lm1) #all significant due to sample size
-#beta_re<- summary(composite_lm1)$coefficients[2,1]
-#beta_mat<- summary(composite_lm1)$coefficients[3,1]
-#backgroundcliamte_composite<- beta_re*analyses_ndvistability$re + beta_mat*analyses_ndvistability$mat
-#summary(lm(ndvi_stability ~ backgroundcliamte_composite, data= data.frame(analyses_ndvistability, backgroundcliamte_composite)))
-#coefs(lm(ndvi_stability ~ backgroundcliamte_composite, data = data.frame(analyses_ndvistability, backgroundcliamte_composite)))
-
-comp_background<- '
-  backgroundclimate_composite <~ -0.420172*re + -0.028295*mat
-  ndvi_stability ~ backgroundclimate_composite
-'
-modelcomp_background<- sem(comp_background, scaled_analyses_ndvistability, fixed.x= F)
-summary(modelcomp_background, standardize = T)
-
-composite_lm2<- lm (ndvi_stability ~ spei + heatwave, scaled_analyses_ndvistability)
-summary(composite_lm2)
-
-comp_pulsestressor<- '
-  pulse_stressors <~ 0.4460979*spei + -0.0016303*heatwave
-  ndvi_stability ~ pulse_stressors
-'
-modelcomp_pulse<- sem(comp_pulsestressor, scaled_analyses_ndvistability, fixed.x= F)
-summary(modelcomp_pulse, standardize = T)
-
-# From
 # https://www.r-bloggers.com/2011/05/ecological-sems-and-composite-variables-what-why-and-how/
 comp_trial1<- '
-  backgroundclimate_composite <~ 1*re + mat
+  #Composite variables with equal weighting of inficators
+  backgroundclimate_composite <~ 0.5*re + 0.5*mat
   backgroundclimate_composite ~~ 0*backgroundclimate_composite
   
-  pulse_stressors <~ 1*spei + heatwave
+  pulse_stressors <~ 0.5*spei + 0.5*heatwave
   pulse_stressors ~~ 0*pulse_stressors
   
- 
-  ndvi_stability ~ 1*backgroundclimate_composite + 1*pulse_stressors + hand + biodiversity + anthropic_dist + burnedarea
-  ndvi_stability ~~ 1*ndvi_stability
+  #represent composites as latent variables
+  backgroundclimate_composite =~ ndvi_stability
+  pulse_stressors =~ ndvi_stability
+  ndvi_stability ~~ ndvi_stability #estimate variance
   
+  ndvi_stability ~ 1*backgroundclimate_composite + 1*pulse_stressors + hand + biodiversity + anthropic_dist + burnedarea
   pulse_stressors ~ backgroundclimate_composite
   biodiversity ~ pulse_stressors + backgroundclimate_composite + anthropic_dist
   burnedarea ~ pulse_stressors + backgroundclimate_composite 
   heatwave ~~ mat
 '
+
 modeltrial1<- sem(comp_trial1, scaled_analyses_ndvistability, se= "boot", test = "Satorra.Bentler", bootstrap = 1000, fixed.x= F)
 summary(modeltrial1, standardize = T, fit.measures = TRUE)
 
 bootstrap_modeltrial1<- bootstrapLavaan(modeltrial1, R= 1000, FUN = function (x){
   fitMeasures(x, c("cfi", "tli", "rmsea"))}, verbose= TRUE )
 
+#install.packages("cSEM")
+library(cSEM)
 
+comp_trial2<- '
+  #Structural model
+  STABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + PIXEL_HETEROGEN + ANTHROPIC_PRESSURES + FIRE
+  PIXEL_HETEROGEN  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
+  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE 
+  
+  #Composite variables with equal weighting of indicators
+  BACKGROUND_CLIMATE <~ re + mat
+  PULSE_STRESSORS <~ spei + heatwave
+  
+  #Measurement model (Formative)
+  STABILITY =~ ndvi_stability
+  WATER_ACCESS =~ hand
+  PIXEL_HETEROGEN =~ biodiversity 
+  FIRE =~ burnedarea
+  ANTHROPIC_PRESSURES =~ anthropic_dist
+'
+Sys.time(); modeltrial2<- cSEM::csem(.data =  scaled_analyses_ndvistability, .model = comp_trial2); Sys.time()
+Sys.time(); modeltrial3<- cSEM::csem(.data =  scaled_analyses_ndvistability, .model = comp_trial2, .resample_method = "bootstrap"); Sys.time()
+Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndvistability, 
+                                     .model = comp_trial2, 
+                                     .approach_weights = "PLS-PM",
+                                     .resample_method = "bootstrap",
+                                     .R =10000,
+                                     .seed= 1000); Sys.time()
+summarize(modeltrial4)
+assess(modeltrial4) #model fit statistics look goof
+verify(modeltrial4) # model admissability looks good
+testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
 
 ```
+
+VBerification of model fit ie the acceptable range of values of various model fit statistics is from 
+https://www.smartpls.com/documentation/functionalities/thresholds
+which is the thresholds used by SmartPLS software. 
