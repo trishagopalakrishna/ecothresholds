@@ -132,38 +132,6 @@ interquartile range for hand. After exclusion of outliers, most variables are st
 I first consider on NDVI based stable area response variable
 ```{r}
 scaled_analyses_ndvistability
-
-#install.packages("lavaan", "piecewiseSEM")
-library(lavaan)
-
-### Modeling with composites of pulse stressors and background climate
-# https://www.r-bloggers.com/2011/05/ecological-sems-and-composite-variables-what-why-and-how/
-comp_trial1<- '
-  #Composite variables with equal weighting of inficators
-  backgroundclimate_composite <~ 0.5*re + 0.5*mat
-  backgroundclimate_composite ~~ 0*backgroundclimate_composite
-  
-  pulse_stressors <~ 0.5*spei + 0.5*heatwave
-  pulse_stressors ~~ 0*pulse_stressors
-  
-  #represent composites as latent variables
-  backgroundclimate_composite =~ ndvi_stability
-  pulse_stressors =~ ndvi_stability
-  ndvi_stability ~~ ndvi_stability #estimate variance
-  
-  ndvi_stability ~ 1*backgroundclimate_composite + 1*pulse_stressors + hand + biodiversity + anthropic_dist + burnedarea
-  pulse_stressors ~ backgroundclimate_composite
-  biodiversity ~ pulse_stressors + backgroundclimate_composite + anthropic_dist
-  burnedarea ~ pulse_stressors + backgroundclimate_composite 
-  heatwave ~~ mat
-'
-
-modeltrial1<- sem(comp_trial1, scaled_analyses_ndvistability, se= "boot", test = "Satorra.Bentler", bootstrap = 1000, fixed.x= F)
-summary(modeltrial1, standardize = T, fit.measures = TRUE)
-
-bootstrap_modeltrial1<- bootstrapLavaan(modeltrial1, R= 1000, FUN = function (x){
-  fitMeasures(x, c("cfi", "tli", "rmsea"))}, verbose= TRUE )
-
 #install.packages("cSEM")
 library(cSEM)
 
