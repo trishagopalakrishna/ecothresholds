@@ -23,11 +23,11 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 ##Introduction
 In this script, I process extract summary statistics of each index 
-in each climate zone (processed in 1_indexpreparation.Rmd).
-(1) Read in all data of each idex for each zone processed in 1_indexpreparation.Rmd
+in each climate zone (processed in 1_indices_preparation.Rmd).
+(1) Read in all data of each idex for each zone processed in 1_indices_preparation.Rmd
 (2) Calculate summary statistics per zone
 
-#Step 1- reading in all data written in 1_indexpreparation.Rmd
+#Step 1- reading in all data written in 1_indices_preparation.Rmd
 ```{r}
 ndvi_files <- list.files(path = here("Outputs", "Indices", "Climate_Zones_Indices"), pattern= "*NDVI*", all.files=TRUE, full.names=TRUE)
 ndvi_list <- lapply(ndvi_files, rast)
