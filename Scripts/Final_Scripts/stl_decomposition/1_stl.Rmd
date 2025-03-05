@@ -1,0 +1,78 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I complete the STL decomposition to detrend the time series of all indices for 
+each climate zone, for different stl parameters. This script is written such that it can be run
+on the server
+
+```{r}
+numCores<- 16
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+
+Sys.time()
+file_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/Max_consecutive_missingNA/meanfill_central_dfs/",pattern='.rds$', all.files=TRUE, full.names=TRUE) #changed file address manually
+rds_list<-lapply(file_list, read_rds)
+Sys.time()
+length(rds_list)
+
+stl<- function (split_pivot_df){
+  stl_decomposition<- function (df, swin){
+    df_ts<- ts(df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+    stl_df<- stlplus::stlplus(df_ts, s.window = swin, s.degree = 1, t.degree = 1)
+    df_needed<- (stl_df$data)
+    df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+    df_needed
+  }
+  message ("Stl function defined")
+  
+  results <- foreach(
+    i= 1:length(split_pivot_df), #manually subset 
+    .combine = "rbind") %dopar% {
+      split_pivot_df[[i]] %>%
+        group_by(cell) %>%
+        nest() %>%
+        mutate(stl_data = purrr::map(data, stl_decomposition, swin=11)) %>%
+        unnest(c(data,stl_data)) %>%
+        dplyr::select(-c(Year, Month, raw))
+    }
+  message("Stl decomposition complete")
+  write_rds(results, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/STL_Decomposition/swindow_11/stl_central11001_end.rds")#changed output file address manually
+  message ("rds written out")
+}
+
+Sys.time(); stl(rds_list); Sys.time()
+```
