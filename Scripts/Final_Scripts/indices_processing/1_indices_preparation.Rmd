@@ -74,6 +74,7 @@ Sys.time() ; proj_scaled_evi_vrt <- reproject_function(scaled_evi_vrt); Sys.time
 
 remove(reproject_function)
 ```
+
 #Step 3b- match time series ie start from Mar 2000
 ```{r}
 scaled_anisoevi_vrt #262 layers
