@@ -244,9 +244,7 @@ trajectory_classification <- function (dataset = NULL, value_int_or_trend, inter
   return(classification)
 }
 
-numCores<- 16
-library(foreach)
-library(doParallel)
+numCores<- 20
 
 my.cluster<- parallel::makeCluster(
   numCores,
@@ -261,31 +259,82 @@ foreach::getDoParWorkers() #should give numCores
 index_file_path <- "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/"
 
 trajectory_function <- function (index_name, swinfolder, climate_zone, value_int_or_trend){
-  stl_rds_file <- read_rds(paste0(index_file_path, index_name,"/", "STL_Decomposition/", swinfolder, "/", paste0("stl_", climate_zone, ".rds")))
-  message ("reading stl file complete")
+  file_list<- list.files (path = paste0(index_file_path, index_name,"/", "STL_Decomposition/", swinfolder, "/"), pattern =paste0("*",climate_zone,"*"), all.files = T, full.names = T)
+  file_list <- gtools::mixedsort(file_list)
+  message ("reading file paths complete")
   
-  list_df <- stl_rds_file %>% group_by(cell) %>%
-    group_split() 
-  list_df <- list_df [1:16]
-  message ("created list of dfs")
-  
-  y<- foreach(
-    i= 1:length(list_df),
-    .combine= "rbind") %dopar% {
-    	list_df[[i]] %>%
-       	separate_wider_delim(name, "_", names=c("Year", "Month")) %>%
-       	group_by(cell,x,y,Year) %>% 
-       	summarise(value_int=mean(value_int, na.rm=T), 
-                 trend= mean(trend, na.rm=T)) %>%
-       	group_by(cell) %>%
-       	nest() %>%
-       	mutate(classification_data = purrr::map(data, trajectory_classification, value_int_or_trend = value_int_or_trend)) %>%
-       	select(-data) %>%
-       	unnest(classification_data)
+  for (i in 1:length(file_list)){
+    rds_file <- read_rds(file_list[[i]])
+    list_df <- rds_file %>% group_by(cell) %>%
+      group_split()
+    
+    y<- foreach(
+      i= 1:length(list_df)) %dopar% {
+        list_df[[i]] %>% 
+          separate_wider_delim(name, "_", names=c("Year", "Month")) %>%
+          group_by(cell,x,y,Year) %>% 
+          summarise(value_int=mean(value_int, na.rm=T), 
+                    trend= mean(trend, na.rm=T)) %>%
+          group_by(cell) %>%
+          nest() %>%
+          mutate(classification_data = purrr::map(data, trajectory_classification, value_int_or_trend = value_int_or_trend)) %>%
+          select(-data) %>%
+          unnest(classification_data)
     }
-  message ("trajectory classification complete")
   
-  write_rds(y, paste0(index_file_path, index_name, "/", "TrajectoryShapes/annual/",swinfolder, "/", paste0(climate_zone, "_trajshape.rds")))
+  compiled_df <- bind_rows(y)
+	write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/annual/",swinfolder, "/", "trajectory_", climate_zone, "_", i, ".rds"))
+    }
+  message ("file written to disk")
 }
 
-Sys.time(); trajectory_function ("NDVI", "swindow_7", "southern", "trend"); Sys.time()
+#NDVI
+#Sys.time(); trajectory_function("NDVI", "swindow_7", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_7", "eastern", "trend"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_7", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("NDVI", "swindow_11", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_11", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_11", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "value_int"); Sys.time()
+
+#EVI
+#Sys.time(); trajectory_function("EVI", "swindow_7", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_7", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_7", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("EVI", "swindow_11", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_11", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_11", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "value_int"); Sys.time()
+
+#anisoEVI
+#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "trend"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "trend"); Sys.time()
+
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
+#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "value_int"); Sys.time()
