@@ -263,28 +263,21 @@ trajectory_function <- function (index_name, swinfolder, climate_zone, value_int
   file_list <- gtools::mixedsort(file_list)
   message ("reading file paths complete")
   
-  for (i in 1:length(file_list)){
-    rds_file <- read_rds(file_list[[i]])
-    list_df <- rds_file %>% group_by(cell) %>%
-      group_split()
-    
-    y<- foreach(
-      i= 1:length(list_df)) %dopar% {
-        list_df[[i]] %>% 
-          separate_wider_delim(name, "_", names=c("Year", "Month")) %>%
-          group_by(cell,x,y,Year) %>% 
-          summarise(value_int=mean(value_int, na.rm=T), 
-                    trend= mean(trend, na.rm=T)) %>%
-          group_by(cell) %>%
-          nest() %>%
-          mutate(classification_data = purrr::map(data, trajectory_classification, value_int_or_trend = value_int_or_trend)) %>%
-          select(-data) %>%
-          unnest(classification_data)
+  y<- foreach(
+    i = 1:length(file_list)) %dopar% {
+      read_rds(file_list[[i]]) %>% 
+        separate_wider_delim(name, "_", names=c("Year", "Month")) %>%
+        group_by(cell,x,y,Year) %>% 
+        summarise(value_int=mean(value_int, na.rm=T), 
+                  trend= mean(trend, na.rm=T)) %>%
+        group_by(cell) %>%
+        nest() %>%
+        mutate(classification_data = purrr::map(data, trajectory_classification, value_int_or_trend = value_int_or_trend)) %>%
+        select(-data) %>%
+        unnest(classification_data)
     }
-  
   compiled_df <- bind_rows(y)
-	write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/annual/",swinfolder, "/", "trajectory_", climate_zone, "_", i, ".rds"))
-    }
+  write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/annual/",swinfolder, "/", "trajectory_", climate_zone, ".rds"))
   message ("file written to disk")
 }
 
