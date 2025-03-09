@@ -46,6 +46,8 @@ Sys.time(); anisoevi_vrt <- vrt_function(anisoevi_gee_folder_filepath); Sys.time
 
 remove(vrt_function)
 remove(ndvi_gee_folder_filepath, evi_gee_folder_filepath, anisoevi_gee_folder_filepath)
+
+Sys.time(); writeRaster(ndvi_vrt, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "mosaic_ndvi.tif")); Sys.time()
 ```
 
 #Step 2- application of scaling factor from respective veg index pages of GEE 
