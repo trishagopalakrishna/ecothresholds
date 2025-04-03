@@ -29,9 +29,10 @@ environmental drives and stability at the biome scale.
 ##Data input
 ```{r}
 #response- stable area from all three indices
-aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
-evi_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_EVI", "agg_stability_masked_evi_11_trajresults.tif"))
-ndvi_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual_NDVI", "agg_stability_masked_ndvi_11_trajresults.tif"))
+#aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
+ndvi_stable<- rast(here("Outputs", "TrendsResults","ndvi_stablearea.tif"))
+evi_stable<- rast(here("Outputs", "TrendsResults","evi_stablearea.tif"))
+
 
 #drivers
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
@@ -71,12 +72,11 @@ names(drivers)<- c("anthropic_dist", "burnedarea", "biodiversity", "hand", "re",
 #masking predictors
 masked_drivers<- terra::mask(drivers, threshold)
 
-stability<- c(aniso_stable, evi_stable, ndvi_stable)
+stability<- c(ndvi_stable, evi_stable)
+names(stability)<- c("NDVI_stability", "EVI_stability")
 #masking response
-masked_stability<- terra::mask(stability, threshold)
-names(masked_stability)<- c("aniso_stability", "evi_stability", "ndvi_stability")
 
-all_data<- c(masked_stability, masked_drivers)
+all_data<- c(stability, masked_drivers)
 analyses_df<- terra::as.data.frame(all_data)
 remove(mean_driver)
 remove(aniso_stable, evi_stable, ndvi_stable, threshold, anthropic_dist, burnedarea, pixelheterogeniety, hand, re, mat, spei, heatwave)
@@ -93,9 +93,11 @@ Hence I sample a % of the total data. I then do EDA because SEM usually
 is run on Gaussian distributed data
 ```{r}
 analyses_df
+summary(analyses_df)
+analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values. Lost 1.8% of rows
 
 set.seed(1000)
-sample_df<- analyses_df %>% slice_sample(prop=0.2, replace= FALSE) #10% randomly sampled
+sample_df<- analyses_df_NA %>% slice_sample(prop=0.2, replace= FALSE) #10% randomly sampled
 summary(sample_df)
 
 #install.packages("PerformanceAnalytics")
@@ -114,14 +116,13 @@ no_outliers_sample_df <- sample_df %>%
 chart.Correlation(no_outliers_sample_df, histogram = TRUE, pch= 19)
 
 no_outliers_sample_df
-summary(no_outliers_sample_df) #NAs in response/outcome and spei
 
-no_outliers_sample_df2<- no_outliers_sample_df %>% drop_na()
-summary(no_outliers_sample_df2)
-
-analyses_ndvistability<- no_outliers_sample_df2 %>% dplyr::select(-c(aniso_stability, evi_stability))
+analyses_ndvistability<- no_outliers_sample_df %>% dplyr::select(-c(EVI_stability))
 scaled_analyses_ndvistability<- data.frame(scale(analyses_ndvistability, center= TRUE, scale= TRUE)) 
 chart.Correlation(scaled_analyses_ndvistability, histogram = TRUE, pch= 19)
+
+analyses_evistability<- no_outliers_sample_df %>% dplyr::select(-c(NDVI_stability))
+scaled_analyses_evistability<- data.frame(scale(analyses_evistability, center= TRUE, scale= TRUE)) 
 
 ```
 All response variables of stable area by index are right skewed (because most of the Cerrado is stable).
@@ -132,6 +133,7 @@ interquartile range for hand. After exclusion of outliers, most variables are st
 I first consider on NDVI based stable area response variable
 ```{r}
 scaled_analyses_ndvistability
+scaled_analyses_evistability
 #install.packages("cSEM")
 library(cSEM)
 
@@ -139,14 +141,14 @@ comp_trial2<- '
   #Structural model
   STABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + PIXEL_HETEROGEN + ANTHROPIC_PRESSURES + FIRE
   PIXEL_HETEROGEN  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
-  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE 
+  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   
   #Composite variables with equal weighting of indicators
   BACKGROUND_CLIMATE <~ re + mat
   PULSE_STRESSORS <~ spei + heatwave
   
   #Measurement model (Formative)
-  STABILITY =~ ndvi_stability
+  STABILITY =~ NDVI_stability
   WATER_ACCESS =~ hand
   PIXEL_HETEROGEN =~ biodiversity 
   FIRE =~ burnedarea
@@ -158,12 +160,40 @@ Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndvistability,
                                      .model = comp_trial2, 
                                      .approach_weights = "PLS-PM",
                                      .resample_method = "bootstrap",
-                                     .R =10000,
+                                     .R =1000,
                                      .seed= 1000); Sys.time()
-summarize(modeltrial4)
-x<-assess(modeltrial4) #model fit statistics look goof
-verify(modeltrial4) # model admissability looks good
-testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
+cSEM::summarize(modeltrial4)
+x<-cSEM::assess(modeltrial4) #model fit statistics look goof
+cSEM::verify(modeltrial4) # model admissability looks good
+cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
+
+evi_comp_trial2<- '
+  #Structural model
+  STABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + PIXEL_HETEROGEN + ANTHROPIC_PRESSURES + FIRE
+  PIXEL_HETEROGEN  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
+  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
+  
+  #Composite variables with equal weighting of indicators
+  BACKGROUND_CLIMATE <~ re + mat
+  PULSE_STRESSORS <~ spei + heatwave
+  
+  #Measurement model (Formative)
+  STABILITY =~ EVI_stability
+  WATER_ACCESS =~ hand
+  PIXEL_HETEROGEN =~ biodiversity 
+  FIRE =~ burnedarea
+  ANTHROPIC_PRESSURES =~ anthropic_dist
+'
+Sys.time(); evi_modeltrial4<- cSEM::csem(.data =  scaled_analyses_evistability, 
+                                     .model = evi_comp_trial2, 
+                                     .approach_weights = "PLS-PM",
+                                     .resample_method = "bootstrap",
+                                     .R =1000,
+                                     .seed= 1000); Sys.time()
+cSEM::summarize(evi_modeltrial4)
+x<-cSEM::assess(modeltrial4) #model fit statistics look goof
+cSEM::verify(modeltrial4) # model admissability looks good
+cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
 
 ```
 
