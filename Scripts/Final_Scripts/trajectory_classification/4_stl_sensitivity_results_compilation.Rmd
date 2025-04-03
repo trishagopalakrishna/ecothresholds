@@ -1,0 +1,111 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I compile results for the stl decomposition sensitivity. 
+(1) Read in all results rasterns for each index (4 tif each)
+(2) Convert to df and compile
+(3) Make barplot 
+
+#Step 1- read in all results rasters
+```{r}
+input_file_path <- here("Outputs", "TrendsResults")
+
+read_results_rasters_function <- function (index_name){
+   file_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*",index_name,"*"), all.files = T, full.names = T)
+   file_list <- gtools::mixedsort(file_list)
+   
+   results_raster<- lapply(file_list, rast)
+   for (i in 1:length(results_raster)){
+     names(results_raster[[i]])<- str_split(str_split(str_split(file_list[i], "/")[[1]][9], ".tif")[[1]][1], "_")[[1]][2]
+   }
+   results_raster
+}
+
+Sys.time(); ndvi_results<- read_results_rasters_function ("ndvi"); Sys.time()
+Sys.time(); evi_results<- read_results_rasters_function ("evi"); Sys.time()
+Sys.time(); aniso_results<- read_results_rasters_function ("aniso"); Sys.time()
+```
+
+#Step 2- convert to df and compile 
+```{r}
+df_prep_function<- function (results_raster){
+  x_df<- terra::as.data.frame(results_raster, cell = TRUE, xy= TRUE)
+  x_df<- x_df %>% mutate(stl_setting = names(x_df)[4])
+  names(x_df)[4]<- "value"
+  percentage_df <- x_df %>% group_by(value, stl_setting) %>% summarise(count= n()) %>% mutate(percentage= (count/nrow(x_df))*100) 
+  percentage_df
+}
+
+
+plot_df_prep_function <- function (results_raster_list){
+  percentage_results_df_list<- list()
+  for ( i in 1:length(results_raster_list)){
+    percentage_results_df_list[[i]]<- df_prep_function(results_raster_list[[i]])
+  }
+  all_percentage_results <- bind_rows(percentage_results_df_list)
+  all_percentage_results <- all_percentage_results %>% mutate(value = case_when(value== 1~ "Linear decrease",
+                                                                                value==2~ "Linear increase",
+                                                                                value==4~ "Step decrease",
+                                                                                value==5~"Step increase",
+                                                                                value==6~"Quadratic decrease (accelerated)",
+                                                                                value==7~"Quadratic decrease (decelerated)",
+                                                                                value==8~"Quadratic increase (accelerated)",
+                                                                                value==9~"Quadratic increase (decelerated)",
+                                                                                TRUE~"No trend"))
+  all_percentage_results
+}  
+
+
+Sys.time(); ndvi_percentage_results_df <- plot_df_prep_function (ndvi_results); Sys.time()
+Sys.time(); evi_percentage_results_df <- plot_df_prep_function (evi_results); Sys.time()
+Sys.time(); aniso_percentage_results_df <- plot_df_prep_function (aniso_results); Sys.time()
+
+```
+
+#Step 3- barplot 
+```{r}
+Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
+                
+barplot_function <- function (compiled_df, file_name){
+  x_plot<- compiled_df %>% 
+  ggplot(aes(value, percentage, fill = value, group=stl_setting, alpha=as.factor(stl_setting))) +
+  geom_col(position = position_dodge(), color = "black") +
+  theme_classic() +
+  xlab("Trajectory Shape")+ ylab ("% of native savannas")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))+
+  xlab("Model Type")
+  x_plot<- x_plot + scale_fill_manual(values=Set1palette) + theme(legend.title=element_blank())
+  ggsave(here(input_file_path, paste0(file_name,".png")),
+       x_plot,dpi = 700, height = 20, width=20, units = "cm")
+}
+
+Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(evi_percentage_results_df, "evi_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_stl_sensitivity"); Sys.time()
+
+```
