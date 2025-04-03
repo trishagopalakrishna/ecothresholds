@@ -319,7 +319,7 @@ trajectory_function <- function (index_name, swinfolder_input, climate_zone, val
 #NDVI
 Sys.time(); trajectory_function("NDVI", "swindow_7", "central", "trend", "swindow_7"); Sys.time()
 Sys.time(); trajectory_function("NDVI", "swindow_7", "eastern", "trend", "swindow_7"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_7", "southern", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_7", "southern", "trend", "swindow_7"); Sys.time()
 
 Sys.time(); trajectory_function("NDVI", "swindow_11", "central", "trend", "swindow_11"); Sys.time()
 Sys.time(); trajectory_function("NDVI", "swindow_11", "eastern", "trend", "swindow_11"); Sys.time()
