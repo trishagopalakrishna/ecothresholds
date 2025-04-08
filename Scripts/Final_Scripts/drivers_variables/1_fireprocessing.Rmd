@@ -22,27 +22,26 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 
-
 #Introduction 
 In this script I process MODIS fire data for various analyses. 
 
-I processed MODIS fire data in GEE-https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fdefault%3AAbruptChanges_Cerrado%2FDisturbances%2FMODIS_firefrequency
+I processed MODIS fire data in GEE-
+https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fdefault%3AAbruptChanges_Cerrado%2FDisturbances%2FMODIS_firefrequency
 The output from GEE is an image collection, where each band is a year 2002-2021 and pixel
 value is number a times a pixel burned in the year. Firstly, reading the exported data and mosaicing.
+(1) Data processing - mosaic, rename layers, crop/mask to cerrado
+(2) Burned area processing- coarsening to 5x5km and determining burned area fraction
+(3) Anomaly calculation- linear regression trends, kendal tau trends and variance/std
 
-<<<<<<<<<< DO NOT RUN, OUTPUT WRITTEN OUT
+#Step 1- data processing
 ```{r}
+## 1- Mosaic
 # raster_filepath <- list.files(path = here("Data", "Fire", "MODIS", "OG_binaryburn_MODIS"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
 # raster_list<-lapply(raster_filepath, rast)
 # tic(); modis_fire<- do.call(mosaic,raster_list); toc() #9.5 hours
 # writeRaster(modis_fire, here("Data", "Fire", "MODIS", "binaryburn_monthly_500m_2002_2021.tif"))
 
-```
-
-#EDA
-<<<<<<<<<< DO NOT RUN, OUTPUT WRITTEN OUT
-```{r}
-########################## 1- Crop, mask to Cerrado  and rename raster layers to years
+## 2- Crop, mask to Cerrado  and rename raster layers to years
 modis_fire<- rast(here("Data", "Fire", "MODIS", "binaryburn_monthly_500m_2002_2021.tif"))
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -65,7 +64,7 @@ remove(modis_fire)
 
 ```
 
-#Burned area processing
+#Step 2- burned area processing
 ```{r}
 binaryburn<-rast(here("Outputs", "OtherVariables", "Fire", "cerrado_binaryburn_monthly_500m_2002_2021.tif"))
 
@@ -110,6 +109,12 @@ writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_5k
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
 mean_burnarea<- terra::app(burnedarea, fun= "mean")
 
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
 map_burnedarea<-   
   tm_shape(cerrado)+ tm_fill(title="")+
   tm_shape (mean_burnarea)+
@@ -117,22 +122,65 @@ map_burnedarea<-
 tmap_save(map_burnedarea, here("Outputs", "OtherVariables", "Fire", "burnearea_2002_2021.png"),
         height = 30, width = 30, units = "cm", dpi=700)
 
+```
 
+#Step 3- anomoly calculation
+```{r}
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
 
+#1- std deviation
+Sys.time(); std_burnedarea <- terra::app (burnedarea, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_burnedarea <- terra::app (burnedarea, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_burnedarea <- terra::app (burnedarea, fun = MKtau); Sys.time()
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(n=5, style = "quantile",palette = "YlOrBr", title =title) 
+    tm_layout(legend.text.size = 1, title.size = 4) +
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_burnedarea, "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_burnedarea, "Linear Regression"); Sys.time()
+Sys.time();tau_map <- mapping_function (kendall_tau_burnedarea , "Mann-Kendall"); Sys.time()
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, ncol =3, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
+<<<<<<<<<<<<<<<<<<<<<<< ARCHIVE - I need to deal with the below code chunks later
 #CVNP analyses
 ```{r}
 modis_fire<- rast(here("Data", "Fire", "MODIS", "modis_fire_2002_2021.tif"))
