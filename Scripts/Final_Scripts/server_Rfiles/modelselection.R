@@ -3,65 +3,77 @@ library(foreach)
 library(doParallel)
 
 
-
 model_levels <- c("Null", "Lin", "Step", "Quad")
 
-model_select<- function(models_pixel_df){
-  message("Adding model name")
-  models_pixel_df <- models_pixel_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
+model_select<- function(trajectories_df){ 
+  trajectories_df <- trajectories_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
                                                                     levels = model_levels))
   
   message("Least AIC model selection")
-  models_pixel_df <- models_pixel_df %>%
-    mutate(aic_diff= abs(aic) - min(abs(aic))) #wrt model with least AIC
+  trajectories_df <- trajectories_df %>%
+    mutate(aic_diff= aic - min(aic)) #wrt model with least AIC
   
   message("Conditional model selection")
-  condition_less2<- models_pixel_df %>% filter(aic_diff<=2)
+  condition_less2<- trajectories_df %>% filter(aic_diff<=2)
   
   if (dim(condition_less2)[1]==1){
-    models_pixel_df<- condition_less2 
+    trajectories_df<- condition_less2 
   } else{
-    models_pixel_df<- condition_less2 %>% 
+    trajectories_df<- condition_less2 %>% 
       filter(model_order==min(model_order))
   }
-  models_pixel_df 
+  trajectories_df 
 }
 
-rds_list <- list.files(path = "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_7/", 
-                       pattern='annuals7_trajshape_southern', all.files=TRUE, full.names=TRUE) #manually changed to read all files of each region
-
-data_rds_list<- list()
-for (i in 1:length(rds_list)){
-  data_rds_list[[i]]<- read_rds(rds_list[i])
-}
-
-data_rds_list<- data_rds_list %>% discard(is.null)
-
-numCores<- 16
-library(foreach)
-library(doParallel)
-
+numCores<- 20
 my.cluster<- parallel::makeCluster(
   numCores,
   type = "FORK",
   outfile = ""
 )
-
 doParallel::registerDoParallel(cl = my.cluster)
 foreach::getDoParRegistered() #should be TRUE
 foreach::getDoParWorkers() #should give numCores
 
+index_file_path <- "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/"
 
-Sys.time(); y<- foreach (
-  i=1:length(data_rds_list),
-  .combine = "rbind") %dopar% 
-  (data_rds_list[[i]] %>%
-     rename("trend_name"="trend") %>%
-     dplyr::group_by(cell) %>%
-     nest() %>%
-     mutate(modelselect_data = purrr::map(data, model_select)) %>%
-     select(-data) %>%
-     unnest(modelselect_data)
-  ); Sys.time()
+index_file_path <- "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/"
 
-write_rds(y, "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/anisoEVI/TrajectoryShapes/annual/swindow_7/finalshape_annuals7_southern.rds") #manually changed to make one file per region
+model_selection_function <- function (index_name, swinfolder_input, annual_or_monthly, swinfolder_output) {
+  file_list<- list.files (path = paste0(index_file_path, index_name,"/", "TrajectoryShapes/", annual_or_monthly, "/", swinfolder_input, "/"), 
+                          pattern =".rds$", all.files = T, full.names = T)
+  file_list <- gtools::mixedsort(file_list)
+  message ("reading file paths complete")
+  
+  y<- foreach(
+    i = 1:length(file_list)) %dopar% {
+      read_rds(file_list[[i]]) %>%
+        group_by(cell,x,y) %>%
+        nest() %>%  
+        mutate(selection_data = purrr::map(data, model_select)) %>%
+        select(-data) %>%
+        unnest(selection_data) %>%
+        mutate(climate_zone = str_split(str_split(str_split(file_list[[i]], "/")[[1]][14], "_")[[1]][2], ".rds")[[1]][1])
+    }
+  compiled_df <- bind_rows(y)
+  write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/", annual_or_monthly,"/", swinfolder_output, "/", "modelselection_", swinfolder_input, ".rds"))
+  
+}
+
+#NDVI
+Sys.time(); model_selection_function ("NDVI", "swindow_7", "monthly", "swindow_7"); Sys.time()
+Sys.time(); model_selection_function ("NDVI", "swindow_11", "monthly", "swindow_11"); Sys.time()
+Sys.time(); model_selection_function ("NDVI", "swindow_periodic","monthly", "swindow_periodic"); Sys.time()
+Sys.time(); model_selection_function ("NDVI", "value_int","monthly", "value_int"); Sys.time()
+
+#EVI
+#Sys.time(); model_selection_function ("EVI", "swindow_7","monthly", "swindow_7"); Sys.time()
+#Sys.time(); model_selection_function ("EVI", "swindow_11","monthly", "swindow_11"); Sys.time()
+#Sys.time(); model_selection_function ("EVI", "swindow_periodic", "monthly", "swindow_periodic"); Sys.time()
+#Sys.time(); model_selection_function ("EVI", "value_int", "monthly", "value_int"); Sys.time()
+
+#anisoEVI
+#Sys.time(); model_selection_function ("anisoEVI", "swindow_7", "monthly", "swindow_7"); Sys.time()
+#Sys.time(); model_selection_function ("anisoEVI", "swindow_11", "monthly", "swindow_11"); Sys.time()
+#Sys.time(); model_selection_function ("anisoEVI", "swindow_periodic", "monthly" ,"swindow_periodic"); Sys.time()
+#Sys.time(); model_selection_function ("anisoEVI", "value_int", "monthly" ,"value_int"); Sys.time()
