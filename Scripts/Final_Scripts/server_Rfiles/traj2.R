@@ -258,18 +258,15 @@ foreach::getDoParWorkers() #should give numCores
 
 index_file_path <- "/dungbeetle/home/tg505/Trisha/ecothresholds/Outputs/Indices/"
 
-trajectory_function <- function (index_name, swinfolder, climate_zone, value_int_or_trend){
-  file_list<- list.files (path = paste0(index_file_path, index_name,"/", "STL_Decomposition/", swinfolder, "/"), pattern =paste0("*",climate_zone,"*"), all.files = T, full.names = T)
+trajectory_function <- function (index_name, swinfolder_input, climate_zone, value_int_or_trend, swinfolder_output){
+  file_list<- list.files (path = paste0(index_file_path, index_name,"/", "STL_Decomposition/", swinfolder_input, "/"), pattern =paste0("*",climate_zone,"*"), all.files = T, full.names = T)
   file_list <- gtools::mixedsort(file_list)
   message ("reading file paths complete")
   
   y<- foreach(
     i = 1:length(file_list)) %dopar% {
       read_rds(file_list[[i]]) %>% 
-        separate_wider_delim(name, "_", names=c("Year", "Month")) %>%
-        group_by(cell,x,y,Year) %>% 
-        summarise(value_int=mean(value_int, na.rm=T), 
-                  trend= mean(trend, na.rm=T)) %>%
+        separate_wider_delim(name, "_", names=c("Year", "Month")) %>% 
         group_by(cell) %>%
         nest() %>%
         mutate(classification_data = purrr::map(data, trajectory_classification, value_int_or_trend = value_int_or_trend)) %>%
@@ -277,57 +274,57 @@ trajectory_function <- function (index_name, swinfolder, climate_zone, value_int
         unnest(classification_data)
     }
   compiled_df <- bind_rows(y)
-  write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/annual/",swinfolder, "/", "trajectory_", climate_zone, ".rds"))
+  write_rds(compiled_df, paste0(index_file_path, index_name, "/", "TrajectoryShapes/monthly/",swinfolder_output, "/", "trajectory_", climate_zone, ".rds"))
   message ("file written to disk")
 }
 
 #NDVI
-#Sys.time(); trajectory_function("NDVI", "swindow_7", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_7", "eastern", "trend"); Sys.time()
-Sys.time(); trajectory_function("NDVI", "swindow_7", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_7", "central", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_7", "eastern", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_7", "southern", "trend", "swindow_7"); Sys.time()
 
-#Sys.time(); trajectory_function("NDVI", "swindow_11", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_11", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_11", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_11", "central", "trend", "swindow_11"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_11", "eastern", "trend", "swindow_11"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_11", "southern", "trend", "swindow_11"); Sys.time()
 
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "trend", "swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "trend","swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "trend", "swindow_periodic"); Sys.time()
 
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "value_int"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "central", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "eastern", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("NDVI", "swindow_periodic", "southern", "value_int", "value_int"); Sys.time()
 
 #EVI
-#Sys.time(); trajectory_function("EVI", "swindow_7", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_7", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_7", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_7", "central", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_7", "eastern", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_7", "southern", "trend","swindow_7"); Sys.time()
 
-#Sys.time(); trajectory_function("EVI", "swindow_11", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_11", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_11", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_11", "central", "trend", "swindow_11"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_11", "eastern", "trend","swindow_11"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_11", "southern", "trend", "swindow_11"); Sys.time()
 
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "trend", "swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "trend", "swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "trend", "swindow_periodic"); Sys.time()
 
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "value_int"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "central", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "eastern", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("EVI", "swindow_periodic", "southern", "value_int", "value_int"); Sys.time()
 
 #anisoEVI
-#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_7", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_7", "central", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_7", "eastern", "trend", "swindow_7"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_7", "southern", "trend", "swindow_7"); Sys.time()
 
-#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_11", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_11", "central", "trend","swindow_11"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_11", "eastern", "trend", "swindow_11"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_11", "southern", "trend", "swindow_11"); Sys.time()
 
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "trend"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "trend"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "trend", "swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "trend", "swindow_periodic"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "trend", "swindow_periodic"); Sys.time()
 
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "value_int"); Sys.time()
-#Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "value_int"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "central", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "eastern", "value_int", "value_int"); Sys.time()
+Sys.time(); trajectory_function("anisoEVI", "swindow_periodic", "southern", "value_int", "value_int"); Sys.time()
