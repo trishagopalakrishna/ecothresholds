@@ -22,29 +22,37 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 #Introduction
-In this script, I compile results for the stl decomposition sensitivity. 
-(1) Read in all results rasterns for each index (4 tif each)
+In this script, I compile results for the stl decomposition (sensitivity) for annual and monthly time step results. 
+(1) Read in all results rasters for each index (4 tif each) for annual 
 (2) Convert to df and compile
-(3) Make barplot 
+(3) Make barplot of results for stl parameters within annual or monthly category
+(4) Make barplot of results for each stl parameter but comparing annual and monthly 
 
-#Step 1- read in all results rasters
+#Step 1- read in all results (monthly and annual timestep results) rasters
 ```{r}
-input_file_path <- here("Outputs", "TrendsResults")
+input_file_path <- here("Outputs", "TrendsResults", "results_rasters")
 
-read_results_rasters_function <- function (index_name){
-   file_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*",index_name,"*"), all.files = T, full.names = T)
+read_results_rasters_function <- function (annual_or_monthly_folder, index_name){
+   file_list<- list.files(path = paste0(input_file_path, "/",annual_or_monthly_folder, "/"), 
+                          pattern = paste0("*",index_name,"*"), all.files = T, full.names = T)
    file_list <- gtools::mixedsort(file_list)
    
    results_raster<- lapply(file_list, rast)
    for (i in 1:length(results_raster)){
-     names(results_raster[[i]])<- str_split(str_split(str_split(file_list[i], "/")[[1]][9], ".tif")[[1]][1], "_")[[1]][2]
+     names(results_raster[[i]])<- str_split(str_split(str_split(file_list[i], "/")[[1]][11], ".tif")[[1]][1], "_")[[1]][3]
    }
    results_raster
 }
 
-Sys.time(); ndvi_results<- read_results_rasters_function ("ndvi"); Sys.time()
-Sys.time(); evi_results<- read_results_rasters_function ("evi"); Sys.time()
-Sys.time(); aniso_results<- read_results_rasters_function ("aniso"); Sys.time()
+Sys.time(); annual_ndvi_results<- read_results_rasters_function ("annual","ndvi"); Sys.time()
+Sys.time(); monthly_ndvi_results<- read_results_rasters_function ("monthly","ndvi"); Sys.time()
+Sys.time(); annual_evi_results<- read_results_rasters_function ("annual","evi"); Sys.time()
+Sys.time(); monthly_evi_results<- read_results_rasters_function ("monthly","evi"); Sys.time()
+#Sys.time(); aniso_results<- read_results_rasters_function ("aniso"); Sys.time()
+
+#rename rasters in list 
+
+
 ```
 
 #Step 2- convert to df and compile 
@@ -56,7 +64,6 @@ df_prep_function<- function (results_raster){
   percentage_df <- x_df %>% group_by(value, stl_setting) %>% summarise(count= n()) %>% mutate(percentage= (count/nrow(x_df))*100) 
   percentage_df
 }
-
 
 plot_df_prep_function <- function (results_raster_list){
   percentage_results_df_list<- list()
@@ -77,16 +84,20 @@ plot_df_prep_function <- function (results_raster_list){
 }  
 
 
-Sys.time(); ndvi_percentage_results_df <- plot_df_prep_function (ndvi_results); Sys.time()
-Sys.time(); evi_percentage_results_df <- plot_df_prep_function (evi_results); Sys.time()
-Sys.time(); aniso_percentage_results_df <- plot_df_prep_function (aniso_results); Sys.time()
+Sys.time(); annual_ndvi_percentage_results_df <- plot_df_prep_function (annual_ndvi_results); Sys.time()
+Sys.time(); monthly_ndvi_percentage_results_df <- plot_df_prep_function (monthly_ndvi_results); Sys.time()
+Sys.time(); annual_evi_percentage_results_df <- plot_df_prep_function (annual_evi_results); Sys.time()
+Sys.time(); monthly_evi_percentage_results_df <- plot_df_prep_function (monthly_evi_results); Sys.time()
+#Sys.time(); aniso_percentage_results_df <- plot_df_prep_function (aniso_results); Sys.time()
 
 ```
 
-#Step 3- barplot 
+#Step 3- barplot comparing results of all parameters within annual and monthly
 ```{r}
 Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
-                
+ 
+output_file_path <- here("Outputs", "TrendsResults")
+               
 barplot_function <- function (compiled_df, file_name){
   x_plot<- compiled_df %>% 
   ggplot(aes(value, percentage, fill = value, group=stl_setting, alpha=as.factor(stl_setting))) +
@@ -100,12 +111,53 @@ barplot_function <- function (compiled_df, file_name){
         axis.text.x = element_text(size = 12, angle = 90))+
   xlab("Model Type")
   x_plot<- x_plot + scale_fill_manual(values=Set1palette) + theme(legend.title=element_blank())
-  ggsave(here(input_file_path, paste0(file_name,".png")),
+  ggsave(here(output_file_path , paste0(file_name,".png")),
        x_plot,dpi = 700, height = 20, width=20, units = "cm")
 }
 
-Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_stl_sensitivity"); Sys.time()
-Sys.time(); barplot_function(evi_percentage_results_df, "evi_stl_sensitivity"); Sys.time()
-Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(annual_ndvi_percentage_results_df, "ndvi_annual_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(monthly_ndvi_percentage_results_df, "ndvi_monthly_stl_sensitivity"); Sys.time()
+
+Sys.time(); barplot_function(annual_evi_percentage_results_df, "evi_annual_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(monthly_evi_percentage_results_df, "evi_monthly_stl_sensitivity"); Sys.time()
+
+#Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_stl_sensitivity"); Sys.time()
+
+```
+
+#Step 4- barplot comparing results of annual and monthly timestep within each stl parameter 
+```{r}
+mutate_annual_or_monthly_col <- function (results_df, annual_or_monthly){
+  results_df %>% mutate(timestep = annual_or_monthly)
+}
+
+annual_ndvi_percentage_results_df <- mutate_annual_or_monthly_col(annual_ndvi_percentage_results_df, "annual")
+monthly_ndvi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_ndvi_percentage_results_df, "monthly")
+
+annual_evi_percentage_results_df <- mutate_annual_or_monthly_col(annual_evi_percentage_results_df, "annual")
+monthly_evi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_evi_percentage_results_df, "monthly")
+
+ndvi_percentage_results_df<- rbind(annual_ndvi_percentage_results_df, monthly_ndvi_percentage_results_df)
+evi_percentage_results_df<- rbind(annual_evi_percentage_results_df, monthly_evi_percentage_results_df)
+
+stl_settings <- c("swin7", "swin11", "swinnostl", "swinperiodic")
+
+barplot_function <- function (results_df, output_file_name){
+   x_plot <- results_df %>% 
+    ggplot(aes(value, percentage, fill = value, group= timestep, alpha=as.factor(timestep))) +
+    geom_col(position = position_dodge(), color = "black") + 
+     theme_linedraw(base_size = 18) +
+    theme(axis.text.x=element_blank()) + 
+    xlab("Trajectory Shape")+ ylab ("% of native savannas") +
+    scale_fill_manual(values=Set1palette) + 
+    theme(legend.title=element_blank()) +
+    facet_grid(.~stl_setting, scales='free')
+   
+   ggsave(here(output_file_path, paste0(output_file_name,".png")),
+       x_plot,dpi = 700, height = 50, width=50, units = "cm")
+}
+ 
+Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_monthly_annual_comparison_trendresults"); Sys.time()
+Sys.time(); barplot_function(evi_percentage_results_df, "evi_monthly_annual_comparison_trendresults"); Sys.time()
 
 ```
