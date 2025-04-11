@@ -117,12 +117,11 @@ names(mask_relative_entropy)<- raster_names
 
 #Anmation map of relative entropy 1981-2021
 animation_x_time_map<-
-   tm_shape(cerrado)+ tm_fill()+
+   tm_shape(cerrado)+ tm_borders()+
    tm_shape (mask_relative_entropy)+
-   tm_raster(style = "quantile", get_brewer_pal("Oranges"),title="Annual relative entropy") +
-   tm_layout (legend.position = c("left", "top"))+
-               tm_facets(nrow=1, ncol=1, free.coords = TRUE)+
-   tm_shape(cerrado)+ tm_borders()
+   tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Oranges")) +
+   tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+
 tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_relative_entropy_1981_2021.gif"),
                 delay = 50, loop = TRUE, restart.delay = 500,
                 width = 900, height = 900, dpi = 150)
@@ -171,8 +170,9 @@ cerrado<- d_trans %>% st_union()
 mapping_function <- function (anomoly_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (anomoly_raster) + 
-    tm_raster(n=5, style = "quantile",palette = "brewer.blues", title =title) 
-    tm_layout(legend.text.size = 1, title.size = 4) +
+    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "Blues"),
+              col.legend = tm_legend(title = title)) + 
+    tm_layout(legend.text.size = 1, title.size = 4)
   x_map
 }
 Sys.time();std_map <- mapping_function (std_re, "Std"); Sys.time()
