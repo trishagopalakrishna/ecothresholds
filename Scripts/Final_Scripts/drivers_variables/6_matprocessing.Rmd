@@ -22,14 +22,21 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 ##Introduction
-In this script I process MAT. I calcualted mean annual temperature
+In this script I process MAT. I calculated mean annual temperature
 using ERA4 temperature at 2m product 1981-2021 in GEE
 https://code.earthengine.google.com/f5e85af3715ad05850eaf497863cbc89
+(1) Read data and crop and mask
+(2) Map making
+(3) Anomaly calculation
 
+#Step 1- read data and crop and mask (both mean annual and annual)- DO NOT RUN, OUTPUTS WRITTEN OUT
 ```{r}
 gee_mat<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
 gee_mat
 plot(gee_mat)
+
+gee_at<- rast(here("Data", "Climate", "Annual_Temp_ERA5.tif"))
+gee_at
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -40,6 +47,14 @@ era_mat_mask<- terra::mask(era_mat_crop, vect(cerrado))
 remove(era_mat_crop)
 writeRaster(era_mat_mask, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
 
+era_at_crop<- terra::crop(gee_at, vect(cerrado))
+era_at_mask<- terra::mask(era_at_crop, vect(cerrado))
+remove(era_at_crop)
+writeRaster(era_at_mask, here("Outputs", "OtherVariables", "Climate", "at_1981_2021.tif"))
+```
+
+#Step 2- Map making
+```{r}
 map_mat<-   
   tm_shape(cerrado)+ tm_fill(title="")+
   tm_shape (era_mat_mask)+
@@ -47,5 +62,71 @@ map_mat<-
 tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
         height = 30, width = 30, units = "cm", dpi=700)
 
+#animation
+animation_x_time_map<-
+   tm_shape(cerrado)+ tm_borders()+
+   tm_shape (era_at_mask)+
+   tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
+   tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+```
+
+#Step 3- anomaly calculation
+```{r}
+at_mask<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021.tif"))
+
+#1- std deviation
+Sys.time(); std_at <- terra::app (at_mask, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_at <- terra::app (at_mask, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_at <- terra::app (at_mask, fun = MKtau); Sys.time()
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "Reds"),
+              col.legend = tm_legend(title = title)) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_at, "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_at, "Linear Regression"); Sys.time()
+Sys.time();tau_map <- mapping_function (kendall_tau_at, "Mann-Kendall"); Sys.time()
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, ncol =3, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
 
 ```
