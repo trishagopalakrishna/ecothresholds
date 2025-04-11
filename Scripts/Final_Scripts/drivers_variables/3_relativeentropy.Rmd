@@ -31,11 +31,13 @@ I use CHIRPS data because, at this stage, I want to take advantage of the time p
 ie data from 1981 as opposed to IMERGE which is from 2000. Also, CHRIPS has finer
 spatial resolution that IMERG. I processed monthly rainfall for every month 1981-2021
 in GEE-https://code.earthengine.google.com/63b7aa4828e2d7046774a2f12c85a831
+(1) Reading data, mosaicing, cropping and masking to Cerrado
+(2) Data cleaning and renaming layers
+(3) Relative entropy calculation
+(4) Anomaly calculation
 
-##Data input- mosaicing- DO NOT RUN, OUTPUT WRITTEN OUT
+#Step 1- Reading data, mosaicing, cropping and masking DO NOT RUN, OUTPUT WRITTEN OUT
 ```{r}
-
-
 gee_chirps<- rast(here("Data", "Climate", "Rainfall", "CHIRPS", "CHIRPS_monthlyrainfall.tif"))
 gee_chirps
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -49,8 +51,10 @@ writeRaster(mask_rainfall, here("Data", "Climate", "Rainfall", "cerrado_chirps_r
 remove(crop_rainfall, gee_chirps)
 ```
 
-
+#Step 2- Processing ie renaming of data layers
 ```{r}
+mask_rainfall<- rast(here("Data", "Climate", "Rainfall", "cerrado_chirps_rainfall_1981_2021.tif"))
+
 years<-  rep(1981:2021,each=12) 
 months<- rep(1:12,41)
 raster_names<- vector()
@@ -62,8 +66,7 @@ names(mask_rainfall)<- raster_names
 remove(i, months, name, raster_names, years)
 ```
 
-##Processing-
-Adapting relative entropy code from Schwartz et al., 2020 
+#Step 3- Adapting relative entropy code from Schwartz et al., 2020
 ```{r}
 #Feng's seasonality index requires a value for ARmax, or maximum annual rainfall in the dataset. This should be the wettest site if analyzing sites across space, or the wettest year, if analyzing multiple years of the same site.
 annual_years<- 1981:2021
@@ -92,21 +95,19 @@ seasonalityIndexFeng <- function(rainSeries){
   return(seas)
 }
 
-Sys.time();annual_df<-annual_df %>% mutate(relative_entropy=map(monthlyrainfall_by_year, seasonalityIndexFeng)); Sys.time() #27 min
+Sys.time();annual_df<-annual_df %>% mutate(relative_entropy=map(monthlyrainfall_by_year, seasonalityIndexFeng)); Sys.time() 
 
 annual_relative_entropy<- annual_df$relative_entropy
 annual_relative_entropy<- rast(annual_relative_entropy)
 
-remove(annual_rainfall_stack, rainfall_subset_stack, seasonalityIndexFeng)
-```
-
-
-Map of relative entropy and output annual relative entropy
-```{r}
 crop_relative_entropy<- terra::crop(annual_relative_entropy, vect(cerrado))
 mask_relative_entropy<- terra::mask(crop_relative_entropy, vect(cerrado))
 remove(crop_relative_entropy)
 #writeRaster(mask_relative_entropy, here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+
+remove(annual_rainfall_stack, rainfall_subset_stack, seasonalityIndexFeng)
+
+#map
 raster_names<- vector()
 for (i in 1:length(annual_years)){
   name<- paste0("RE_",annual_years[[i]])
@@ -125,12 +126,59 @@ animation_x_time_map<-
 tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_relative_entropy_1981_2021.gif"),
                 delay = 50, loop = TRUE, restart.delay = 500,
                 width = 900, height = 900, dpi = 150)
-remove(animation_x_time_map)
-
+remove(animation_x_time_map, raster_names)
 ```
 
-Mean RE and CV of RE
+#Step 4- anomoly calculation
 ```{r}
-mean_re<- terra::app(mask_relative_entropy, fun="mean")
-writeRaster(mean_re, here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+annual_relative_entropy<-rast(here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+
+#1- std deviation
+Sys.time(); std_re <- terra::app (annual_relative_entropy, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_re <- terra::app (annual_relative_entropy, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_re <- terra::app (annual_relative_entropy, fun = MKtau); Sys.time()
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(n=5, style = "quantile",palette = "brewer.blues", title =title) 
+    tm_layout(legend.text.size = 1, title.size = 4) +
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_re, "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_re, "Linear Regression"); Sys.time()
+Sys.time();tau_map <- mapping_function (kendall_tau_re , "Mann-Kendall"); Sys.time()
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, ncol =3, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_re_methods_results.png"), height = 50, width = 50, units = "cm", dpi=700)
 ```
