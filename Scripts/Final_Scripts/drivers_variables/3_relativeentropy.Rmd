@@ -170,7 +170,7 @@ cerrado<- d_trans %>% st_union()
 mapping_function <- function (anomoly_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (anomoly_raster) + 
-    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "Blues"),
+    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "Oranges"),
               col.legend = tm_legend(title = title)) + 
     tm_layout(legend.text.size = 1, title.size = 4)
   x_map
