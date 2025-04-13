@@ -27,6 +27,7 @@ In this script, I compile results for the stl decomposition (sensitivity) for an
 (2) Convert to df and compile
 (3) Make barplot of results for stl parameters within annual or monthly category
 (4) Make barplot of results for each stl parameter but comparing annual and monthly 
+(5) Make map of results for each stl parameter comparing annual and monthly
 
 #Step 1- read in all results (monthly and annual timestep results) rasters
 ```{r}
@@ -153,11 +154,87 @@ barplot_function <- function (results_df, output_file_name){
     theme(legend.title=element_blank()) +
     facet_grid(.~stl_setting, scales='free')
    
-   ggsave(here(output_file_path, paste0(output_file_name,".png")),
-       x_plot,dpi = 700, height = 50, width=50, units = "cm")
+   ggsave(here(output_file_path, "annual_monthly_comparison", paste0(output_file_name,".png")),
+       x_plot,dpi = 700, height = 40, width=80, units = "cm")
 }
  
 Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_monthly_annual_comparison_trendresults"); Sys.time()
 Sys.time(); barplot_function(evi_percentage_results_df, "evi_monthly_annual_comparison_trendresults"); Sys.time()
+
+```
+
+#Step 5- maps comparing trajectory results of annual and monthly for each stl parameter
+```{r}
+annual_ndvi_results
+monthly_ndvi_results
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+swin7_rasters_function <- function(annual_results_list, monthly_results_list){
+  swin7_raster <- c(annual_results_list[[1]], monthly_results_list[[1]])
+  names(swin7_raster)<- c("annual-swin7", "monthly-swin7")
+  swin7_raster
+}
+swin11_rasters_function <- function(annual_results_list, monthly_results_list){
+  swin11_raster <- c(annual_results_list[[2]], monthly_results_list[[2]])
+  names(swin11_raster)<- c("annual-swin11", "monthly-swin11")
+  swin11_raster
+}
+swinnostl_rasters_function <- function(annual_results_list, monthly_results_list){
+  swinnostl_raster <- c(annual_results_list[[3]], monthly_results_list[[3]])
+  names(swinnostl_raster)<- c("annual-nostl", "monthly-nostl")
+  swinnostl_raster
+}
+swinperiodic_rasters_function <- function(annual_results_list, monthly_results_list){
+  swinperiodic_raster <- c(annual_results_list[[4]], monthly_results_list[[4]])
+  names(swinperiodic_raster)<- c("annual-swinperiodic", "monthly-swinperiodic")
+  swinperiodic_raster
+}
+
+#NDVI
+ndvi_swin7<- swin7_rasters_function(annual_ndvi_results, monthly_ndvi_results)
+ndvi_swin11<- swin11_rasters_function(annual_ndvi_results, monthly_ndvi_results)
+ndvi_swinnostl<- swinnostl_rasters_function(annual_ndvi_results, monthly_ndvi_results)
+ndvi_swinperiodic<- swinperiodic_rasters_function(annual_ndvi_results, monthly_ndvi_results)
+
+#EVI
+
+
+
+
+animation_function<- function (raster,index_name, stlparameter_string){
+  animation_map<-
+    tm_shape(cerrado)+ tm_borders()+
+    tm_shape (raster)+
+    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )),
+              col.legend = tm_legend_hide())+
+    tm_add_legend(fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
+      labels = c("Linear decrease", 
+                  "Linear increase",
+                  "No trend",
+                  "Step decrease",
+                  "Step increase",
+                  "Quad decrease (accelerated)",
+                  "Quad decrease (decelerated)",
+                  "Quad increase (accelerated)",
+                  "Quad incrase (decelerated)"))+
+    tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+  
+  tmap_animation(animation_map, filename = here("Outputs", "Trendsresults", "annual_monthly_comparison",
+                                                  paste0(index_name,"_", "animation_annual_monthly","_", stlparameter_string, ".gif")),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+}
+
+animation_function(ndvi_swin7,"ndvi", "swin7")
+animation_function(ndvi_swin11,"ndvi", "swin11")
+animation_function(ndvi_swinnostl,"ndvi", "swinnostl")
+animation_function(ndvi_swinperiodic,"ndvi", "swinperiodic")
+
+
+
+
 
 ```
