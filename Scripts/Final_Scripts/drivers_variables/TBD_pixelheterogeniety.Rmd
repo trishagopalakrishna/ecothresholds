@@ -1,0 +1,136 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I calculate pixel heterogeneity as per White et al 2022- ie shannon's diversity index of land uses and covers using the vegan R package. 
+By pixel heterogeniety, I mean natural cover variety but area weighted. So I do include anthropic covers, but I reclassify all anthropic covers to be the same anthropic cover. For example, all ag classes are under agriculture and all man-made covers are under the same class. 
+
+##Data input
+```{r}
+raster_list <- list.files(path = here("Data", "Mapbiomas_raw"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+raster_list <-lapply(raster_list, rast)
+
+```
+
+##Processing- calculation of pixel heterogeniety
+```{r}
+heterogeneity_function<- function (raster, diversity_name){  
+  annual_years<- 2002:2021
+  annual_df<- tibble(Year= annual_years) 
+
+  subset<- function (Year){
+    terra::subset(raster, grep(Year, names(raster)))
+  }
+
+  annual_df<-annual_df %>% mutate(annual_lulc= map(Year,subset))
+  
+  message("df created")
+#Reclassification - the excel sheet is a classification I manually made using Mapbiomas 9 classificaiton
+  reclass_table<- read.csv(here("Data", "mapbiomas_legend_collection9_classification.csv"))
+  reclass_table<- reclass_table %>% dplyr::select(c("Pixel.value", "Reclass"))
+  reclassify<- function(raster_tobe_reclassified){
+    classified_raster<- terra::classify(raster_tobe_reclassified, reclass_table, others=NA)
+  }
+
+  Sys.time(); annual_df<-annual_df %>% mutate(reclassified_lulc= map(annual_lulc, reclassify)); Sys.time() #6min
+  
+  message("classification completed")
+#Percentage of 5x5km pixel covered by each natural cover type
+  mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+  prop_aggregate <- function(reclassified_raster) {
+    terra::project(
+      terra::segregate(reclassified_raster), mat,# segregate()- binary (0/1) of classes 0,3,4,12
+      method = "average", res = res(mat)[1]
+    )
+  }
+
+  Sys.time(); annual_df<-annual_df %>% mutate(coarsened_split_lulc= map(reclassified_lulc, prop_aggregate)); Sys.time()
+
+  message("coarsening complete")
+##Shannon's diversity index
+  library(vegan)
+  shannon_diversity<- function (reclass_coarse_raster){
+    x_df<- as.data.frame(reclass_coarse_raster, cells=TRUE, xy=TRUE)
+    x_diversity<- vegan::diversity(x_df %>% dplyr::select(-c(cell,x,y)), index="shannon")
+    x_diversity<- as.data.frame(x_diversity)
+    x_df<- bind_cols(x_df, x_diversity)
+    trial_vector<- terra::vect(x_df %>% dplyr::select(c("cell", "x", "y", "x_diversity")), geom=c("x", "y"), crs="epsg:4326")
+    trial_raster<- terra::rasterize(trial_vector, reclass_coarse_raster, "x_diversity", fun="max")
+    trial_raster
+  }
+  Sys.time(); annual_df<-annual_df %>% mutate(diversity= map(coarsened_split_lulc, shannon_diversity)); Sys.time()
+
+  message("diversity index complete")
+  diversity_stack<- rast(annual_df$diversity)
+  names(diversity_stack)<- annual_df$Year
+  writeRaster(diversity_stack, here("Outputs", "OtherVariables", "PixelHeterogeniety", paste0(diversity_name, ".tif")))
+  message("diversity raster written to disk")
+}
+
+
+Sys.time(); for ( i in 1:length(raster_list)){
+  print (paste0("raster # ", i))
+  
+  heterogeneity_function(raster_list[[i]], paste0("diversity_",i))
+
+}; Sys.time()
+
+```
+
+##Mosaicing, figures 
+```{r}
+raster_list <- list.files(path = here("Outputs", "OtherVariables","PixelHeterogeniety"), pattern='.tif$', all.files=TRUE, full.names=TRUE)
+raster_list <-lapply(raster_list, rast)
+
+tic(); diversity<- do.call(mosaic,raster_list); toc() 
+#writeRaster(diversity, here("Outputs", "OtherVariables","PixelHeterogeniety", "mosaiced_diversity.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+diversity_crop<- terra::crop(diversity, vect(cerrado))
+diversity_mask<- terra::mask(diversity_crop, vect(cerrado))
+remove(diversity_crop)
+#writeRaster(diversity_mask,here("Outputs", "OtherVariables","PixelHeterogeniety", "cerrado_diversity_2002_2021.tif"))
+
+
+#Anmation map of diversity 2002- 2021
+animation_x_time_map<-
+  tm_shape(cerrado)+ tm_fill()+
+  tm_shape (diversity_mask)+
+  tm_raster(n=5, style = "quantile", palette = ("RdPu"),title = "PixelDiversity") +
+  tm_layout (legend.position = c("left", "top"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(cerrado)+ tm_borders()
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "PixelHeterogeniety", "diversity_2002_2021.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150)
+remove(animation_x_time_map)
+
+
+
+```
+
+
