@@ -47,7 +47,7 @@ heterogeneity_function<- function (raster, diversity_name){
   
   message("df created")
 #Reclassification - the excel sheet is a classification I manually made using Mapbiomas 9 classificaiton
-  reclass_table<- read.csv(here("Data", "mapbiomas_legend_collection9_classification.csv"))
+  reclass_table<- read.csv(here("Data", "mapbiomas_legend_collection9_classification_pixelheterogeniety.csv"))
   reclass_table<- reclass_table %>% dplyr::select(c("Pixel.value", "Reclass"))
   reclassify<- function(raster_tobe_reclassified){
     classified_raster<- terra::classify(raster_tobe_reclassified, reclass_table, others=NA)
