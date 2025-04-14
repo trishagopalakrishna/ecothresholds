@@ -61,16 +61,16 @@ model_selection_function <- function (index_name, swinfolder_input, annual_or_mo
 }
 
 #NDVI
-Sys.time(); model_selection_function ("NDVI", "swindow_7", "monthly", "swindow_7"); Sys.time()
-Sys.time(); model_selection_function ("NDVI", "swindow_11", "monthly", "swindow_11"); Sys.time()
-Sys.time(); model_selection_function ("NDVI", "swindow_periodic","monthly", "swindow_periodic"); Sys.time()
-Sys.time(); model_selection_function ("NDVI", "value_int","monthly", "value_int"); Sys.time()
+#Sys.time(); model_selection_function ("NDVI", "swindow_7", "monthly", "swindow_7"); Sys.time()
+#Sys.time(); model_selection_function ("NDVI", "swindow_11", "monthly", "swindow_11"); Sys.time()
+#Sys.time(); model_selection_function ("NDVI", "swindow_periodic","monthly", "swindow_periodic"); Sys.time()
+#Sys.time(); model_selection_function ("NDVI", "value_int","monthly", "value_int"); Sys.time()
 
 #EVI
-#Sys.time(); model_selection_function ("EVI", "swindow_7","monthly", "swindow_7"); Sys.time()
-#Sys.time(); model_selection_function ("EVI", "swindow_11","monthly", "swindow_11"); Sys.time()
-#Sys.time(); model_selection_function ("EVI", "swindow_periodic", "monthly", "swindow_periodic"); Sys.time()
-#Sys.time(); model_selection_function ("EVI", "value_int", "monthly", "value_int"); Sys.time()
+Sys.time(); model_selection_function ("EVI", "swindow_7","monthly", "swindow_7"); Sys.time()
+Sys.time(); model_selection_function ("EVI", "swindow_11","monthly", "swindow_11"); Sys.time()
+Sys.time(); model_selection_function ("EVI", "swindow_periodic", "monthly", "swindow_periodic"); Sys.time()
+Sys.time(); model_selection_function ("EVI", "value_int", "monthly", "value_int"); Sys.time()
 
 #anisoEVI
 #Sys.time(); model_selection_function ("anisoEVI", "swindow_7", "monthly", "swindow_7"); Sys.time()
