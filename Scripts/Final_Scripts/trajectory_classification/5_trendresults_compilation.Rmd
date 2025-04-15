@@ -22,37 +22,37 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 #Introduction
-In this script, I compile final trend results for each index only for swindow = 11 and estimate "stable areas"
-(1) Read in only swin11 rasters for the three indices
+In this script, I compile final trend results for each index only for swindow = 11 for monthly timestep and estimate "stable areas"
+(1) Read in only swin11 monthly rasters for the three indices
 (2) Map plot
 (3) Make barplot of results across the three indices
 (4) Make "stable areas" rasters for all three indices
 
 #Step 1- reading in only swin11 trend results in native savannas
 ```{r}
-input_file_path <- here("Outputs", "TrendsResults")
+input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
 file_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
-file_list<- file_list[2:3]
 file_list <- gtools::mixedsort(file_list)
 
 rds_list<- lapply(file_list, rast)
+names(rds_list[[1]])<- "evi_swin11_monthly"
+names(rds_list[[2]])<- "ndvi_swin11_monthly"
 ```
 
 #Step 2- maps of swin11 trend results
 ```{r}
-Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
-
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
-mapping_function <- function (trendresults_raster, title){
+mapping_function <- function (trendresults_raster){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (trendresults_raster) + 
-    tm_raster(col.scale = tm_scale_categorical(values = Set1palette), col.legend = tm_legend_hide())+
-    tm_layout(legend.text.size = 1, title.size = 4) +
-    tm_add_legend( labels = c("Linear decrease", 
+    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )),
+              col.legend = tm_legend_hide()) +
+    tm_add_legend( fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
+      labels = c("Linear decrease", 
                            "Linear increase",
                            "No trend",
                            "Step decrease",
@@ -60,19 +60,18 @@ mapping_function <- function (trendresults_raster, title){
                            "Quad decrease (accelerated)",
                            "Quad decrease (decelerated)",
                            "Quad increase (accelerated)",
-                           "Quad incrase (decelerated)"),
-                fill = Set1palette,
-                tm_legend(legend.text.size =10)) + 
-    tm_title(title)
+                           "Quad incrase (decelerated)")) + 
+    tm_layout(legend.text.size = 2)
   x_map
 }
-Sys.time();ndvi_results_map <- mapping_function (rds_list[[2]], "NDVI"); Sys.time()
-Sys.time();evi_results_map <- mapping_function (rds_list[[1]], "EVI"); Sys.time()
+Sys.time();ndvi_results_map <- mapping_function (rds_list[[2]]); Sys.time()
+Sys.time();evi_results_map <- mapping_function (rds_list[[1]]); Sys.time()
 #Sys.time();aniso_results_map <- mapping_function (rds_list[[<<include>>]], "anisoEVI"); Sys.time()
 
 trendresult_map<- tmap_arrange( evi_results_map, ndvi_results_map,
                                ncol =2, nrow= 1) #inlcude aniso_results_map when you have results
-tmap_save(trendresult_map, paste0(input_file_path, "/", "map1km_trendresults.png"),
+output_file_path <- here("Outputs", "TrendsResults")
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthly.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 remove(aniso_results_map, evi_results_map, ndvi_results_map, trendresult_map)
@@ -104,6 +103,8 @@ plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==9~"Quadratic increase (decelerated)",
                                                 TRUE~"No trend"))
 
+Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
+
 trendresults_barplot<- plot_df %>% 
   ggplot(aes(value, percentage, fill = value, group=index, alpha=as.factor(index))) +
   geom_col(position = position_dodge(), color = "black") +
@@ -113,11 +114,11 @@ trendresults_barplot<- plot_df %>%
         panel.spacing    = unit(0, "points"),
         strip.background = element_blank(),
         strip.text       = element_text(size = 12, angle = 90),
-        axis.text.x = element_text(size = 12, angle = 90))+
-  scale_fill_manual(values=Set1palette) + theme(legend.title=element_blank())+
+        axis.text.x = element_text(size = 12, angle = 90)) +
+  scale_fill_manual(values = Set1palette) + theme(legend.title=element_blank()) +
   xlab("Model Type")
-ggsave(here(input_file_path, paste0("barplotswin11_trendresults.png")),
-       trendresults_barplot,dpi = 700, height = 50, width=50, units = "cm")
+ggsave(here(output_file_path, paste0("barplot_monthlyswin11_trendresults.png")),
+       trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
 remove(plot_df, trendresults_barplot)
 remove(ndvi_trend_results, evi_trend_results)
@@ -134,11 +135,14 @@ is from mean annual temperature processing in drivers_processing.
 #Reading 1km resolution results (before anthropic mask is applied)
 overall_file_path <- here("Outputs", "ModelSelection")
 
-read_files_function <- function (index_name, file_name_with_rds){
-  rds_file<- read_rds(paste0(overall_file_path,"/", index_name,"/", file_name_with_rds))
+read_files_function <- function (index_name,annual_or_monthly_folder, file_name_with_rds){
+  rds_file<- read_rds(paste0(overall_file_path,"/", index_name,"/", annual_or_monthly_folder,"/", file_name_with_rds))
 }
-Sys.time(); ndvi_swin11 <- read_files_function ("NDVI", "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); evi_swin11 <- read_files_function ("EVI", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); annual_ndvi_swin11 <- read_files_function ("NDVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "modelselection_swindow_11.rds"); Sys.time()
+
+Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
 
 #results preparation such that no trend cells are classified to be 1 and remainder are 2
 results_df_function<- function (modelselection_df) {
@@ -160,8 +164,11 @@ results_df_function<- function (modelselection_df) {
     dplyr::select(c(x,y,pixelvalue))
 }
 
-Sys.time(); ndvi_swin11 <- results_df_function(ndvi_swin11); Sys.time()
-Sys.time(); evi_swin11 <- results_df_function(evi_swin11); Sys.time()
+Sys.time(); annual_ndvi_swin11 <- results_df_function(annual_ndvi_swin11); Sys.time()
+Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys.time()
+
+Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
+Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
 
 #raster preparation
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -179,8 +186,11 @@ results_raster_function<- function (results_df) {
   cellindex_raster
 }
 
-Sys.time(); ndvi1km_stable<- results_raster_function(ndvi_swin11); Sys.time()
-Sys.time(); evi1km_stable<- results_raster_function(evi_swin11); Sys.time()
+Sys.time(); annual_ndvi1km_stable<- results_raster_function(annual_ndvi_swin11); Sys.time()
+Sys.time(); monthly_ndvi1km_stable<- results_raster_function(monthly_ndvi_swin11); Sys.time()
+
+Sys.time(); annual_evi1km_stable<- results_raster_function(annual_evi_swin11); Sys.time()
+Sys.time(); monthly_evi1km_stable<- results_raster_function(monthly_evi_swin11); Sys.time()
 
 #coarsen to 5km & apply anthropogenic mask at 5km
 threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
@@ -195,28 +205,41 @@ stable_area_function <- function (stablearea_1km_raster){
   x_5km_mask
 }
   
-Sys.time(); ndvi_5km_stablearea <- stable_area_function(ndvi1km_stable); Sys.time()
-writeRaster(ndvi_5km_stablearea[[1]], here("Outputs", "TrendsResults", "ndvi_stablearea.tif"))
-Sys.time(); evi_5km_stablearea <- stable_area_function(evi1km_stable); Sys.time()
-writeRaster(evi_5km_stablearea [[1]], here("Outputs", "TrendsResults", "evi_stablearea.tif"))
-#aniso_stability <<include>>
+Sys.time(); annual_ndvi_5km_unstablearea <- stable_area_function(annual_ndvi1km_stable); Sys.time()
+#writeRaster(annual_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_ndvi_unstablearea.tif"))
+Sys.time(); monthly_ndvi_5km_unstablearea <- stable_area_function(monthly_ndvi1km_stable); Sys.time()
+#writeRaster(monthly_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "monthlyswin11_ndvi_unstablearea.tif"))
 
-map_stable_area_function<- function(stablearea_raster, title){
-  tm_shape(cerrado)+ tm_borders()+
-    tm_shape(stablearea_raster)+
-    tm_raster(col.scale = tm_scale_continuous(values = "brewer.greens")) +
-     tm_title(title)+
-    tm_layout(legend.text.size = 1, title.size = 4)
+Sys.time(); annual_evi_5km_unstablearea <- stable_area_function(annual_evi1km_stable); Sys.time()
+#writeRaster(annual_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual", "annualswin11_evi_unstablearea.tif"))
+Sys.time(); monthly_evi_5km_unstablearea <- stable_area_function(monthly_evi1km_stable); Sys.time()
+#writeRaster(monthly_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
+
+#map making
+annual_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_ndvi_unstablearea.tif"))
+monthly_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_ndvi_unstablearea.tif"))
+ndvi_5km_unstablearea <- c(annual_ndvi_5km_unstablearea, monthly_ndvi_5km_unstablearea)
+names(ndvi_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
+
+annual_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_evi_unstablearea.tif"))
+monthly_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
+evi_5km_unstablearea <- c(annual_evi_5km_unstablearea, monthly_evi_5km_unstablearea)
+names(evi_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
+
+animation_function<- function (raster,index_name){
+  animation_map<-
+    tm_shape(cerrado)+ tm_borders()+
+    tm_shape (raster)+
+    tm_raster(col.scale = tm_scale_continuous(values ="Greens")) +
+    tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+  
+  tmap_animation(animation_map, filename = here("Outputs", "Trendsresults", "annual_monthly_comparison",
+                                                  paste0(index_name,"_", "animation_annual_monthly","_", "unstablearea", ".gif")),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
 }
 
-map_ndvi_stability <- map_stable_area_function(ndvi_5km_stablearea [[1]], "NDVI")
-map_evi_stability <- map_stable_area_function(evi_5km_stablearea[[1]], "EVI")
-#map_aniso_stability <- stable_area_function(<<include>>, "anisoEVI")
-
-stablearea_results_map<- tmap_arrange(map_ndvi_stability, map_evi_stability,
-                               ncol =2, nrow= 1)#include map_aniso_stability when you have results
-tmap_save(stablearea_results_map, paste0(input_file_path, "/", "map5km_stablearearesults.png"),
-        height = 50, width = 50, units = "cm", dpi=700)
-
+animation_function(ndvi_5km_unstablearea, "ndvi")
+animation_function(evi_5km_unstablearea, "evi")
 
 ```
