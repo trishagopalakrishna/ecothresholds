@@ -151,15 +151,15 @@ Sys.time(); results_raster_function(monthly_ndvi_swinperiodic, "monthly", "ndvi_
 Sys.time(); results_raster_function(monthly_ndvi_swin_nostl, "monthly", "ndvi_monthly_swinnostl"); Sys.time()
 
 #EVI
-Sys.time(); results_raster_function(annual_evi_swin7, "evi_annual_swin7"); Sys.time()
-Sys.time(); results_raster_function(annual_evi_swin11, "evi_annual_swin11"); Sys.time()
-Sys.time(); results_raster_function(annual_evi_swinperiodic, "evi_annual_swinperiodic"); Sys.time()
-Sys.time(); results_raster_function(annual_evi_swin_nostl, "evi_annual_swinnostl"); Sys.time()
+Sys.time(); results_raster_function(annual_evi_swin7, "annual", "evi_annual_swin7"); Sys.time()
+Sys.time(); results_raster_function(annual_evi_swin11, "annual", "evi_annual_swin11"); Sys.time()
+Sys.time(); results_raster_function(annual_evi_swinperiodic, "annual", "evi_annual_swinperiodic"); Sys.time()
+Sys.time(); results_raster_function(annual_evi_swin_nostl, "annual", "evi_annual_swinnostl"); Sys.time()
 
-Sys.time(); results_raster_function(monthly_evi_swin7, "evi_monthly_swin7"); Sys.time()
-Sys.time(); results_raster_function(monthly_evi_swin11, "evi_monthly_swin11"); Sys.time()
-Sys.time(); results_raster_function(monthly_evi_swinperiodic, "evi_monthly_swinperiodic"); Sys.time()
-Sys.time(); results_raster_function(monthly_evi_swin_nostl, "evi_monthly_swinnostl"); Sys.time()
+Sys.time(); results_raster_function(monthly_evi_swin7,"monthly", "evi_monthly_swin7"); Sys.time()
+Sys.time(); results_raster_function(monthly_evi_swin11, "monthly", "evi_monthly_swin11"); Sys.time()
+Sys.time(); results_raster_function(monthly_evi_swinperiodic, "monthly", "evi_monthly_swinperiodic"); Sys.time()
+Sys.time(); results_raster_function(monthly_evi_swin_nostl, "monthly", "evi_monthly_swinnostl"); Sys.time()
 
 #anisoEVI
 #Sys.time(); results_raster_function(aniso_swin7, "aniso_swin7"); Sys.time()
