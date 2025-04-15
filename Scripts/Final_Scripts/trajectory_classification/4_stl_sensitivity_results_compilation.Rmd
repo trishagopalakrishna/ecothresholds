@@ -242,5 +242,4 @@ animation_function(evi_swin11,"evi", "swin11")
 animation_function(evi_swinnostl,"evi", "swinnostl")
 animation_function(evi_swinperiodic,"evi", "swinperiodic")
 
-
 ```
