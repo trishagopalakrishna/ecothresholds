@@ -51,9 +51,6 @@ Sys.time(); annual_evi_results<- read_results_rasters_function ("annual","evi");
 Sys.time(); monthly_evi_results<- read_results_rasters_function ("monthly","evi"); Sys.time()
 #Sys.time(); aniso_results<- read_results_rasters_function ("aniso"); Sys.time()
 
-#rename rasters in list 
-
-
 ```
 
 #Step 2- convert to df and compile 
@@ -168,6 +165,9 @@ Sys.time(); barplot_function(evi_percentage_results_df, "evi_monthly_annual_comp
 annual_ndvi_results
 monthly_ndvi_results
 
+annual_evi_results
+monthly_evi_results
+
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 cerrado<- d_trans %>% st_union()
@@ -200,8 +200,10 @@ ndvi_swinnostl<- swinnostl_rasters_function(annual_ndvi_results, monthly_ndvi_re
 ndvi_swinperiodic<- swinperiodic_rasters_function(annual_ndvi_results, monthly_ndvi_results)
 
 #EVI
-
-
+evi_swin7<- swin7_rasters_function(annual_evi_results, monthly_evi_results)
+evi_swin11<- swin11_rasters_function(annual_evi_results, monthly_evi_results)
+evi_swinnostl<- swinnostl_rasters_function(annual_evi_results, monthly_evi_results)
+evi_swinperiodic<- swinperiodic_rasters_function(annual_evi_results, monthly_evi_results)
 
 
 animation_function<- function (raster,index_name, stlparameter_string){
@@ -228,13 +230,17 @@ animation_function<- function (raster,index_name, stlparameter_string){
                 width = 900, height = 900, dpi = 150)
 }
 
+#NDVI
 animation_function(ndvi_swin7,"ndvi", "swin7")
 animation_function(ndvi_swin11,"ndvi", "swin11")
 animation_function(ndvi_swinnostl,"ndvi", "swinnostl")
 animation_function(ndvi_swinperiodic,"ndvi", "swinperiodic")
 
-
-
+#EVI
+animation_function(evi_swin7,"evi", "swin7")
+animation_function(evi_swin11,"evi", "swin11")
+animation_function(evi_swinnostl,"evi", "swinnostl")
+animation_function(evi_swinperiodic,"evi", "swinperiodic")
 
 
 ```
