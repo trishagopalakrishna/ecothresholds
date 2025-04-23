@@ -1,0 +1,294 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I prepare "ground truth"  data  using Stevens et al., 2017.
+In the SI of Stevens et al, there is information about the reviewed papers including key information 
+(such as lat/long of plots). I manually made a csv by copy pasting from the SI word doc to excel.
+
+7 papers reviewed in Stevens et al., basically have the same lat/long. These plots are in Assis, SP and are 
+mostly Durigan plots. 
+
+I consider the final trajectory results using monthly time steps (1km reslution after excluding 20% anthropic area) for all three indices 
+using the swin =11 stl setting
+(1) Reading data and making a point vector of the lat/long of the plots from Stevens et al 
+(2) Finding the trajectory of the pixels in which the plots from Stevens et al fall and the distance to the closest trajectory 
+(3) Finding the second closest trajectory in case lat/long of the plots are outside the study area of our project
+(4) Results compilation
+
+#Step 1- reading data, processign plots into point vector and map making
+```{r}
+stevens_si<- read_csv(here("Data","Stevensetal_woodyencroachment_metaanalyses_data", "si_plotinformation.csv"))
+names(stevens_si)[14]<-"y"
+names(stevens_si)[15]<-"x"
+stevens_si_removeNA<- stevens_si %>% filter(!is.na(x))
+stevens_si_removeNA<- stevens_si_removeNA %>% filter(Country!="Venezuela")
+
+#Duplicate plots resulted in multiple papers eg Durigan et al 1987 and 2006 are from the same plots
+#So I "merge" rows and take the mean of the "annual change" that was calculated in Stevens et al 
+x<-stevens_si_removeNA %>% 
+  group_by(x,y) %>%
+  summarise(mean_annual_rate= mean(Annual_change)) %>%
+           ungroup()
+
+x_join<- stevens_si_removeNA %>% left_join(x)
+x_join2<- x_join %>% filter(!duplicated(mean_annual_rate))
+
+stevens_si_vector<- sf::st_as_sf(x_join2, coords = c("x", "y"), crs="epsg:4326")
+stevens_si_vector<- stevens_si_vector %>% mutate(uniqueID= 1:nrow(stevens_si_vector))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+#tmap_mode("view")
+#tm_shape(d_trans)+ tm_fill()+ tm_shape(stevens_si_vector) + tm_dots(size="Annual_change")
+#st_write(stevens_si_vector, here("Data","Stevensetal_woodyencroachment_metaanalyses_data", "plotinformation.shp"), overwrite = T)
+
+input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
+file_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*","monthly_swin11","*"), all.files = T, full.names = T)
+file_list <- gtools::mixedsort(file_list)
+
+rds_list<- lapply(file_list, rast)
+
+#1~ "Linear decrease", 2~ "Linear increase",3 ="No trend", 4~ "Step decrease", 5~"Step increase",
+#6~"Quadratic decrease (accelerated)", 7~"Quadratic decrease (decelerated)", 8~"Quadratic increase (accelerated)",
+#9~"Quadratic increase (decelerated)"
+
+## To make a map of where field site points fall in our study region/results
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+points_map_withindex_function<- function (trendsresults_raster, title){
+  x_map <- tm_shape(st_as_sf(cerrado))+ tm_borders()+ 
+  tm_shape(trendsresults_raster) +
+  tm_raster(col.scale = tm_scale_categorical(n=9, 
+                                             values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )), 
+            col.legend = tm_legend_hide()) +
+  tm_shape(stevens_si_vector) + 
+  tm_dots(size="Annual_change")+
+  tm_add_legend( fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
+    labels = c("Linear decrease", 
+                           "Linear increase",
+                           "No trend",
+                           "Step decrease",
+                           "Step increase",
+                           "Quad decrease (accelerated)",
+                           "Quad decrease (decelerated)",
+                           "Quad increase (accelerated)",
+                           "Quad incrase (decelerated)")) +
+                tm_layout(legend.text.size = 2) +tm_title(title)  
+  x_map
+}
+
+Sys.time(); map_ndvi_points<- points_map_withindex_function(rds_list[[1]], "NDVI"); Sys.time()
+Sys.time(); map_evi_points<- points_map_withindex_function(rds_list[[2]], "EVI"); Sys.time()
+#Sys.time(); map_aniso_points<- points_map_withindex_function(rds_list[[3]], "anisoEVI"); Sys.time()
+
+points_trajectory_map<- tmap_arrange(map_ndvi_points, map_evi_points, ncol = 2, nrow = 1)
+tmap_save(points_trajectory_map, here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "points_trajectories_map.jpeg"),
+         height = 40, width = 80, units = "cm", dpi=700)
+
+remove(stevens_si, x, x_join, x_join2, mappalette)
+remove(map_ndvi_points, map_evi_points, map_aniso_points, points_trajectory_map)
+
+```
+
+#Step 2 - finding the closest trajectory shape (distance and type of trajectory) to each of the plots in the Stevens et al paper. 
+```{r}
+trajectory_segregate <- function(x) {
+    x_split<- terra::segregate(x, other=999)
+    x_split_crop<- terra::crop(x_split, vect(d_trans))
+    x_split_mask<- terra::mask(x_split_crop, vect(d_trans))
+    x_split_mask
+}
+NDVItrajectories_split<- trajectory_segregate(rds_list[[1]])
+EVItrajectories_split<- trajectory_segregate(rds_list[[2]])
+#anisoEVItrajectories_split<- trajectory_segregate(rds_list[[3]])
+
+distance_function<- function(split_trajectory_raster){
+  x_dist<- terra::gridDist(split_trajectory_raster, target= 1)
+}
+
+
+calculate_distances<- function (split_raster){
+  list_distance_raster<- list()
+  for (i in 1:nlyr(split_raster)){
+    x_distance<- distance_function(split_raster[[i]])
+    list_distance_raster[[i]]<- x_distance
+}
+  distance_raster<- rast(list_distance_raster)
+  names(distance_raster)<- 1:nlyr(split_raster)
+  distance_raster
+}
+
+Sys.time(); NDVI_distances<- calculate_distances(NDVItrajectories_split); Sys.time() 
+Sys.time(); EVI_distances<- calculate_distances(EVItrajectories_split); Sys.time() 
+#Sys.time(); anisoEVI_distances<- calculate_distances(anisoEVItrajectories_split); Sys.time() 
+
+
+shortestdistance_trajectory<- function (distance_raster){
+  distance_df<- terra::extract(distance_raster, stevens_si_vector)
+  pivot_dist_df<- distance_df %>% pivot_longer(-1)
+  pivot_dist_df2<-pivot_dist_df  %>% 
+    group_by(as.factor(ID)) %>% 
+    summarise(min(value, na.rm= TRUE), name[which.min(value)])
+  names(pivot_dist_df2)<- c("uniqueID", "min_dist_m", "respective_trajshape")
+  pivot_dist_df2
+}
+Sys.time(); NDVI_closest_trajectory_df<- shortestdistance_trajectory(NDVI_distances); Sys.time()
+Sys.time(); EVI_closest_trajectory_df<- shortestdistance_trajectory(EVI_distances); Sys.time()
+#Sys.time(); anisoEVI_closest_trajectory_df<- shortestdistance_trajectory(anisoEVI_distances); Sys.time()
+
+
+```
+Only 5 out of 17 of the plots fall within the study area of this study. Hence for the remaining
+12 plots I find the closest pixel that has a trajectory and the distance.
+Of the 5 studies, when using NDVI all 5 studies fall in "Step increase" trajectories,
+but when using EVI, one of the 5 studies Aquino et al., 2007 is in "Step decrease" trajectory.
+
+
+#Step 3- finding the second closest pixel (distance and trajectory) for plots that are outside
+of the study area of this study
+```{r}
+NDVItrajectories_split
+EVItrajectories_split
+
+convert_NA_to_999_function <- function (split_trajectory_raster){
+  classified_raster <- terra::classify(split_trajectory_raster, cbind (NA, 999))
+  crop_classified_raster <- terra::crop (classified_raster, vect(cerrado))
+  mask_classified_raster <- terra::mask (crop_classified_raster, vect(cerrado))
+  mask_classified_raster
+}
+
+converted_NDVItrajectories_split <- convert_NA_to_999_function(NDVItrajectories_split)
+converted_EVItrajectories_split <- convert_NA_to_999_function(EVItrajectories_split)
+
+Sys.time(); converted_NDVI_distances<- calculate_distances(converted_NDVItrajectories_split); Sys.time() 
+Sys.time(); converted_EVI_distances<- calculate_distances(converted_EVItrajectories_split); Sys.time() 
+
+Sys.time(); converted_NDVI_closest_trajectory_df<- shortestdistance_trajectory(converted_NDVI_distances); Sys.time()
+Sys.time(); converted_EVI_closest_trajectory_df<- shortestdistance_trajectory(converted_EVI_distances); Sys.time()
+
+```
+Most of the remaining 12 studies are also closest to "Step increase" trajectory pixels, though there are 3 studies 
+closest to Quadratic Increase(decelerated) and 1 study closest to Quadratic decrease (accelerated) when using NDVI.
+With EVI, its the same with one additional study that is Quadratic Increase (decelerated) (which is Step increase in NDVI) and
+the same study that is closest to Quadratic decrease (accelerated).
+
+#Step 4 - Results presentation 
+```{r}
+NDVI_closest_trajectory_df
+EVI_closest_trajectory_df
+
+#Studies/field sites that are within my study region
+df_prep<- function (closest_distance_df, index_name){
+  x<- closest_distance_df %>% 
+    dplyr::select(-c(min_dist_m))
+  names(x)[2]<- index_name
+x
+}
+
+closest_ndvi<- df_prep(NDVI_closest_trajectory_df, "NDVI") 
+closest_evi<- df_prep(EVI_closest_trajectory_df, "EVI")
+
+closest_df<- left_join(closest_ndvi, closest_evi)
+closest_df$uniqueID<-as.numeric(closest_df$uniqueID)
+pivot_closest_df <- pivot_longer (closest_df, 2:3)
+pivot_closest_df <- pivot_closest_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
+                                                value==2~ "Linear increase",
+                                                value==4~ "Step decrease",
+                                                value==5~"Step increase",
+                                                value==6~"Quadratic decrease (accelerated)",
+                                                value==7~"Quadratic decrease (decelerated)",
+                                                value==8~"Quadratic increase (accelerated)",
+                                                value==9~"Quadratic increase (decelerated)",
+                                                TRUE~"No trend"))  
+
+within_studyarea_plot <- ggplot(pivot_closest_df, aes(x = name, fill = value)) + 
+  geom_bar() +
+  scale_fill_manual(values = c("#882255",  "#88CCEE")) +
+  theme_classic(base_size = 14) +
+  theme(legend.title=element_blank()) +xlab("Index") +ylab ("Count") +
+  ggtitle ("Field bases studies within our study area")
+
+#Studies/field sites that are outside the study area of this project
+converted_NDVI_closest_trajectory_df
+names(converted_NDVI_closest_trajectory_df)<- c("uniqueID", "NDVI_min_dist", "NDVI")
+converted_EVI_closest_trajectory_df
+names(converted_EVI_closest_trajectory_df)<- c("uniqueID", "EVI_min_dist", "EVI")
+
+closest_df2 <- left_join(converted_NDVI_closest_trajectory_df, converted_EVI_closest_trajectory_df)
+closest_df2 <- closest_df2 %>% filter(NDVI_min_dist != 0)
+closest_df2$uniqueID<-as.numeric(closest_df2$uniqueID)
+pivot_closest_df2 <- pivot_longer (closest_df2, c(3,5))
+pivot_closest_df2 <- pivot_closest_df2 %>% mutate(value = case_when(value== 1~ "Linear decrease",
+                                                value==2~ "Linear increase",
+                                                value==4~ "Step decrease",
+                                                value==5~"Step increase",
+                                                value==6~"Quadratic decrease (accelerated)",
+                                                value==7~"Quadratic decrease (decelerated)",
+                                                value==8~"Quadratic increase (accelerated)",
+                                                value==9~"Quadratic increase (decelerated)",
+                                                TRUE~"No trend"))  
+pivot_closest_df2 <- pivot_closest_df2 %>% dplyr::select(-c(EVI_min_dist))
+names(pivot_closest_df2)[2] <- ("min_distance_m")
+pivot
+
+outside_studyarea_plot <- ggplot(pivot_closest_df2, aes(x = name, fill = value)) + 
+  geom_bar() +
+  scale_fill_manual(values = c("#CC6677", "#DDCC77" ,  "#882255",  "#88CCEE")) +
+  scale_y_continuous(limits=c(0,12), breaks=seq(0,12,2)) +
+  theme_classic(base_size = 14) +
+  theme(legend.title=element_blank()) +xlab("Index") +ylab ("Count") +
+  ggtitle ("Field bases studies outside our study area")
+
+
+p <- ggplot(pivot_closest_df2, aes(x = value, y= min_distance_m, fill = value)) + 
+  geom_violin() + 
+  coord_flip() +
+  scale_y_continuous(limits=c(0,18000), breaks=seq(0,18000,2000)) +
+  scale_fill_manual(values = c("#CC6677", "#DDCC77" ,  "#882255",  "#88CCEE")) +
+  theme_classic(base_size = 14) + ylab ("Trajectory type") + xlab ("Closest distance to (m)") +
+  theme(legend.title=element_blank()) +ggtitle ("Distribution of distance of field study to closest trajectory")
+
+library(ggpubr)
+x<- ggarrange(within_studyarea_plot, outside_studyarea_plot, p, ncol = 2, nrow =2)
+ggsave(here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "fieldsites_trajectories_results.jpeg"),
+       x,dpi = 700, height = 50, width=80, units = "cm")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
