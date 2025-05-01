@@ -28,15 +28,26 @@ In this script, I compile final trend results for each index only for swindow = 
 (3) Make barplot of results across the three indices
 (4) Make "stable areas" rasters for all three indices
 
-#Step 1- reading in only swin11 trend results in native savannas
+#Step 1- reading in only swin11 trend results (monthly and annual) in native savannas
 ```{r}
-input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
-file_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
-file_list <- gtools::mixedsort(file_list)
+monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-rds_list<- lapply(file_list, rast)
-names(rds_list[[1]])<- "evi_swin11_monthly"
-names(rds_list[[2]])<- "ndvi_swin11_monthly"
+monthly_rds_list<- lapply(monthly_file_list, rast)
+names(monthly_rds_list[[1]])<- "evi_swin11_monthly"
+names(monthly_rds_list[[2]])<- "ndvi_swin11_monthly"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+annual_rds_list<- lapply(annual_file_list, rast)
+names(annual_rds_list[[1]])<- "evi_swin11_annual"
+names(annual_rds_list[[2]])<- "ndvi_swin11_annual"
+
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
+
 ```
 
 #Step 2- maps of swin11 trend results
@@ -46,11 +57,10 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
-mapping_function <- function (trendresults_raster){
+mapping_function <- function (trendresults_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (trendresults_raster) + 
-    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )),
-              col.legend = tm_legend_hide()) +
+    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )), col.legend = tm_legend_hide()) +
     tm_add_legend( fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
       labels = c("Linear decrease", 
                            "Linear increase",
@@ -61,20 +71,21 @@ mapping_function <- function (trendresults_raster){
                            "Quad decrease (decelerated)",
                            "Quad increase (accelerated)",
                            "Quad incrase (decelerated)")) + 
-    tm_layout(legend.text.size = 2)
+    tm_layout(legend.text.size = 2) + tm_title(title)
   x_map
 }
-Sys.time();ndvi_results_map <- mapping_function (rds_list[[2]]); Sys.time()
-Sys.time();evi_results_map <- mapping_function (rds_list[[1]]); Sys.time()
-#Sys.time();aniso_results_map <- mapping_function (rds_list[[<<include>>]], "anisoEVI"); Sys.time()
+Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[2]], "NDVI (monthly)"); Sys.time()
+Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[1]], "EVI (monthly)"); Sys.time()
+Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[2]], "NDVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[1]], "EVI (annual)"); Sys.time()
 
-trendresult_map<- tmap_arrange( evi_results_map, ndvi_results_map,
-                               ncol =2, nrow= 1) #inlcude aniso_results_map when you have results
+trendresult_map<- tmap_arrange(monthly_ndvi_results_map, annual_ndvi_results_map, monthly_evi_results_map, annual_evi_results_map,  
+                               ncol =2, nrow= 2)
 output_file_path <- here("Outputs", "TrendsResults")
-tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthly.png"),
-        height = 50, width = 50, units = "cm", dpi=700)
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
 
-remove(aniso_results_map, evi_results_map, ndvi_results_map, trendresult_map)
+remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map)
 ```
 
 #Step 3- barplot of trend results across three indices
@@ -87,11 +98,15 @@ df_prep_function<- function (trendresults_raster, index_name){
   percentage_df
 }
 
-Sys.time(); ndvi_trend_results <- df_prep_function(rds_list[[2]], "NDVI"); Sys.time()
-Sys.time(); evi_trend_results <- df_prep_function(rds_list[[1]], "EVI"); Sys.time()
-#Sys.time(); aniso_trend_results <- df_prep_function(rds_list[[<<include>>]], "anisoEVI"); Sys.time()
+Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[2]], "NDVI (monthly)"); Sys.time()
+Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[1]], "EVI(monthly)"); Sys.time()
+Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[2]], "NDVI (annual)"); Sys.time()
+Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[1]], "EVI(annual)"); Sys.time()
 
-plot_df <- bind_rows(ndvi_trend_results, evi_trend_results)#inlcude aniso_results_map when you have results
+
+
+plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results,
+                     annual_ndvi_trend_results, annual_evi_trend_results)
 
 plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==2~ "Linear increase",
@@ -121,7 +136,7 @@ ggsave(here(output_file_path, paste0("barplot_monthlyswin11_trendresults.png")),
        trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
 remove(plot_df, trendresults_barplot)
-remove(ndvi_trend_results, evi_trend_results)
+remove(monthly_ndvi_trend_results, monthly_evi_trend_results, annual_ndvi_trend_results, annual_evi_results_map)
 ```
 
 #Step 4- stable area estimation for all three indices
