@@ -61,6 +61,7 @@ annual_df2 <- annual_df %>%
   
 remove(annual_df)
 remove(ndvi_evi_ts_complete_tr)
+
 annual_df2 <- annual_df2 %>% rename("NDVI_original" = "mean_NDVI_original", 
                                     "NDVI_trend" = "mean_NDVI_trend",
                                     "EVI_original" = "mean_EVI_original", 
@@ -73,7 +74,8 @@ monthly_df <- monthly_df %>% rename("NDVI_tr" = "NDVI_monthly_tr",
                                     "EVI_tr" = "EVI_monthly_tr")
 ```
 
-#Step 2- asdetect function for stltrend component and original timeseries in time series derived results 
+
+#Step 2- asdetect function for stltrend component and original timeseries in monthly time series derived results 
 for sample points for all indices
 ```{r}
 generate_asdetectvalues<- function (x_df){
@@ -169,6 +171,7 @@ generate_position_dtthresh <- function(asdetect_df){
 
 Sys.time(); monthly_asdetect_df2 <- generate_position_dtthresh(monthly_asdetect_df); Sys.time() #1min
 Sys.time(); annual_asdetect_df <- generate_position_dtthresh(annual_asdetect_df);
+
 ```
 
 #Step 3- asdetect function for stltrend component and original timeseries in annual time series derived results 
@@ -226,7 +229,7 @@ df_preparation1 <- function (asdetect_df){
   pivot_x_df2
 }
 
-Sys.time(); monthly_originaltrend_plot_df <- df_preparation1(monthly_asdetect_df); Sys.time()
+Sys.time(); monthly_originaltrend_plot_df <- df_preparation1(monthly_asdetect_df2); Sys.time()
 
 # df preparation and plotting function for line plots of asdetect output values for the timeseries
 df_preparation2 <- function (asdetect_df){
@@ -242,6 +245,7 @@ df_preparation2 <- function (asdetect_df){
 }
 
 Sys.time(); monthly_asdetectoutput_plot_df <- df_preparation2(monthly_asdetect_df); Sys.time()
+
 
 plotting1 <- function (prepared_df, threshold_df, asdetectoutput_df ){
   cz <- c("central", "eastern", "southern")
@@ -365,6 +369,8 @@ Sys.time(); monthly_dt_distribution <- plotting2(monthly_dtthreshold_df); Sys.ti
 monthly_dt_distribution <- monthly_dt_distribution + labs (title = "Monthly detection values distribution")
 ggsave(here("Outputs", "TrajectoryPlotting", "monthly_asdetect_results","monthly_detection_distribution.png"), monthly_dt_distribution,
            dpi= 700, height = 50, width = 50, units= "cm")
+
+#Quantiles of the detection threshold values for the trend and original monthly time series for both indi
 
 
 ```
