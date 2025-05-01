@@ -1,0 +1,35 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I analyse the results of trajectories for the Chapada dos Veirdos National Park. 
+(1) Trajectory results for different indices and monthly trend/ mean annual trend time series.
+(2) Distribution of step change point per index, monthly/annual
+(3)
+
+#Step 1- trajectory results per index using mean annual/monthly trend results in CVNP
+```{r}
+
+
+
+```
