@@ -1,0 +1,88 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I complete analyses to explore the relationship between the trajectories and pixel heterogeniety based on vegetation physiognomies from Lewis et al., 2020
+(1) Data input of all trajectory results
+(2) Lewis et al data input and processing to calculate pixel heterogeniety
+(3) EDA relationships
+
+#Step 1- data input of trajectory results
+```{r}
+cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) 
+
+input_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+
+cvnp_annual_evi<- rast(here(input_file_path,"cvnp_evi_annual.tif"))
+cvnp_annual_ndvi<- rast(here(input_file_path,"cvnp_ndvi_annual.tif"))
+cvnp_monthly_evi<- rast(here(input_file_path,"cvnp_evi_monthly.tif"))
+cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
+
+```
+
+#Step 2 - veg physiognomies input and processing to calcualte pixel heterogeniety
+```{r}
+veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
+#0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
+#9=cerradao, 10=mata de galeria, 11-pasture, 12- water, 13- plantation, 14- agriculture, 15- nonvegetated
+
+crop_veg_phy<- terra::crop(veg_phy, vect(cvnp_shp))
+mask_veg_phy<- terra::mask(crop_veg_phy, vect(cvnp_shp))
+remove(crop_veg_phy, veg_phy)
+
+m_nativephysiognomies_only<- rbind(c(0,0), c(1,1), c(3,3), c(5,5), c(6,6), c(8,8),
+                                   c(9,9), c(10,10), c(11,NA), c(12,NA), c(13,NA), c(14,NA), c(15, NA)) # Excluding anthropic physiognomies and calculating richness of native physiognomies
+reclass_veg_phy <- terra::classify(mask_veg_phy, m_nativephysiognomies_only)
+remove(m_nativephysiognomies_only)
+
+coarsening_function <- function (classified_raster){
+  x_1km<- terra::project(
+    terra::segregate(classified_raster), cvnp_annual_evi,
+    method = "average", res = res(cvnp_annual_evi)[1])
+ 
+  x_1km_mask <- terra::mask(x_1km, cvnp_shp)
+  x_1km_mask
+}
+
+coarse_reclass_veg_phy <- coarsening_function(reclass_veg_phy)
+remove(coarsening_function)
+
+library(vegan) ##Shannon's diversity index
+shannon_diversity<- function (reclass_coarse_raster) {
+    x_df<- as.data.frame(reclass_coarse_raster, cells=TRUE, xy=TRUE)
+    x_diversity<- vegan::diversity(x_df %>% dplyr::select(-c(cell,x,y)), index="shannon")
+    x_diversity<- as.data.frame(x_diversity)
+    x_df<- bind_cols(x_df, x_diversity)
+    trial_vector<- terra::vect(x_df %>% dplyr::select(c("cell", "x", "y", "x_diversity")), geom=c("x", "y"), crs="epsg:4326")
+    trial_raster<- terra::rasterize(trial_vector, reclass_coarse_raster, "x_diversity", fun="max")
+    trial_raster
+}
+Sys.time(); heterogen <- shannon_diversity (coarse_reclass_veg_phy);Sys.time()
+remove(shannon_diversity)
+
+```
+
+#Step 3- eda relationships between trajectories and heterigeneity
+```{r}
+
+```
