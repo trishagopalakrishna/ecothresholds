@@ -124,7 +124,7 @@ tmap_save(map_burnedarea, here("Outputs", "OtherVariables", "Fire", "burnearea_2
 
 ```
 
-#Step 3- anomoly calculation
+#Step 3- trend calculation using theil sen regression that in turn uses kendall tau rho to determine the sen slope
 ```{r}
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
 
@@ -155,7 +155,23 @@ MKtau <- function(z){
     as.numeric(Kendall::MannKendall(z)$tau)
   }
 } 
-Sys.time(); kendall_tau_burnedarea <- terra::app (burnedarea, fun = MKtau); Sys.time()
+Sys.time(); kendall_tau_burnedarea<- terra::app (burnedarea, fun = MKtau); Sys.time()
+
+#4- theil sen regression using kendall tau rho correlation coefficient- https://projects.itrcweb.org/gsmc-1/Content/GW%20Stats/5%20Methods%20in%20indiv%20Topics/5%205%20Trend%20Tests.htm
+#install.packages("mblm")
+library(mblm)
+theilsen_function <- function(z){
+  Y<- 1:length(z)
+  
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
+    slope_coefficient <- theilsen_model$coefficients[2]
+    slope_coefficient
+  }
+} 
+Sys.time(); theilsen_burnedarea <- terra::app (burnedarea, fun = theilsen_function); Sys.time()
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -163,19 +179,25 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
+std_burnedarea
+lm_slope_burnedarea
+theilsen_burnedarea
+
 mapping_function <- function (anomoly_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (anomoly_raster) + 
-    tm_raster(n=5, style = "quantile",palette = "YlOrBr", title =title) 
-    tm_layout(legend.text.size = 1, title.size = 4) +
+    tm_raster(col.scale = tm_scale_continuous(values = "YlOrRd"),
+              col.legend = tm_legend (title = title)) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
   x_map
 }
-Sys.time();std_map <- mapping_function (std_burnedarea, "Std"); Sys.time()
+Sys.time();std_map <- mapping_function (std_burnedarea, title = "Std"); Sys.time()
 Sys.time();lm_map <- mapping_function (lm_slope_burnedarea, "Linear Regression"); Sys.time()
-Sys.time();tau_map <- mapping_function (kendall_tau_burnedarea , "Mann-Kendall"); Sys.time()
+Sys.time();kendaltau_map <- mapping_function (kendall_tau_burnedarea, "MannKendall"); Sys.time()
+Sys.time();theilsen_map <- mapping_function (theilsen_burnedarea , "Theil-Sen Regression"); Sys.time()
 
-anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, ncol =3, nrow= 1) 
-tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results.png"),
+anomoly_results_map<- tmap_arrange(std_map, lm_map, kendaltau_map, theilsen_map, ncol = 4, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results2.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 ```
 
