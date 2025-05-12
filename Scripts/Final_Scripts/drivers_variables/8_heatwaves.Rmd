@@ -118,7 +118,7 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_heatwaves <- terra::app (annual_heatwave_mask, fun = theilsen_function); Sys.time()
-
+writeRaster(theilsen_heatwaves, here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
