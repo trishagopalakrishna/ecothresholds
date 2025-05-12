@@ -172,6 +172,7 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_burnedarea <- terra::app (burnedarea, fun = theilsen_function); Sys.time()
+#writeRaster(theilsen_burnedarea, here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
