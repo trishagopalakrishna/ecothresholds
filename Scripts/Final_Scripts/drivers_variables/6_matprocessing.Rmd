@@ -121,6 +121,7 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_at <- terra::app (at_mask, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_at, here("Outputs", "OtherVariables", "Climate", "theilsen_at.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
