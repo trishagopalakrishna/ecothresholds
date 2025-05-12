@@ -140,8 +140,11 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_forest <- terra::app (forest_percentage, fun = theilsen_function); Sys.time()
+#writeRaster(theilsen_forest, here("Outputs","OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
 Sys.time(); theilsen_grass <- terra::app (grass_percentage, fun = theilsen_function); Sys.time()
+#writeRaster(theilsen_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage.tif"))
 Sys.time(); theilsen_savanna <- terra::app (savanna_percentage, fun = theilsen_function); Sys.time()
+#writeRaster(theilsen_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
 
 
 #Map making
