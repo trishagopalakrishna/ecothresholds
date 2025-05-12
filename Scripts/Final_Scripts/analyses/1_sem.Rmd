@@ -30,58 +30,38 @@ environmental drives and stability at the biome scale.
 ```{r}
 #response- stable area from all three indices
 #aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
-ndvi_stable<- rast(here("Outputs", "TrendsResults","ndvi_stablearea.tif"))
-evi_stable<- rast(here("Outputs", "TrendsResults","evi_stablearea.tif"))
-
+ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"monthlyswin11_ndvi_unstablearea.tif"))
+evi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
 
 #drivers
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
-pixelheterogeniety<- rast(here ("Outputs", "OtherVariables", "PixelHeterogeniety", "cerrado_diversity_2002_2021.tif"))
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea.tif"))
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
-re<- rast(here("Outputs", "OtherVariables", "Climate", "annual_relative_entropy_1981_2021.tif"))
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
-spei<- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
-heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2021.tif"))
+re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at.tif"))
+#spei<- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
+heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
+forestpercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
+savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
+grasspercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage.tif"))
 
-#mask- 20% anthropic mask
-threshold<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
 ```
 
 ##Preprocessing of all data- applying 20%threshold mask, aligning CRS/extent/cell size
 and some preprocessing of driver data.
 
-For the "dynamic" drivers ie time series drivers, for the SEM modeling I use mean across all years.
-Hence for MAT, I have already processed the mean. But for pixel heterogeniety, I have not. 
 ```{r}
-#dynamics rasters ie time series drivers, I calcualte mean
-mean_driver<- function(annualraster){
-  terra::app(annualraster, fun= "mean")
-}
-
-mean_ba<- mean_driver(burnedarea)
-mean_bio<- mean_driver(pixelheterogeniety)
-mean_re<- mean_driver(re)
-mean_spei<-mean_driver(spei)
-remove(burnedarea, pixelheterogeniety, re, spei)
-
-drivers<- c(anthropic_dist, mean_ba, mean_bio, hand, mean_re, mat, mean_spei, heatwave)
+drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
 drivers
-names(drivers)<- c("anthropic_dist", "burnedarea", "biodiversity", "hand", "re", "mat", "spei", "heatwave")
+names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "mat", "heatwave", "forestpercentage", "savannapercentage", "grasspercentage")
 
-#masking predictors
-masked_drivers<- terra::mask(drivers, threshold)
+instability<- c(ndvi_unstable, evi_unstable)
+names(instability)<- c("NDVI_instability", "EVI_instability")
 
-stability<- c(ndvi_stable, evi_stable)
-names(stability)<- c("NDVI_stability", "EVI_stability")
-#masking response
-
-all_data<- c(stability, masked_drivers)
+all_data<- c(instability, drivers)
 analyses_df<- terra::as.data.frame(all_data)
-remove(mean_driver)
-remove(aniso_stable, evi_stable, ndvi_stable, threshold, anthropic_dist, burnedarea, pixelheterogeniety, hand, re, mat, spei, heatwave)
-remove(mean_ba, mean_bio, mean_re, mean_spei)
-remove(drivers, stability)
+remove( evi_unstable, ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
+remove(drivers, instability)
 ```
 
 
@@ -117,12 +97,12 @@ chart.Correlation(no_outliers_sample_df, histogram = TRUE, pch= 19)
 
 no_outliers_sample_df
 
-analyses_ndvistability<- no_outliers_sample_df %>% dplyr::select(-c(EVI_stability))
-scaled_analyses_ndvistability<- data.frame(scale(analyses_ndvistability, center= TRUE, scale= TRUE)) 
-chart.Correlation(scaled_analyses_ndvistability, histogram = TRUE, pch= 19)
+analyses_ndviinstability<- no_outliers_sample_df %>% dplyr::select(-c(EVI_instability))
+scaled_analyses_ndviinstability<- data.frame(scale(analyses_ndviinstability, center= TRUE, scale= TRUE)) 
+chart.Correlation(scaled_analyses_ndviinstability, histogram = TRUE, pch= 19)
 
-analyses_evistability<- no_outliers_sample_df %>% dplyr::select(-c(NDVI_stability))
-scaled_analyses_evistability<- data.frame(scale(analyses_evistability, center= TRUE, scale= TRUE)) 
+#analyses_evistability<- no_outliers_sample_df %>% dplyr::select(-c(NDVI_stability))
+#scaled_analyses_evistability<- data.frame(scale(analyses_evistability, center= TRUE, scale= TRUE)) 
 
 ```
 All response variables of stable area by index are right skewed (because most of the Cerrado is stable).
@@ -132,65 +112,40 @@ interquartile range for hand. After exclusion of outliers, most variables are st
 #Analyses
 I first consider on NDVI based stable area response variable
 ```{r}
-scaled_analyses_ndvistability
-scaled_analyses_evistability
+scaled_analyses_ndviinstability
+#scaled_analyses_evistability
 #install.packages("cSEM")
 library(cSEM)
 
 comp_trial2<- '
   #Structural model
-  STABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + PIXEL_HETEROGEN + ANTHROPIC_PRESSURES + FIRE
-  PIXEL_HETEROGEN  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
+  INSTABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
+  VEGETATION  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   
   #Composite variables with equal weighting of indicators
   BACKGROUND_CLIMATE <~ re + mat
-  PULSE_STRESSORS <~ spei + heatwave
+  PULSE_STRESSORS <~  heatwave
   
   #Measurement model (Formative)
-  STABILITY =~ NDVI_stability
+  INSTABILITY =~ NDVI_instability
   WATER_ACCESS =~ hand
-  PIXEL_HETEROGEN =~ biodiversity 
+  VEGETATION =~ savannapercentage 
   FIRE =~ burnedarea
   ANTHROPIC_PRESSURES =~ anthropic_dist
 '
-Sys.time(); modeltrial2<- cSEM::csem(.data =  scaled_analyses_ndvistability, .model = comp_trial2); Sys.time()
-Sys.time(); modeltrial3<- cSEM::csem(.data =  scaled_analyses_ndvistability, .model = comp_trial2, .resample_method = "bootstrap"); Sys.time()
-Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndvistability, 
+#Sys.time(); modeltrial2<- cSEM::csem(.data =  scaled_analyses_ndvistability %>% dplyr::select(-c(forestpercentage, grasspercentage)), 
+#                                     .model = comp_trial2); Sys.time()
+#Sys.time(); modeltrial3<- cSEM::csem(.data =  scaled_analyses_ndvistability %>% dplyr::select(-c(forestpercentage, grasspercentage)), 
+#                                     .model = comp_trial2, 
+#                                     .resample_method = "bootstrap"); Sys.time()
+Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability, 
                                      .model = comp_trial2, 
                                      .approach_weights = "PLS-PM",
                                      .resample_method = "bootstrap",
                                      .R =1000,
                                      .seed= 1000); Sys.time()
 cSEM::summarize(modeltrial4)
-x<-cSEM::assess(modeltrial4) #model fit statistics look goof
-cSEM::verify(modeltrial4) # model admissability looks good
-cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
-
-evi_comp_trial2<- '
-  #Structural model
-  STABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + PIXEL_HETEROGEN + ANTHROPIC_PRESSURES + FIRE
-  PIXEL_HETEROGEN  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
-  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
-  
-  #Composite variables with equal weighting of indicators
-  BACKGROUND_CLIMATE <~ re + mat
-  PULSE_STRESSORS <~ spei + heatwave
-  
-  #Measurement model (Formative)
-  STABILITY =~ EVI_stability
-  WATER_ACCESS =~ hand
-  PIXEL_HETEROGEN =~ biodiversity 
-  FIRE =~ burnedarea
-  ANTHROPIC_PRESSURES =~ anthropic_dist
-'
-Sys.time(); evi_modeltrial4<- cSEM::csem(.data =  scaled_analyses_evistability, 
-                                     .model = evi_comp_trial2, 
-                                     .approach_weights = "PLS-PM",
-                                     .resample_method = "bootstrap",
-                                     .R =1000,
-                                     .seed= 1000); Sys.time()
-cSEM::summarize(evi_modeltrial4)
 x<-cSEM::assess(modeltrial4) #model fit statistics look goof
 cSEM::verify(modeltrial4) # model admissability looks good
 cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
