@@ -107,6 +107,21 @@ MKtau <- function(z){
 } 
 Sys.time(); kendall_tau_at <- terra::app (at_mask, fun = MKtau); Sys.time()
 
+#4- theilsen regression
+library(mblm)
+theilsen_function <- function(z){
+  Y<- 1:length(z)
+  
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
+    slope_coefficient <- theilsen_model$coefficients[2]
+    slope_coefficient
+  }
+} 
+Sys.time(); theilsen_at <- terra::app (at_mask, fun = theilsen_function); Sys.time()
+
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -116,7 +131,7 @@ cerrado<- d_trans %>% st_union()
 mapping_function <- function (anomoly_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (anomoly_raster) + 
-    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "Reds"),
+    tm_raster(col.scale = tm_scale_intervals(values = "Reds"),
               col.legend = tm_legend(title = title)) +
     tm_layout(legend.text.size = 1, title.size = 4) 
   x_map
@@ -124,8 +139,9 @@ mapping_function <- function (anomoly_raster, title){
 Sys.time();std_map <- mapping_function (std_at, "Std"); Sys.time()
 Sys.time();lm_map <- mapping_function (lm_slope_at, "Linear Regression"); Sys.time()
 Sys.time();tau_map <- mapping_function (kendall_tau_at, "Mann-Kendall"); Sys.time()
+Sys.time();theilsen_map <- mapping_function (theilsen_at, "Theil-Sen Regression"); Sys.time()
 
-anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, ncol =3, nrow= 1) 
+anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, theilsen_map, ncol = 4, nrow= 1) 
 tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
