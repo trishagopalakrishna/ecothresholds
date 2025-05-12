@@ -175,6 +175,7 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_re <- terra::app (annual_relative_entropy, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_re, here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
