@@ -47,8 +47,7 @@ grasspercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeni
 
 ```
 
-##Preprocessing of all data- applying 20%threshold mask, aligning CRS/extent/cell size
-and some preprocessing of driver data.
+##Preprocessing of all data- making appropriate data structure 
 
 ```{r}
 drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
@@ -74,10 +73,10 @@ is run on Gaussian distributed data
 ```{r}
 analyses_df
 summary(analyses_df)
-analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values. Lost 1.8% of rows
+analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
 
 set.seed(1000)
-sample_df<- analyses_df_NA %>% slice_sample(prop=0.2, replace= FALSE) #10% randomly sampled
+sample_df<- analyses_df_NA %>% slice_sample(prop=0.2, replace= FALSE) #20% randomly sampled
 summary(sample_df)
 
 #install.packages("PerformanceAnalytics")
@@ -146,7 +145,7 @@ Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability,
                                      .R =1000,
                                      .seed= 1000); Sys.time()
 cSEM::summarize(modeltrial4)
-x<-cSEM::assess(modeltrial4) #model fit statistics look goof
+x<-cSEM::assess(modeltrial4) #model fit statistics look good - R2 ffor structural regression equations from here
 cSEM::verify(modeltrial4) # model admissability looks good
 cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
 
