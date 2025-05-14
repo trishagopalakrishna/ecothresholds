@@ -257,4 +257,19 @@ animation_function<- function (raster,index_name){
 animation_function(ndvi_5km_unstablearea, "ndvi")
 animation_function(evi_5km_unstablearea, "evi")
 
+static_map_function<- function (raster,index_name){
+  s_map<-
+    tm_shape(cerrado)+ tm_borders()+
+    tm_shape (raster)+
+    tm_raster(col.scale = tm_scale_continuous(values ="Greens")) +tm_title (index_name)
+  
+  tmap_save(s_map, filename = here("Outputs", "Trendsresults",paste0(index_name,"_","_", "unstablearea", ".png")),
+                width = 900, height = 900, dpi = 150)
+}
+
+static_map_function(annual_evi_5km_unstablearea, "EVI_annual")
+static_map_function(monthly_evi_5km_unstablearea, "EVI_monthly")
+static_map_function(annual_ndvi_5km_unstablearea, "NDVI_annual")
+static_map_function(monthly_ndvi_5km_unstablearea, "NDVI_monthly")
+
 ```
