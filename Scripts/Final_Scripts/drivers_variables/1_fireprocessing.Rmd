@@ -156,6 +156,7 @@ MKtau <- function(z){
   }
 } 
 Sys.time(); kendall_tau_burnedarea<- terra::app (burnedarea, fun = MKtau); Sys.time()
+writeRaster(kendall_tau_burnedarea, here("Outputs", "OtherVariables", "Fire", "mannkendalltau_burnedarea.tif"))
 
 #4- theil sen regression using kendall tau rho correlation coefficient- https://projects.itrcweb.org/gsmc-1/Content/GW%20Stats/5%20Methods%20in%20indiv%20Topics/5%205%20Trend%20Tests.htm
 #install.packages("mblm")
