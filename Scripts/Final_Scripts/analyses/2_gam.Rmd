@@ -1,0 +1,206 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script, I do GAMs to understand the relationship between instability (from NDVI) and 
+various predictor variables. 
+
+#Step 1- data input
+```{r}
+#response- stable area from all three indices
+#aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
+monthly_ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"monthlyswin11_ndvi_unstablearea.tif"))
+annual_ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "annual" ,"annualswin11_evi_unstablearea.tif"))
+
+
+#drivers
+anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea.tif"))
+hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
+re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at.tif"))
+#spei<- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
+heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
+forestpercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
+savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
+grasspercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage.tif"))
+
+
+```
+
+#Step 2- data structuring and applying anthropic threshold mask to predictors
+```{r}
+drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
+
+drivers_masked <- terra::mask(drivers, monthly_ndvi_unstable)
+
+all_data<- c(monthly_ndvi_unstable, annual_ndvi_unstable, drivers_masked)
+names(all_data)<- c("ndvi_instability", "annual_ndvi_instability" ,"anthropic_dist", "burnedarea", "hand", "re", "annualtemp", "heatwave", "forestpercentage", "savannapercentage", "grasspercentage")
+
+plot(all_data)
+
+analyses_df<- terra::as.data.frame(all_data, xy = TRUE)
+
+remove(monthly_ndvi_unstable, annual_ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
+remove(drivers_masked)
+```
+
+#Step 3- eda - understanding the correlations and distributions of all the variables 
+```{r}
+analyses_df
+summary(analyses_df)
+analyses_df_noNA <- analyses_df %>% drop_na() #Removing rows with NA values
+
+library(PerformanceAnalytics)
+chart.Correlation(analyses_df_noNA, histogram = TRUE, method = "spearman", pch= 19)
+
+
+#Removing outliers considering distribution of HAND
+no_outliers_sample_df <- analyses_df_noNA %>% 
+          mutate (IQR = IQR(hand),
+                  O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
+                  O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
+                  ) %>% 
+          filter(O_lower <= hand & hand <= O_upper) %>%
+          dplyr::select(-c(IQR, O_upper, O_lower))
+
+chart.Correlation(no_outliers_sample_df, histogram = TRUE, method = "spearman",  pch= 19)
+
+no_outliers_sample_df <- no_outliers_sample_df %>% mutate(ndvi_stability = 1- ndvi_instability)
+
+```
+Firstly, the response variable instability % area (from NDVI) is right skewed. There are significant large correlations (>0.7) between predictor variables anthropic distance and trends in annual temperature, trends in burned area% and forest area%m HAND and RE, HAND and MAT, RE and trends in heatwaves, RE and trends in grass area%, trends in annual temperature and heatwaves, trends in forest area% and grass area%. 
+
+
+#Step 4- data partitioning to testing and training (OPTIONAL FOR NOW- DO NOT RUN)
+```{r}
+#set.seed(1234)
+###1 Data partition
+#fractionTraining   <- 0.80
+#fractionTest       <- 0.20
+
+###2 Compute sample sizes.
+#sampleSizeTraining_all   <- floor(fractionTraining   * nrow(no_outliers_sample_df))
+#sampleSizeTest_all       <- floor(fractionTest       * nrow(no_outliers_sample_df))
+
+###3 Create the randomly-sampled indices for the dataframe. Use setdiff() to
+# avoid overlapping subsets of indices.
+#indicesTraining_all    <- sort(sample(seq_len(nrow(no_outliers_sample_df)), size=sampleSizeTraining_all))
+#indicesTest_all <- setdiff(seq_len(nrow(no_outliers_sample_df)), indicesTraining_all)
+
+###4 Finally, output the dataframes for training, validation and test.
+#set.seed(12345)
+#dfTraining_all   <- no_outliers_sample_df[indicesTraining_all, ] 
+#dfTest_all       <- no_outliers_sample_df[indicesTest_all, ]
+
+#remove(fractionTraining, fractionTest, indicesTraining_all, indicesTest_all, sampleSizeTraining_all, sampleSizeTest_all)
+```
+
+
+#Step 5- gam
+The distribution family to use is beta because my response variable is a proportion i.e.
+proportion of total area of a 5x5km pixel that is unstable. However, this response variable
+is skewed to the left skewed i.e. there are a lot of 5x5km pixels that are completely unstable i.e
+100% of many 5x5km pixels are unstable. So it is a zero and one inflated beta family that I need to 
+use. 
+
+mgcv package does not have above distribution family. Hence, I 
+```{r}
+library(mgcv)
+#basic model
+Sys.time(); model1 <- gam(ndvi_stability ~ s(re) +
+                   s(annualtemp) +
+                   s(heatwave) +
+                   s(burnedarea) +
+                   s(anthropic_dist) +
+                   s(savannapercentage) +
+                     te(x,y),
+                 data = no_outliers_sample_df%>% 
+                   dplyr::select(-c(forestpercentage, grasspercentage, ndvi_instability, annual_ndvi_instability)),
+                 method = "REML",
+                 family = betar(link = "logit")); Sys.time()
+
+summary(model1)
+plot(model1, pages = 1, all.terms = TRUE, rug = TRUE, shade = TRUE)
+gam.check(model1)
+
+#interaction between background conditions
+Sys.time(); model2 <- gam(ndvi_instability ~ s(re) + s(annualtemp) + ti(re, annualtemp) +
+                   s(heatwave) +
+                   s(burnedarea) +
+                   s(anthropic_dist) +
+                   s(savannapercentage) +
+                     te(x,y),
+                 data = bound_no_outliers_sample_df2 %>% dplyr::select(-c(forestpercentage, grasspercentage)),
+                 method = "REML",
+                 family = betar(link = "logit")); Sys.time()
+
+summary(model2)
+plot(model2, pages = 1, scheme =1)
+
+#interaction between re and other terms
+Sys.time(); model3 <- gam(ndvi_instability ~ s(re) + s(annualtemp) + ti(re, annualtemp) +
+                   te(heatwave, re) +
+                   te(burnedarea, re) +
+                   te(anthropic_dist, re) +
+                   te(savannapercentage, re) +
+                     te(x,y),
+                 data = bound_no_outliers_sample_df2 %>% dplyr::select(-c(forestpercentage, grasspercentage)),
+                 method = "REML",
+                 family = betar(link = "logit")); Sys.time()
+
+summary(model3)
+plot(model3, pages = 1, scheme =1)
+
+Sys.time(); model4 <- gam(ndvi_instability ~ s(re) + s(annualtemp) + ti(re, annualtemp) +
+                   s(heatwave) + ti(heatwave, re) +
+                   s(burnedarea) + ti(burnedarea, re) +
+                   s(anthropic_dist) + ti(anthropic_dist, re) +
+                   s(savannapercentage) + ti(savannapercentage, re) +
+                     te(x,y),
+                 data = bound_no_outliers_sample_df2 %>% dplyr::select(-c(forestpercentage, grasspercentage)),
+                 method = "REML", 
+                 family = betar(link = "logit")); Sys.time()
+
+summary(model4)
+plot(model4, pages = 1, scheme =1)
+
+Sys.time(); model5 <- gam(ndvi_instability ~ s(re, bs= "cs") + s(annualtemp, bs= "cs") + ti(re, annualtemp, bs= "cs") +
+                   s(heatwave, bs= "cs") + ti(heatwave, re, bs= "cs") +
+                   s(burnedarea, bs= "cs") + ti(burnedarea, re, bs= "cs") +
+                   s(anthropic_dist, bs= "cs") + ti(anthropic_dist, re, bs= "cs") +
+                   s(savannapercentage, bs= "cs") + ti(savannapercentage, re, bs= "cs") +
+                     te(x,y, bs= "cs"),
+                 data = bound_no_outliers_sample_df2 %>% dplyr::select(-c(forestpercentage, grasspercentage)),
+                 method = "REML", select = TRUE, 
+                 family = betar(link = "logit")); Sys.time()
+
+summary(model5)
+plot(model5, pages = 1, scheme =1)
+
+
+
+
+```
+
+
