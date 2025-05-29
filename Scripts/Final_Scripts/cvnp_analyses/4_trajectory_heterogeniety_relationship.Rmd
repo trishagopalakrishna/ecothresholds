@@ -40,7 +40,7 @@ cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
 
 ```
 
-#Step 2 - veg physiognomies input and processing to calcualte pixel heterogeniety
+#Step 2 - veg physiognomies input and processing to calcualte pixel heterogeniety (only considering native physiognomies)
 ```{r}
 veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
 #0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
@@ -82,7 +82,87 @@ remove(shannon_diversity)
 
 ```
 
-#Step 3- eda relationships between trajectories and heterigeneity
+#Step 3a- heterogeneity spread in pixels classified as each of the trajectories
 ```{r}
+data_stack <- c(cvnp_annual_evi, cvnp_annual_ndvi,cvnp_monthly_evi,cvnp_monthly_ndvi, heterogen)
+data_df <- terra::as.data.frame(data_stack)
+
+heter_trajtype_boxplot_function <- function (traj_column, plot_title){
+  df_filter <- data_df %>% dplyr::select(max, traj_column)
+  df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
+                                                                         df_filter[[traj_column]] == 3 ~"No trend",
+                                                                         df_filter[[traj_column]] == 4 ~"Step Decrease",
+                                                                         df_filter[[traj_column]] == 5 ~ "Step Increase",
+                                                                         df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
+                                                                         df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
+  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
+  plot<- ggplot(df_filter, aes(x = TrajType, y = max, fill = TrajType)) + 
+    geom_boxplot() + ylab("native vegetaiton heterogeniety") +
+    labs(title = plot_title) +
+    theme_classic(base_size = 16) +
+     theme(axis.text.x =element_blank(),
+        axis.ticks.x =element_blank()) +
+    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
+  plot 
+}
+
+box_ndvi_monthly <- heter_trajtype_boxplot_function("ndvi_swin11_monthly", "NDVI(monthly)")
+box_evi_monthly <- heter_trajtype_boxplot_function("evi_swin11_monthly", "EVI(monthly)")
+box_ndvi_annual <- heter_trajtype_boxplot_function("ndvi_swin11_annual", "NDVI(annual)")
+box_evi_annual <- heter_trajtype_boxplot_function("evi_swin11_annual", "EVI(annual)")
+
+boxplot_plots <- ggarrange(box_ndvi_monthly, box_evi_monthly, box_ndvi_annual, box_evi_annual, ncol =2, nrow=2 )
+output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+ggsave(paste0(output_file_path, "//", "boxplot_trajectory_heterogeniety.png"),
+       boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+
+remove(box_ndvi_annual, box_evi_annual, box_evi_monthly, box_ndvi_monthly, boxplot_plots, heter_trajtype_boxplot_function)
+```
+
+#Step 3b- proportion of pixels in particular bins of hetergeniety and the trajectory that the pixels belong to
+```{r}
+data_df <- data_df %>% mutate(bins = cut(max, breaks = quantile(max, na.rm= TRUE), right = FALSE, labels = FALSE, ordered_result = TRUE))
+data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), 4, bins))
+#data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), "No heterogeniety", bins))
+number_pixels_bin <- data_df %>% group_by(bins) %>% summarise(count=n())
+
+pivot_data_df <- data_df %>% pivot_longer(1:4)
+heter_trajectory_df <- pivot_data_df %>%
+  group_by(name, bins, value) %>%
+  summarise(total_pixels = n())
+
+heter_trajectory_df  <- inner_join(heter_trajectory_df , number_pixels_bin)
+heter_trajectory_df <- heter_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
+heter_trajectory_df <- heter_trajectory_df %>% filter(!is.na(value))
+heter_trajectory_df <- heter_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
+                                                                         value == 3 ~"No trend",
+                                                                         value == 4 ~"Step Decrease",
+                                                                         value == 5 ~ "Step Increase",
+                                                                         value == 8 ~ "Quadratic Increase (acc)",
+                                                                         value == 9 ~ "Quadratic Increase (dec)"))
+heter_trajectory_df <- heter_trajectory_df %>% mutate(bins = case_when (bins == 1~"1st quantile",
+                                                                        bins == 2 ~ "2nd quantile",
+                                                                        bins == 3 ~ "3rd quantile",
+                                                                        bins == 4 ~ "4th quantile",
+                                                                        TRUE ~"No heterogeniety"))
+heter_trajectory_df <- heter_trajectory_df %>% mutate(name = case_when (name == "evi_swin11_annual" ~"EVI(annual)",
+                                                                        name == "evi_swin11_monthly" ~"EVI(monthly)",
+                                                                        name == "ndvi_swin11_annual" ~"NDVI(annual)",
+                                                                        TRUE ~ "NDVI(monthly)"))
+
+  
+
+plot <- ggplot(data = heter_trajectory_df, aes(x = bins, y= Proportion, fill = TrajType))+
+    geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  xlab("Heterogeniety")+
+  scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))+
+  facet_grid(~name)
+ggsave(paste0(output_file_path, "//", "relationship_trajectory_heterogeniety.png"),
+       plot ,dpi = 700, height = 80, width = 80, units = "cm")
+
+
+
 
 ```
