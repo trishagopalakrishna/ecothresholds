@@ -29,38 +29,38 @@ https://code.earthengine.google.com/f5e85af3715ad05850eaf497863cbc89
 (2) Map making
 (3) Anomaly calculation
 
-#Step 1- read data and crop and mask (both mean annual and annual)- DO NOT RUN, OUTPUTS WRITTEN OUT
+#Step 1- read data and crop and mask annual temperature at 1km resolution
 ```{r}
-gee_mat<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
-gee_mat
-plot(gee_mat)
+#gee_mat<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
+#gee_mat
+#plot(gee_mat)
 
-gee_at<- rast(here("Data", "Climate", "Annual_Temp_ERA5.tif"))
+gee_at<- rast(here("Data", "Climate", "Annual_Temp_ERA5_1km.tif"))
 gee_at
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 cerrado<- d_trans %>% st_union()
 
-era_mat_crop<- terra::crop(gee_mat, vect(cerrado))
-era_mat_mask<- terra::mask(era_mat_crop, vect(cerrado))
-remove(era_mat_crop)
-writeRaster(era_mat_mask, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+#era_mat_crop<- terra::crop(gee_mat, vect(cerrado))
+#era_mat_mask<- terra::mask(era_mat_crop, vect(cerrado))
+#remove(era_mat_crop)
+#writeRaster(era_mat_mask, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
 
 era_at_crop<- terra::crop(gee_at, vect(cerrado))
 era_at_mask<- terra::mask(era_at_crop, vect(cerrado))
 remove(era_at_crop)
-writeRaster(era_at_mask, here("Outputs", "OtherVariables", "Climate", "at_1981_2021.tif"))
+writeRaster(era_at_mask, here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
 ```
 
 #Step 2- Map making
 ```{r}
-map_mat<-   
-  tm_shape(cerrado)+ tm_fill(title="")+
-  tm_shape (era_mat_mask)+
-  tm_raster(n=5, style = "quantile",palette = "Reds", title="MAT(K)" ) 
-tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
-        height = 30, width = 30, units = "cm", dpi=700)
+#map_mat<-   
+#  tm_shape(cerrado)+ tm_fill(title="")+
+#  tm_shape (era_mat_mask)+
+#  tm_raster(n=5, style = "quantile",palette = "Reds", title="MAT(K)" ) 
+#tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
+#        height = 30, width = 30, units = "cm", dpi=700)
 
 #animation
 animation_x_time_map<-
@@ -69,14 +69,14 @@ animation_x_time_map<-
    tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
    tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
 
-tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021.gif"),
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021_1km.gif"),
                 delay = 50, loop = TRUE, restart.delay = 500,
                 width = 900, height = 900, dpi = 150)
 ```
 
 #Step 3- anomaly calculation
 ```{r}
-at_mask<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021.tif"))
+at_mask<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
 
 #1- std deviation
 Sys.time(); std_at <- terra::app (at_mask, fun = sd); Sys.time()
@@ -121,7 +121,7 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_at <- terra::app (at_mask, fun = theilsen_function); Sys.time()
-writeRaster(theilsen_at, here("Outputs", "OtherVariables", "Climate", "theilsen_at.tif"))
+writeRaster(theilsen_at, here("Outputs", "OtherVariables", "Climate", "theilsen_at_1km.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -143,7 +143,7 @@ Sys.time();tau_map <- mapping_function (kendall_tau_at, "Mann-Kendall"); Sys.tim
 Sys.time();theilsen_map <- mapping_function (theilsen_at, "Theil-Sen Regression"); Sys.time()
 
 anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, theilsen_map, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results.png"),
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results_1km.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 ```
