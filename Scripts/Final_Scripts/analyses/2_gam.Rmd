@@ -84,10 +84,10 @@ no_outliers_sample_df <- analyses_df_noNA %>%
           filter(O_lower <= hand & hand <= O_upper) %>%
           dplyr::select(-c(IQR, O_upper, O_lower))
 
-chart.Correlation(no_outliers_sample_df, histogram = TRUE, method = "spearman",  pch= 19)
+chart.Correlation(no_outliers_sample_df %>% dplyr::select(-c(forestpercentage, grasspercentage)), histogram = TRUE, method = "spearman",  pch= 19)
 
 no_outliers_sample_df <- no_outliers_sample_df %>% mutate(ndvi_stability = 1- ndvi_instability)
-
+no_outliers_sample_df2 <- no_outliers_sample_df %>% dplyr::select(-c(forestpercentage, grasspercentage, ndvi_instability))
 ```
 Firstly, the response variable instability % area (from NDVI) is right skewed. There are significant large correlations (>0.7) between predictor variables anthropic distance and trends in annual temperature, trends in burned area% and forest area%m HAND and RE, HAND and MAT, RE and trends in heatwaves, RE and trends in grass area%, trends in annual temperature and heatwaves, trends in forest area% and grass area%. 
 
@@ -117,14 +117,20 @@ Firstly, the response variable instability % area (from NDVI) is right skewed. T
 ```
 
 
-#Step 5- gam
+#Step 5- regression analyses
 The distribution family to use is beta because my response variable is a proportion i.e.
 proportion of total area of a 5x5km pixel that is unstable. However, this response variable
 is skewed to the left skewed i.e. there are a lot of 5x5km pixels that are completely unstable i.e
 100% of many 5x5km pixels are unstable. So it is a zero and one inflated beta family that I need to 
 use. 
 
-mgcv package does not have above distribution family. Hence, I 
+I could convert the instability to stability (1- instability) and then use gamma distribution
+because exponential distribution is a subclass of gamma distribution (which is supported in mgcv),
+however there would still be lots of 0s i.e. 0% of 5x5km pixels are stable and 0 inflated data
+is not appropriate for gamma distribition
+
+mgcv package does not have above distribution family or functionality, which is my 
+understanding with trials in next chunk.
 ```{r}
 library(mgcv)
 #basic model
@@ -203,4 +209,44 @@ plot(model5, pages = 1, scheme =1)
 
 ```
 
+I choose to use gamlss r package to do regression modelling. However, this type
+of regression modellign does not allow interactions between predictor variables. I need
+to be able to do interactions considering x,y and also considering re. 
 
+So I settled on doing bayesian style GAM using the brms pacakge. 
+
+
+```{r}
+library(brms)
+
+priors <- c(
+  set_prior("student_t(3, 0, 2.5)", class = "Intercept") +
+  set_prior("normal(0, 1)", class = "b") +
+  set_prior("logistic(0, 1", class = "Intercept", dpar = "zi")
+)
+
+#without priors
+Sys.time(); model1 <- brm (bf(ndvi_stability ~ s(re) +
+                   s(annualtemp) +
+                   s(heatwave) +
+                   s(burnedarea) +
+                   s(anthropic_dist) +
+                   s(savannapercentage) +
+                     t2(x,y)),
+                   phi ~ 1,
+                   zi ~ 1,
+               data = no_outliers_sample_df2,
+               family = zero_inflated_beta(),
+               cores = 4, seed = 17, iter = 2000, warmup = 1000, thin = 10 ); Sys.time()
+  
+  
+  
+
+m2 <- brm(bf(accel ~ s(times)),
+          data = mcycle, family = gaussian(), cores = 4, seed = 17,
+          iter = 4000, warmup = 1000, thin = 10, refresh = 0,
+          control = list(adapt_delta = 0.99))
+
+
+
+```
