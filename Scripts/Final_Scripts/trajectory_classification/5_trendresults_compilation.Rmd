@@ -26,7 +26,8 @@ In this script, I compile final trend results for each index only for swindow = 
 (1) Read in only swin11 monthly rasters for the three indices
 (2) Map plot
 (3) Make barplot of results across the three indices
-(4) Make "stable areas" rasters for all three indices
+(4) Make "stable areas" rasters for all three indices at 5km resolution
+(5) Make binary rasters of respective trajectory/not that trajectory at 1km resolution
 
 #Step 1- reading in only swin11 trend results (monthly and annual) in native savannas
 ```{r}
@@ -272,4 +273,96 @@ static_map_function(monthly_evi_5km_unstablearea, "EVI_monthly")
 static_map_function(annual_ndvi_5km_unstablearea, "NDVI_annual")
 static_map_function(monthly_ndvi_5km_unstablearea, "NDVI_monthly")
 
+```
+
+#Step 5- binary trajectory rasters of respective trajectory/not that trajectory at 1km resolution
+for further analyses (regression analyses)
+```{r}
+#Read code chunk 1 for all data
+output_file_path <- output_file_path <- here("Outputs", "TrendsResults", "results_rasters")
+
+lin_dec_classification <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(1,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+lin_inc_classification <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(2,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+stable_classification <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(3,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+step_dec_classification <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(4,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+step_inc_classification <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(5,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+quad_dec_classification1 <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(6,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+quad_dec_classification2 <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(7,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+quad_inc_classification1 <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(8,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly, "binary_trajectories", file_name_with_tif))
+}
+
+quad_inc_classification2 <- function (trajectory_results_raster, annual_or_monthly, file_name_with_tif){
+  x<- terra::classify(trajectory_results_raster, cbind(9,1), others =0)
+  writeRaster(x, here(output_file_path, annual_or_monthly,"binary_trajectories", file_name_with_tif))
+}
+
+Sys.time(); lin_dec_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_inc_decc.tif"); Sys.time()
+
+Sys.time(); lin_dec_classification(annual_rds_list[[1]], "annual", "evi_annual_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(annual_rds_list[[1]], "annual", "evi_annual_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(annual_rds_list[[1]], "annual", "evi_annual_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(annual_rds_list[[1]], "annual", "evi_annual_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(annual_rds_list[[1]], "annual", "evi_annual_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(annual_rds_list[[1]], "annual", "evi_annual_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(annual_rds_list[[1]], "annual", "evi_annual_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(annual_rds_list[[1]], "annual", "evi_annual_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(annual_rds_list[[1]], "annual", "evi_annual_quad_inc_decc.tif"); Sys.time()
+
+Sys.time(); lin_dec_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_inc_decc.tif"); Sys.time()
+
+Sys.time(); lin_dec_classification(annual_rds_list[[2]], "annual", "ndvi_annual_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(annual_rds_list[[2]], "annual", "ndvi_annual_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(annual_rds_list[[2]], "annual", "ndvi_annual_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(annual_rds_list[[1]], "annual", "ndvi_annual_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(annual_rds_list[[1]], "annual", "ndvi_annual_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(annual_rds_list[[1]], "annual", "ndvi_annual_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(annual_rds_list[[1]], "annual", "ndvi_annual_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(annual_rds_list[[1]], "annual", "ndvi_annual_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(annual_rds_list[[1]], "annual", "ndvi_annual_quad_inc_decc.tif"); Sys.time()
 ```
