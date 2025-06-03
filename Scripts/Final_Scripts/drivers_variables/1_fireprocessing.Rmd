@@ -30,7 +30,7 @@ https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fde
 The output from GEE is an image collection, where each band is a year 2002-2021 and pixel
 value is number a times a pixel burned in the year. Firstly, reading the exported data and mosaicing.
 (1) Data processing - mosaic, rename layers, crop/mask to cerrado
-(2) Burned area processing- coarsening to 5x5km and determining burned area fraction
+(2) Burned area processing- coarsening to 1x1km and determining burned area fraction
 (3) Anomaly calculation- linear regression trends, kendal tau trends and variance/std
 
 #Step 1- data processing
@@ -75,23 +75,23 @@ subset<- function (Year){
   terra::subset(binaryburn, grep(Year, names(binaryburn)))
 }
 
-annual_df<-annual_df %>% mutate(annual_burn= map(Year,subset))
+Sys.time(); annual_df<-annual_df %>% mutate(annual_burn= map(Year,subset)); Sys.time()
 
 frequency<- function (monthly_burn_raster){
    terra::app(monthly_burn_raster, fun="sum")
 }
-annual_df<-annual_df %>% mutate(frequency= map(annual_burn, frequency))
+Sys.time(); annual_df<-annual_df %>% mutate(frequency= map(annual_burn, frequency)); Sys.time()
 
 binaryburn<- function (annual_frequency_raster){
   as.numeric(annual_frequency_raster>0)
 }
 Sys.time(); annual_df<-annual_df %>% mutate(binaryburn= map(frequency, binaryburn)); Sys.time()
 
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+at<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
 prop_aggregate <- function(binaryburn_raster) {
   terra::project(
-    terra::segregate(binaryburn_raster), mat,# segregate()- binary (0/1) of classes 0,3,4,12
-    method = "average", res = res(mat)[1]
+    terra::segregate(binaryburn_raster), at[[1]],# segregate()- binary (0/1) of classes 0,3,4,12
+    method = "average", res = res(at)[1]
   )
 }
 
@@ -104,10 +104,10 @@ Sys.time(); annual_df<-annual_df %>% mutate(burnedarea= map(coarsened_binaryburn
 
 burnedarea_list<- annual_df$burnedarea
 burnedarea<- rast(burnedarea_list)
-writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
+writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
 
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
-mean_burnarea<- terra::app(burnedarea, fun= "mean")
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
+
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -115,12 +115,91 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
-map_burnedarea<-   
-  tm_shape(cerrado)+ tm_fill(title="")+
-  tm_shape (mean_burnarea)+
-  tm_raster(n=5, style = "quantile",palette = "YlOrBr", title="Burned Area (%)" ) 
-tmap_save(map_burnedarea, here("Outputs", "OtherVariables", "Fire", "burnearea_2002_2021.png"),
-        height = 30, width = 30, units = "cm", dpi=700)
+
+
+animation_x_time_map<-
+   tm_shape(cerrado)+ tm_borders()+
+   tm_shape (burnedarea)+
+   tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
+   tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Fire", "burnedarea_2002_2021_1km.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+
+#1- std deviation
+Sys.time(); std_burnedarea <- terra::app (burnedarea, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_burnedarea <- terra::app (burnedarea, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_burnedarea<- terra::app (burnedarea, fun = MKtau); Sys.time()
+#writeRaster(kendall_tau_burnedarea, here("Outputs", "OtherVariables", "Fire", "mannkendalltau_burnedarea.tif"))
+
+#4- theil sen regression using kendall tau rho correlation coefficient- https://projects.itrcweb.org/gsmc-1/Content/GW%20Stats/5%20Methods%20in%20indiv%20Topics/5%205%20Trend%20Tests.htm
+#install.packages("mblm")
+library(mblm)
+theilsen_function <- function(z){
+  Y<- 1:length(z)
+  
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
+    slope_coefficient <- theilsen_model$coefficients[2]
+    slope_coefficient
+  }
+} 
+Sys.time(); theilsen_burnedarea <- terra::app (burnedarea, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_burnedarea, here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_1km.tif"))
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+std_burnedarea
+lm_slope_burnedarea
+theilsen_burnedarea
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(col.scale = tm_scale_continuous(values = "YlOrRd"),
+              col.legend = tm_legend (title = title)) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_burnedarea, title = "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_burnedarea, "Linear Regression"); Sys.time()
+Sys.time();kendaltau_map <- mapping_function (kendall_tau_burnedarea, "MannKendall"); Sys.time()
+Sys.time();theilsen_map <- mapping_function (theilsen_burnedarea , "Theil-Sen Regression"); Sys.time()
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, kendaltau_map, theilsen_map, ncol = 4, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results3.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
 
 ```
 
@@ -271,8 +350,6 @@ tmap_save(cvnp_2017fire_map, here("Outputs", "Final_TrajShape_Models", "CVNP_res
 
 
 ```
-
-
 
 
 
