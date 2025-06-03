@@ -27,7 +27,8 @@ In this script, I compile final trend results for each index only for swindow = 
 (2) Map plot
 (3) Make barplot of results across the three indices
 (4) Make "stable areas" rasters for all three indices at 5km resolution
-(5) Make binary rasters of respective trajectory/not that trajectory at 1km resolution
+(5) At 5km resolution, make binary rasters where pixel value is count of smaller 1km pixels of the particular trajectory
+(6) Make binary rasters of respective trajectory/not that trajectory at 1km resolution
 
 #Step 1- reading in only swin11 trend results (monthly and annual) in native savannas
 ```{r}
@@ -222,14 +223,14 @@ stable_area_function <- function (stablearea_1km_raster){
 }
   
 Sys.time(); annual_ndvi_5km_unstablearea <- stable_area_function(annual_ndvi1km_stable); Sys.time()
-#writeRaster(annual_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_ndvi_unstablearea.tif"))
+#writeRaster(annual_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual" , "unstablearea_5km", ,"annualswin11_ndvi_unstablearea.tif"))
 Sys.time(); monthly_ndvi_5km_unstablearea <- stable_area_function(monthly_ndvi1km_stable); Sys.time()
-#writeRaster(monthly_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "monthlyswin11_ndvi_unstablearea.tif"))
+#writeRaster(monthly_ndvi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "unstablearea_5km", "monthlyswin11_ndvi_unstablearea.tif"))
 
 Sys.time(); annual_evi_5km_unstablearea <- stable_area_function(annual_evi1km_stable); Sys.time()
-#writeRaster(annual_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual", "annualswin11_evi_unstablearea.tif"))
+#writeRaster(annual_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual", "unstablearea_5km", "annualswin11_evi_unstablearea.tif"))
 Sys.time(); monthly_evi_5km_unstablearea <- stable_area_function(monthly_evi1km_stable); Sys.time()
-#writeRaster(monthly_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
+#writeRaster(monthly_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly", "unstablearea_5km","monthlyswin11_evi_unstablearea.tif"))
 
 #map making
 annual_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_ndvi_unstablearea.tif"))
@@ -275,7 +276,96 @@ static_map_function(monthly_ndvi_5km_unstablearea, "NDVI_monthly")
 
 ```
 
-#Step 5- binary trajectory rasters of respective trajectory/not that trajectory at 1km resolution
+#Step 5- estiamtion of number (yes number) of 1km pixels
+within 5km pixel that are of a particular trajectory for further analyses
+```{r}
+#Reading 1km resolution results (before anthropic mask is applied)
+overall_file_path <- here("Outputs", "ModelSelection")
+
+read_files_function <- function (index_name,annual_or_monthly_folder, file_name_with_rds){
+  rds_file<- read_rds(paste0(overall_file_path,"/", index_name,"/", annual_or_monthly_folder,"/", file_name_with_rds))
+}
+Sys.time(); annual_ndvi_swin11 <- read_files_function ("NDVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "modelselection_swindow_11.rds"); Sys.time()
+
+Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+
+#results preparation such that no trend cells are classified to be 1 and remainder are 2
+results_df_function<- function (modelselection_df) {
+  results_df <- modelselection_df %>% ungroup() %>% 
+    dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
+    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~2,
+                                model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
+                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~1,
+                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~1,
+                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~1,
+                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~1,
+                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~2,
+                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~2, 
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~2,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~2,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~2,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~2
+                                )) %>% 
+    dplyr::select(c(x,y,pixelvalue))
+}
+
+Sys.time(); annual_ndvi_swin11 <- results_df_function(annual_ndvi_swin11); Sys.time()
+Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys.time()
+
+Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
+Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
+
+#raster preparation
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
+Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
+Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
+
+results_raster_function<- function (results_df) {
+  cellindex_vector<- terra::vect(results_df, geom=c("x", "y"), crs="epsg:4326")
+  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "pixelvalue", fun="max")
+  cellindex_raster
+}
+
+Sys.time(); annual_ndvi1km_trajectories <- results_raster_function(annual_ndvi_swin11); Sys.time()
+Sys.time(); monthly_ndvi1km_trajectories <- results_raster_function(monthly_ndvi_swin11); Sys.time()
+
+Sys.time(); annual_evi1km_trajectories <- results_raster_function(annual_evi_swin11); Sys.time()
+Sys.time(); monthly_evi1km_trajectories <- results_raster_function(monthly_evi_swin11); Sys.time()
+
+#coarsen to 5km & apply anthropogenic mask at 5km
+threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif")) #from GEE
+
+count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
+  x_1km_sameextent <- terra::resample(terra::segregate(trajectories_1km_raster), trajectories_1km_raster, method = "near")
+ 
+  x_5km_count <- terra::aggregate (x_1km_sameextent, fact = 5, fun = "sum")
+  x_5km_count_sameextent <- terra::resample(x_5km_count, threshold20_5km, method = "near")
+  
+  x_5km_mask <- terra::mask(x_5km_count_sameextent, threshold20_5km)
+  x_5km_mask
+}
+  
+Sys.time(); annual_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_ndvi1km_trajectories); Sys.time()
+writeRaster(annual_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "results_rasters" , "annual", "binary_count_5km", "annualswin11_ndvi_count_5km.tif"))
+Sys.time(); monthly_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_ndvi1km_trajectories); Sys.time()
+writeRaster(monthly_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "results_rasters" , "monthly", "binary_count_5km", "monthlyswin11_ndvi_count_5km.tif"))
+
+Sys.time(); annual_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_evi1km_trajectories); Sys.time()
+writeRaster(annual_evi_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "results_rasters" , "annual", "binary_count_5km",  "annualswin11_evi_count_5km.tif"))
+Sys.time(); monthly_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_evi1km_trajectories); Sys.time()
+writeRaster(monthly_evi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "binary_count_5km", "monthlyswin11_evi_count_5km.tif"))
+
+```
+
+#Step 6- binary trajectory rasters of respective trajectory/not that trajectory at 1km resolution
 for further analyses (regression analyses)
 ```{r}
 #Read code chunk 1 for all data
