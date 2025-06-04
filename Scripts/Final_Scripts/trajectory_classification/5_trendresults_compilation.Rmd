@@ -73,18 +73,27 @@ mapping_function <- function (trendresults_raster, title){
                            "Quad decrease (decelerated)",
                            "Quad increase (accelerated)",
                            "Quad incrase (decelerated)")) + 
-    tm_layout(legend.text.size = 2) + tm_title(title)
+    tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
   x_map
 }
+
+output_file_path <- here("Outputs", "TrendsResults")
+
 Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[2]], "NDVI (monthly)"); Sys.time()
+tmap_save(monthly_ndvi_results_map, paste0(output_file_path, "/", "ndvi_monthly_map1km_trendresults_swin11_2.jpeg"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
 Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[1]], "EVI (monthly)"); Sys.time()
 Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[2]], "NDVI (annual)"); Sys.time()
+tmap_save(annual_ndvi_results_map, paste0(output_file_path, "/", "ndvi_annual_map1km_trendresults_swin11_2.jpeg"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
 Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[1]], "EVI (annual)"); Sys.time()
 
 trendresult_map<- tmap_arrange(monthly_ndvi_results_map, annual_ndvi_results_map, monthly_evi_results_map, annual_evi_results_map,  
                                ncol =2, nrow= 2)
-output_file_path <- here("Outputs", "TrendsResults")
-tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual.png"),
+
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual_2.png"),
         height = 80, width = 80, units = "cm", dpi=700)
 
 remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map)
