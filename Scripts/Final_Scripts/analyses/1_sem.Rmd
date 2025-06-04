@@ -30,15 +30,15 @@ environmental drives and stability at the biome scale.
 ```{r}
 #response- stable area from all three indices
 #aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
-ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"monthlyswin11_ndvi_unstablearea.tif"))
-evi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
+ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" , "unstablearea_5km", "monthlyswin11_ndvi_unstablearea.tif"))
+evi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly", "unstablearea_5km", "monthlyswin11_evi_unstablearea.tif"))
 
 #drivers
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea.tif"))
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
 re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at.tif"))
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
 #spei<- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
 heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
 forestpercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
