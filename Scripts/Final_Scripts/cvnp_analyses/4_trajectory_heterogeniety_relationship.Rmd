@@ -80,6 +80,15 @@ shannon_diversity<- function (reclass_coarse_raster) {
 Sys.time(); heterogen <- shannon_diversity (coarse_reclass_veg_phy);Sys.time()
 remove(shannon_diversity)
 
+x_map<- tm_shape(cvnp_shp)+ tm_borders()+
+    tm_shape (heterogen) + 
+    tm_raster(col.scale = tm_scale_intervals(values = "Oranges"),
+              col.legend = tm_legend(title = "Native veg heterogeniety")) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
+tmap_save(x_map, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "cvnp_pixelheterogeniety.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
+
+
 ```
 
 #Step 3a- heterogeneity spread in pixels classified as each of the trajectories
