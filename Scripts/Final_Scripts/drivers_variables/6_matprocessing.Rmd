@@ -31,55 +31,75 @@ https://code.earthengine.google.com/f5e85af3715ad05850eaf497863cbc89
 
 #Step 1- read data and crop and mask annual temperature at 1km resolution
 ```{r}
-#gee_mat<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
-#gee_mat
-#plot(gee_mat)
+gee_mat_5km<- rast(here("Data", "Climate", "ERA5_MAT.tif"))
+era_mat_crop_5km<- terra::crop(gee_mat_5km, vect(cerrado))
+era_mat_mask_5km<- terra::mask(era_mat_crop_5km, vect(cerrado))
+remove(era_mat_crop_5km)
+writeRaster(era_mat_mask_5km, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021_5km.tif"))
 
-gee_at<- rast(here("Data", "Climate", "Annual_Temp_ERA5_1km.tif"))
-gee_at
+gee_at_1km<- rast(here("Data", "Climate", "Annual_Temp_ERA5_1km.tif"))
+gee_at_1km
+gee_at_5km<- rast(here("Data", "Climate", "Annual_Temp_ERA5_5km.tif"))
+gee_at_5km
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 cerrado<- d_trans %>% st_union()
 
-#era_mat_crop<- terra::crop(gee_mat, vect(cerrado))
-#era_mat_mask<- terra::mask(era_mat_crop, vect(cerrado))
-#remove(era_mat_crop)
-#writeRaster(era_mat_mask, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif"))
+era_at_crop_1km<- terra::crop(gee_at_1km, vect(cerrado))
+era_at_mask_1km<- terra::mask(era_at_crop_1km, vect(cerrado))
+remove(era_at_crop_1km)
+writeRaster(era_at_mask_1km, here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
 
-era_at_crop<- terra::crop(gee_at, vect(cerrado))
-era_at_mask<- terra::mask(era_at_crop, vect(cerrado))
-remove(era_at_crop)
-writeRaster(era_at_mask, here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
+Sys.time(); mat_1km <- terra::app(era_at_mask_1km, fun = "mean"); Sys.time()
+writeRaster(mat_1km, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021_1km.tif"))
+
+era_at_crop_5km<- terra::crop(gee_at_5km, vect(cerrado))
+era_at_mask_5km<- terra::mask(era_at_crop_5km, vect(cerrado))
+remove(era_at_crop_5km)
+writeRaster(era_at_mask_5km, here("Outputs", "OtherVariables", "Climate", "at_1981_2021_5km.tif"))
+
 ```
 
 #Step 2- Map making
 ```{r}
-#map_mat<-   
-#  tm_shape(cerrado)+ tm_fill(title="")+
-#  tm_shape (era_mat_mask)+
-#  tm_raster(n=5, style = "quantile",palette = "Reds", title="MAT(K)" ) 
-#tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
-#        height = 30, width = 30, units = "cm", dpi=700)
+map_mat<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (era_mat_mask)+
+  tm_raster(n=5, style = "quantile",palette = "Reds", title="MAT(K)" ) 
+tmap_save(map_mat, here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
 
 #animation
-animation_x_time_map<-
+animation_x_time_map_1km<-
    tm_shape(cerrado)+ tm_borders()+
-   tm_shape (era_at_mask)+
+   tm_shape (era_at_mask_1km)+
    tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
    tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
 
-tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021_1km.gif"),
+tmap_animation(animation_x_time_map_1km, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021_1km.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+
+animation_x_time_map_5km<-
+   tm_shape(cerrado)+ tm_borders()+
+   tm_shape (era_at_mask_5km)+
+   tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
+   tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+
+tmap_animation(animation_x_time_map_5km, filename = here("Outputs", "OtherVariables", "Climate", "annual_temperature_1981_2021_5km.gif"),
                 delay = 50, loop = TRUE, restart.delay = 500,
                 width = 900, height = 900, dpi = 150)
 ```
 
 #Step 3- anomaly calculation
 ```{r}
-at_mask<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
+at_1km<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
+at_5km<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_5km.tif"))
 
 #1- std deviation
-Sys.time(); std_at <- terra::app (at_mask, fun = sd); Sys.time()
+Sys.time(); std_at_1km <- terra::app (at_1km, fun = sd); Sys.time()
+Sys.time(); std_at_5km <- terra::app (at_5km, fun = sd); Sys.time()
 
 #2- linear regression through time
 lm_function <- function (x){
@@ -93,7 +113,8 @@ lm_function <- function (x){
     slope_coefficient
   }
 }
-Sys.time(); lm_slope_at <- terra::app (at_mask, fun = lm_function); Sys.time()
+Sys.time(); lm_slope_at_1km <- terra::app (at_1km, fun = lm_function); Sys.time()
+Sys.time(); lm_slope_at_5km <- terra::app (at_5km, fun = lm_function); Sys.time()
 
 #3- mann kendal correlation through time
 #install.packages("Kendall")
@@ -105,7 +126,8 @@ MKtau <- function(z){
     as.numeric(Kendall::MannKendall(z)$tau)
   }
 } 
-Sys.time(); kendall_tau_at <- terra::app (at_mask, fun = MKtau); Sys.time()
+Sys.time(); kendall_tau_at_1km <- terra::app (at_1km, fun = MKtau); Sys.time()
+Sys.time(); kendall_tau_at_5km <- terra::app (at_5km, fun = MKtau); Sys.time()
 
 #4- theilsen regression
 library(mblm)
@@ -120,8 +142,10 @@ theilsen_function <- function(z){
     slope_coefficient
   }
 } 
-Sys.time(); theilsen_at <- terra::app (at_mask, fun = theilsen_function); Sys.time()
-writeRaster(theilsen_at, here("Outputs", "OtherVariables", "Climate", "theilsen_at_1km.tif"))
+Sys.time(); theilsen_at_1km <- terra::app (at_mask, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_at_1km, here("Outputs", "OtherVariables", "Climate", "theilsen_at_1km.tif"))
+Sys.time(); theilsen_at_5km <- terra::app (at_mask, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_at_5km, here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -137,13 +161,24 @@ mapping_function <- function (anomoly_raster, title){
     tm_layout(legend.text.size = 1, title.size = 4) 
   x_map
 }
-Sys.time();std_map <- mapping_function (std_at, "Std"); Sys.time()
-Sys.time();lm_map <- mapping_function (lm_slope_at, "Linear Regression"); Sys.time()
-Sys.time();tau_map <- mapping_function (kendall_tau_at, "Mann-Kendall"); Sys.time()
-Sys.time();theilsen_map <- mapping_function (theilsen_at, "Theil-Sen Regression"); Sys.time()
+#1km
+Sys.time();std_map_1km <- mapping_function (std_at_1km, "Std"); Sys.time()
+Sys.time();lm_map_1km <- mapping_function (lm_slope_at_1km, "Linear Regression"); Sys.time()
+Sys.time();tau_map_1km <- mapping_function (kendall_tau_at_1km, "Mann-Kendall"); Sys.time()
+Sys.time();theilsen_map_1km <- mapping_function (theilsen_at_1km, "Theil-Sen Regression"); Sys.time()
 
-anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, theilsen_map, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results_1km.png"),
+anomoly_results_map_1km<- tmap_arrange(std_map_1km, lm_map_1km, tau_map_1km, theilsen_map_1km, ncol = 4, nrow= 1) 
+tmap_save(anomoly_results_map_1km, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results_1km.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
+
+#5km
+Sys.time();std_map_5km <- mapping_function (std_at_5km, "Std"); Sys.time()
+Sys.time();lm_map_5km <- mapping_function (lm_slope_at_5km, "Linear Regression"); Sys.time()
+Sys.time();tau_map_5km <- mapping_function (kendall_tau_at_5km, "Mann-Kendall"); Sys.time()
+Sys.time();theilsen_map_5km <- mapping_function (theilsen_at_5km, "Theil-Sen Regression"); Sys.time()
+
+anomoly_results_map_5km<- tmap_arrange(std_map_5km, lm_map_5km, tau_map_5km, theilsen_map_5km, ncol = 4, nrow= 1) 
+tmap_save(anomoly_results_map_5km, here("Outputs", "OtherVariables", "Climate", "anomoly_annualtemp_methods_results_5km.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 ```
