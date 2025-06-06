@@ -304,18 +304,18 @@ Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "model
 results_df_function<- function (modelselection_df) {
   results_df <- modelselection_df %>% ungroup() %>% 
     dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
-    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~2,
+    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
                                 model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
-                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~1,
-                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~1,
-                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~1,
-                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~1,
-                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~2,
-                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~2, 
-                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~2,
-                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~2,
-                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~2,
-                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~2
+                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
+                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~4,
+                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~5, 
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~6,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~7,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~8,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~9
                                 )) %>% 
     dplyr::select(c(x,y,pixelvalue))
 }
