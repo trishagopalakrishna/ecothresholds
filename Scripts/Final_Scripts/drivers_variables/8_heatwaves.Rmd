@@ -52,7 +52,7 @@ tmap_save(map_hw, here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2
 
 ```
 
-#Step 2- trends in heatwaves through time period using number of heatwaves annually (calculated in gee)
+#Step 2- mean heatwaves and trends in heatwaves through time period using number of heatwaves annually (calculated in gee)
 ```{r}
 gee_annual_heatwave <- rast(here("Data", "Climate", "Annual_ERA5_Heatwave.tif"))
 
@@ -73,6 +73,9 @@ tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables"
                 width = 900, height = 900, dpi = 150)
 
 annual_heatwave_mask<- rast(here("Outputs", "OtherVariables", "Climate", "annual_heatwaves_2002_2021.tif"))
+mean_annual_heatwave <- terra::app(annual_heatwave_mask, fun = "mean")
+writeRaster(mean_annual_heatwave, here("Outputs", "OtherVariables", "Climate", "mean_annual_heatwaves_2002_2021.tif"))
+
 
 #trends or anomaly calculation
 #1- std deviation
