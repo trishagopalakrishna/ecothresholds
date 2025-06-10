@@ -104,18 +104,17 @@ Sys.time(); annual_df<-annual_df %>% mutate(burnedarea= map(coarsened_binaryburn
 
 burnedarea_list<- annual_df$burnedarea
 burnedarea<- rast(burnedarea_list)
-writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
+#writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
 
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
-
+years<-  rep(2002:2021,each = 1) 
+names(burnedarea)<- years
 
 #Map making
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
-
-
 
 animation_x_time_map<-
    tm_shape(cerrado)+ tm_borders()+
@@ -127,85 +126,14 @@ tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables"
                 delay = 50, loop = TRUE, restart.delay = 500,
                 width = 900, height = 900, dpi = 150)
 
-#1- std deviation
-Sys.time(); std_burnedarea <- terra::app (burnedarea, fun = sd); Sys.time()
-
-#2- linear regression through time
-lm_function <- function (x){
-  Y<- 1:length(x)
-  
-  if(all(is.na(x))){
-    return (NA)
-  } else{
-    lm_model<- lm(x ~ Y )
-    slope_coefficient<- lm_model$coefficients[2]
-    slope_coefficient
-  }
-}
-Sys.time(); lm_slope_burnedarea <- terra::app (burnedarea, fun = lm_function); Sys.time()
-
-#3- mann kendal correlation through time
-#install.packages("Kendall")
-library(Kendall)
-MKtau <- function(z){
-  if(all(is.na(z))){
-    return (NA)
-  } else{
-    as.numeric(Kendall::MannKendall(z)$tau)
-  }
-} 
-Sys.time(); kendall_tau_burnedarea<- terra::app (burnedarea, fun = MKtau); Sys.time()
-#writeRaster(kendall_tau_burnedarea, here("Outputs", "OtherVariables", "Fire", "mannkendalltau_burnedarea.tif"))
-
-#4- theil sen regression using kendall tau rho correlation coefficient- https://projects.itrcweb.org/gsmc-1/Content/GW%20Stats/5%20Methods%20in%20indiv%20Topics/5%205%20Trend%20Tests.htm
-#install.packages("mblm")
-library(mblm)
-theilsen_function <- function(z){
-  Y<- 1:length(z)
-  
-  if(all(is.na(z))){
-    return (NA)
-  } else{
-    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
-    slope_coefficient <- theilsen_model$coefficients[2]
-    slope_coefficient
-  }
-} 
-Sys.time(); theilsen_burnedarea <- terra::app (burnedarea, fun = theilsen_function); Sys.time()
-writeRaster(theilsen_burnedarea, here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_1km.tif"))
-
-#Map making
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
-cerrado<- d_trans %>% st_union()
-
-std_burnedarea
-lm_slope_burnedarea
-theilsen_burnedarea
-
-mapping_function <- function (anomoly_raster, title){
-  x_map<- tm_shape(cerrado)+ tm_borders()+
-    tm_shape (anomoly_raster) + 
-    tm_raster(col.scale = tm_scale_continuous(values = "YlOrRd"),
-              col.legend = tm_legend (title = title)) +
-    tm_layout(legend.text.size = 1, title.size = 4) 
-  x_map
-}
-Sys.time();std_map <- mapping_function (std_burnedarea, title = "Std"); Sys.time()
-Sys.time();lm_map <- mapping_function (lm_slope_burnedarea, "Linear Regression"); Sys.time()
-Sys.time();kendaltau_map <- mapping_function (kendall_tau_burnedarea, "MannKendall"); Sys.time()
-Sys.time();theilsen_map <- mapping_function (theilsen_burnedarea , "Theil-Sen Regression"); Sys.time()
-
-anomoly_results_map<- tmap_arrange(std_map, lm_map, kendaltau_map, theilsen_map, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results3.png"),
-        height = 50, width = 50, units = "cm", dpi=700)
-
 ```
 
-#Step 3- trend calculation using theil sen regression that in turn uses kendall tau rho to determine the sen slope
+#Step 3- mean burned area and trend calculation using theil sen regression that in turn uses kendall tau rho to determine the sen slope
 ```{r}
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
+mean_burnedarea <- terra::app (burnedarea, fun = "mean")
+writeRaster(mean_burnedarea, here("Outputs", "OtherVariables", "Fire", "mean_burnedarea_5km_2002_2021.tif"))
+
 
 #1- std deviation
 Sys.time(); std_burnedarea <- terra::app (burnedarea, fun = sd); Sys.time()
