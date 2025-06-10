@@ -7,7 +7,7 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
+
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +16,7 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
+
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -49,7 +49,8 @@ Sys.time(); annual_ndvi_results<- read_results_rasters_function ("annual","ndvi"
 Sys.time(); monthly_ndvi_results<- read_results_rasters_function ("monthly","ndvi"); Sys.time()
 Sys.time(); annual_evi_results<- read_results_rasters_function ("annual","evi"); Sys.time()
 Sys.time(); monthly_evi_results<- read_results_rasters_function ("monthly","evi"); Sys.time()
-#Sys.time(); aniso_results<- read_results_rasters_function ("aniso"); Sys.time()
+Sys.time(); annual_anisoevi_results<- read_results_rasters_function ("annual","aniso"); Sys.time()
+Sys.time(); monthly_anisoevi_results<- read_results_rasters_function ("monthly","aniso"); Sys.time()
 
 ```
 
@@ -86,7 +87,8 @@ Sys.time(); annual_ndvi_percentage_results_df <- plot_df_prep_function (annual_n
 Sys.time(); monthly_ndvi_percentage_results_df <- plot_df_prep_function (monthly_ndvi_results); Sys.time()
 Sys.time(); annual_evi_percentage_results_df <- plot_df_prep_function (annual_evi_results); Sys.time()
 Sys.time(); monthly_evi_percentage_results_df <- plot_df_prep_function (monthly_evi_results); Sys.time()
-#Sys.time(); aniso_percentage_results_df <- plot_df_prep_function (aniso_results); Sys.time()
+Sys.time(); annual_anisoevi_percentage_results_df <- plot_df_prep_function (annual_anisoevi_results); Sys.time()
+Sys.time(); monthly_anisoevi_percentage_results_df <- plot_df_prep_function (monthly_anisoevi_results); Sys.time()
 
 ```
 
@@ -119,7 +121,9 @@ Sys.time(); barplot_function(monthly_ndvi_percentage_results_df, "ndvi_monthly_s
 Sys.time(); barplot_function(annual_evi_percentage_results_df, "evi_annual_stl_sensitivity"); Sys.time()
 Sys.time(); barplot_function(monthly_evi_percentage_results_df, "evi_monthly_stl_sensitivity"); Sys.time()
 
-#Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(annual_anisoevi_percentage_results_df, "anisoevi_annual_stl_sensitivity"); Sys.time()
+Sys.time(); barplot_function(monthly_anisoevi_percentage_results_df, "anisoevi_monthly_stl_sensitivity"); Sys.time()
+
 
 ```
 
@@ -135,8 +139,12 @@ monthly_ndvi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_ndvi_
 annual_evi_percentage_results_df <- mutate_annual_or_monthly_col(annual_evi_percentage_results_df, "annual")
 monthly_evi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_evi_percentage_results_df, "monthly")
 
+annual_anisoevi_percentage_results_df <- mutate_annual_or_monthly_col(annual_anisoevi_percentage_results_df, "annual")
+monthly_anisoevi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_anisoevi_percentage_results_df, "monthly")
+
 ndvi_percentage_results_df<- rbind(annual_ndvi_percentage_results_df, monthly_ndvi_percentage_results_df)
 evi_percentage_results_df<- rbind(annual_evi_percentage_results_df, monthly_evi_percentage_results_df)
+aniso_percentage_results_df<- rbind(annual_anisoevi_percentage_results_df, monthly_anisoevi_percentage_results_df)
 
 stl_settings <- c("swin7", "swin11", "swinnostl", "swinperiodic")
 
@@ -157,6 +165,7 @@ barplot_function <- function (results_df, output_file_name){
  
 Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_monthly_annual_comparison_trendresults"); Sys.time()
 Sys.time(); barplot_function(evi_percentage_results_df, "evi_monthly_annual_comparison_trendresults"); Sys.time()
+Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_monthly_annual_comparison_trendresults"); Sys.time()
 
 ```
 
@@ -167,6 +176,10 @@ monthly_ndvi_results
 
 annual_evi_results
 monthly_evi_results
+
+annual_anisoevi_results
+monthly_anisoevi_results
+
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -205,6 +218,12 @@ evi_swin11<- swin11_rasters_function(annual_evi_results, monthly_evi_results)
 evi_swinnostl<- swinnostl_rasters_function(annual_evi_results, monthly_evi_results)
 evi_swinperiodic<- swinperiodic_rasters_function(annual_evi_results, monthly_evi_results)
 
+#anisoEVI
+aniso_swin7<- swin7_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
+aniso_swin11<- swin11_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
+aniso_swinnostl<- swinnostl_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
+aniso_swinperiodic<- swinperiodic_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
+
 
 animation_function<- function (raster,index_name, stlparameter_string){
   animation_map<-
@@ -241,5 +260,12 @@ animation_function(evi_swin7,"evi", "swin7")
 animation_function(evi_swin11,"evi", "swin11")
 animation_function(evi_swinnostl,"evi", "swinnostl")
 animation_function(evi_swinperiodic,"evi", "swinperiodic")
+
+#anisoEVI
+animation_function(aniso_swin7,"anisoevi", "swin7")
+animation_function(aniso_swin11,"anisoevi", "swin11")
+animation_function(aniso_swinnostl,"anisoevi", "swinnostl")
+animation_function(aniso_swinperiodic,"anisoevi", "swinperiodic")
+
 
 ```
