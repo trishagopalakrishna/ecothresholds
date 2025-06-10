@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +15,6 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -59,12 +57,29 @@ Sys.time(); monthly_evi_swinperiodic <- read_files_function ("EVI", "monthly", "
 Sys.time(); monthly_evi_swin_nostl <- read_files_function ("EVI", "monthly", "modelselection_value_int.rds"); Sys.time()
 
 #anisoEVI
-#Sys.time(); aniso_swin7 <- read_files_function ("anisoEVI", "modelselection_swindow_7.rds"); Sys.time()
-#Sys.time(); aniso_swin11 <- read_files_function ("anisoEVI", "modelselection_swindow_11.rds"); Sys.time()
-#Sys.time(); aniso_swinperiodic <- read_files_function ("anisoEVI", "modelselection_swindow_periodic.rds"); Sys.time()
-#Sys.time(); aniso_swin_nostl <- read_files_function ("anisoEVI", "modelselection_value_int.rds"); Sys.time()
+Sys.time(); annual_anisoevi_swin7 <- read_files_function ("anisoEVI", "annual", "modelselection_swindow_7.rds"); Sys.time()
+Sys.time(); annual_anisoevi_swin11 <- read_files_function ("anisoEVI", "annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); annual_anisoevi_swinperiodic <- read_files_function ("anisoEVI", "annual", "modelselection_swindow_periodic.rds"); Sys.time()
+Sys.time(); annual_anisoevi_swin_nostl <- read_files_function ("anisoEVI", "annual", "modelselection_value_int.rds"); Sys.time()
+
+Sys.time(); monthly_anisoevi_swin7 <- read_files_function ("anisoEVI", "monthly", "modelselection_swindow_7.rds"); Sys.time()
+Sys.time(); monthly_anisoevi_swin11 <- read_files_function ("anisoEVI", "monthly", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_anisoevi_swinperiodic <- read_files_function ("anisoEVI", "monthly", "modelselection_swindow_periodic.rds"); Sys.time()
+Sys.time(); monthly_anisoevi_swin_nostl <- read_files_function ("anisoEVI", "monthly", "modelselection_value_int.rds"); Sys.time()
 
 threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
+
+#annual anisoEVI has no x, y. Extracting this information from monthly anisoEVI
+month_swin7 <- monthly_anisoevi_swin7 %>% select(c(cell, x, y))
+annual_anisoevi_swin7 <- annual_anisoevi_swin7 %>% left_join(month_swin7)
+month_swin11 <- monthly_anisoevi_swin11 %>% select(c(cell, x, y))
+annual_anisoevi_swin11 <- annual_anisoevi_swin11 %>% left_join(month_swin11)
+month_swinperiodic <- monthly_anisoevi_swinperiodic %>% select(c(cell, x, y))
+annual_anisoevi_swinperiodic <- annual_anisoevi_swinperiodic %>% left_join(month_swinperiodic)
+month_swinnostl <- monthly_anisoevi_swin_nostl %>% select(c(cell, x, y))
+annual_anisoevi_swin_nostl <- annual_anisoevi_swin_nostl %>% left_join(month_swinnostl)
+
+remove(month_swin11, month_swin7, month_swinnostl, month_swinperiodic)
 ```
 
 
@@ -112,10 +127,15 @@ Sys.time(); monthly_evi_swinperiodic <- results_df_function(monthly_evi_swinperi
 Sys.time(); monthly_evi_swin_nostl <- results_df_function(monthly_evi_swin_nostl); Sys.time()
 
 #anisoEVI
-#Sys.time(); aniso_swin7 <- results_df_function(aniso_swin7); Sys.time()
-#Sys.time(); aniso_swin11 <- results_df_function(aniso_swin11); Sys.time()
-#Sys.time(); aniso_swinperiodic <- results_df_function(aniso_swinperiodic); Sys.time()
-#Sys.time(); aniso_swin_nostl <- results_df_function(aniso_swin_nostl); Sys.time()
+Sys.time(); annual_anisoevi_swin7 <- results_df_function(annual_anisoevi_swin7); Sys.time()
+Sys.time(); annual_anisoevi_swin11 <- results_df_function(annual_anisoevi_swin11); Sys.time()
+Sys.time(); annual_anisoevi_swinperiodic <- results_df_function(annual_anisoevi_swinperiodic); Sys.time()
+Sys.time(); annual_anisoevi_swin_nostl <- results_df_function(annual_anisoevi_swin_nostl); Sys.time()
+
+Sys.time(); monthly_anisoevi_swin7 <- results_df_function(monthly_anisoevi_swin7); Sys.time()
+Sys.time(); monthly_anisoevi_swin11 <- results_df_function(monthly_anisoevi_swin11); Sys.time()
+Sys.time(); monthly_anisoevi_swinperiodic <- results_df_function(monthly_anisoevi_swinperiodic); Sys.time()
+Sys.time(); monthly_anisoevi_swin_nostl <- results_df_function(monthly_anisoevi_swin_nostl); Sys.time()
 ```
 
 
@@ -162,10 +182,15 @@ Sys.time(); results_raster_function(monthly_evi_swinperiodic, "monthly", "evi_mo
 Sys.time(); results_raster_function(monthly_evi_swin_nostl, "monthly", "evi_monthly_swinnostl"); Sys.time()
 
 #anisoEVI
-#Sys.time(); results_raster_function(aniso_swin7, "aniso_swin7"); Sys.time()
-#Sys.time(); results_raster_function(aniso_swin11, "aniso_swin11"); Sys.time()
-#Sys.time(); results_raster_function(aniso_swinperiodic, "aniso_swinperiodic"); Sys.time()
-#Sys.time(); results_raster_function(aniso_swin_nostl, "aniso_swinnostl"); Sys.time()
+Sys.time(); results_raster_function(annual_anisoevi_swin7, "annual", "anisoevi_annual_swin7"); Sys.time()
+Sys.time(); results_raster_function(annual_anisoevi_swin11, "annual", "anisoevi_annual_swin11"); Sys.time()
+Sys.time(); results_raster_function(annual_anisoevi_swinperiodic, "annual", "anisoevi_annual_swinperiodic"); Sys.time()
+Sys.time(); results_raster_function(annual_anisoevi_swin_nostl, "annual", "anisoevi_annual_swinnostl"); Sys.time()
+
+Sys.time(); results_raster_function(monthly_anisoevi_swin7,"monthly", "anisoevi_monthly_swin7"); Sys.time()
+Sys.time(); results_raster_function(monthly_anisoevi_swin11, "monthly", "anisoevi_monthly_swin11"); Sys.time()
+Sys.time(); results_raster_function(monthly_anisoevi_swinperiodic, "monthly", "anisoevi_monthly_swinperiodic"); Sys.time()
+Sys.time(); results_raster_function(monthly_anisoevi_swin_nostl, "monthly", "anisoevi_monthly_swinnostl"); Sys.time()
 
 ```
 
