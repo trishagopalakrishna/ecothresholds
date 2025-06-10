@@ -7,7 +7,7 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
+
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +16,7 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
+
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -37,16 +37,18 @@ monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), patt
 monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
 monthly_rds_list<- lapply(monthly_file_list, rast)
-names(monthly_rds_list[[1]])<- "evi_swin11_monthly"
-names(monthly_rds_list[[2]])<- "ndvi_swin11_monthly"
+names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
 annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
 annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
 annual_file_list <- gtools::mixedsort(annual_file_list)
 
 annual_rds_list<- lapply(annual_file_list, rast)
-names(annual_rds_list[[1]])<- "evi_swin11_annual"
-names(annual_rds_list[[2]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[2]])<- "evi_swin11_annual"
+names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[1]])<- "aniso_swin11_annual"
 
 remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
 
@@ -79,24 +81,27 @@ mapping_function <- function (trendresults_raster, title){
 
 output_file_path <- here("Outputs", "TrendsResults")
 
-Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[2]], "NDVI (monthly)"); Sys.time()
+Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
 tmap_save(monthly_ndvi_results_map, paste0(output_file_path, "/", "ndvi_monthly_map1km_trendresults_swin11_2.jpeg"),
         height = 80, width = 80, units = "cm", dpi=700)
 
-Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[1]], "EVI (monthly)"); Sys.time()
-Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[2]], "NDVI (annual)"); Sys.time()
+Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
+Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
 tmap_save(annual_ndvi_results_map, paste0(output_file_path, "/", "ndvi_annual_map1km_trendresults_swin11_2.jpeg"),
         height = 80, width = 80, units = "cm", dpi=700)
 
-Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[1]], "EVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
 
-trendresult_map<- tmap_arrange(monthly_ndvi_results_map, annual_ndvi_results_map, monthly_evi_results_map, annual_evi_results_map,  
-                               ncol =2, nrow= 2)
+Sys.time();monthly_aniso_results_map <- mapping_function (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
+Sys.time();annual_aniso_results_map <- mapping_function (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
 
-tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual_2.png"),
+trendresult_map<- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
+                               annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
+
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual_4.png"),
         height = 80, width = 80, units = "cm", dpi=700)
 
-remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map)
+remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map, monthly_aniso_results_map, annual_aniso_results_map)
 ```
 
 #Step 3- barplot of trend results across three indices
@@ -109,15 +114,15 @@ df_prep_function<- function (trendresults_raster, index_name){
   percentage_df
 }
 
-Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[2]], "NDVI (monthly)"); Sys.time()
-Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[1]], "EVI(monthly)"); Sys.time()
-Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[2]], "NDVI (annual)"); Sys.time()
-Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[1]], "EVI(annual)"); Sys.time()
+Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
+Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI(monthly)"); Sys.time()
+Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI(monthly)"); Sys.time()
+Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
+Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI(annual)"); Sys.time()
+Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI(annual)"); Sys.time()
 
-
-
-plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results,
-                     annual_ndvi_trend_results, annual_evi_trend_results)
+plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
+                     annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
 
 plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==2~ "Linear increase",
@@ -147,7 +152,7 @@ ggsave(here(output_file_path, paste0("barplot_monthlyswin11_trendresults.png")),
        trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
 remove(plot_df, trendresults_barplot)
-remove(monthly_ndvi_trend_results, monthly_evi_trend_results, annual_ndvi_trend_results, annual_evi_results_map)
+remove(monthly_ndvi_trend_results, monthly_evi_trend_results, annual_ndvi_trend_results, annual_evi_trend_results, monthly_aniso_trend_results, annual_aniso_trend_results)
 ```
 
 #Step 4- stable area estimation for all three indices
@@ -169,6 +174,13 @@ Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "model
 
 Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
 Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+
+Sys.time(); annual_aniso_swin11 <- read_files_function ("anisoEVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_aniso_swin11 <- read_files_function ("anisoEVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+#annual anisoEVI has no x, y. Extracting this information from monthly anisoEVI
+month_swin11 <- monthly_aniso_swin11 %>% select(c(cell, x, y))
+annual_aniso_swin11 <- annual_aniso_swin11 %>% left_join(month_swin11)
+remove(month_swin11)
 
 #results preparation such that no trend cells are classified to be 1 and remainder are 2
 results_df_function<- function (modelselection_df) {
@@ -196,6 +208,9 @@ Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys
 Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
 Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
 
+Sys.time(); monthly_aniso_swin11 <- results_df_function(monthly_aniso_swin11); Sys.time()
+Sys.time(); annual_aniso_swin11 <- results_df_function(annual_aniso_swin11); Sys.time()
+
 #raster preparation
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -218,9 +233,12 @@ Sys.time(); monthly_ndvi1km_stable<- results_raster_function(monthly_ndvi_swin11
 Sys.time(); annual_evi1km_stable<- results_raster_function(annual_evi_swin11); Sys.time()
 Sys.time(); monthly_evi1km_stable<- results_raster_function(monthly_evi_swin11); Sys.time()
 
+Sys.time(); annual_aniso1km_stable<- results_raster_function(annual_aniso_swin11); Sys.time()
+Sys.time(); monthly_aniso1km_stable<- results_raster_function(monthly_aniso_swin11); Sys.time()
+
 #coarsen to 5km & apply anthropogenic mask at 5km
 threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif")) #from GEE
+mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021_5km.tif")) #from GEE
 
 stable_area_function <- function (stablearea_1km_raster){
   x_5km<- terra::project(
@@ -241,16 +259,26 @@ Sys.time(); annual_evi_5km_unstablearea <- stable_area_function(annual_evi1km_st
 Sys.time(); monthly_evi_5km_unstablearea <- stable_area_function(monthly_evi1km_stable); Sys.time()
 #writeRaster(monthly_evi_5km_unstablearea [[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly", "unstablearea_5km","monthlyswin11_evi_unstablearea.tif"))
 
+Sys.time(); annual_aniso_5km_unstablearea <- stable_area_function(annual_aniso1km_stable); Sys.time()
+writeRaster(annual_aniso_5km_unstablearea[[2]], here("Outputs", "TrendsResults", "results_rasters" , "annual", "unstablearea_5km", "annualswin11_aniso_unstablearea.tif"))
+Sys.time(); monthly_aniso_5km_unstablearea <- stable_area_function(monthly_aniso1km_stable); Sys.time()
+writeRaster(monthly_aniso_5km_unstablearea[[2]], here("Outputs", "TrendsResults", "results_rasters" , "monthly", "unstablearea_5km","monthlyswin11_aniso_unstablearea.tif"))
+
 #map making
-annual_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_ndvi_unstablearea.tif"))
-monthly_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_ndvi_unstablearea.tif"))
+annual_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual", "unstablearea_5km", "annualswin11_ndvi_unstablearea.tif"))
+monthly_ndvi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly", "unstablearea_5km" ,"monthlyswin11_ndvi_unstablearea.tif"))
 ndvi_5km_unstablearea <- c(annual_ndvi_5km_unstablearea, monthly_ndvi_5km_unstablearea)
 names(ndvi_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
 
-annual_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"annualswin11_evi_unstablearea.tif"))
-monthly_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"monthlyswin11_evi_unstablearea.tif"))
+annual_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual" ,"unstablearea_5km", "annualswin11_evi_unstablearea.tif"))
+monthly_evi_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" ,"unstablearea_5km","monthlyswin11_evi_unstablearea.tif"))
 evi_5km_unstablearea <- c(annual_evi_5km_unstablearea, monthly_evi_5km_unstablearea)
 names(evi_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
+
+annual_aniso_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "annual", "unstablearea_5km","annualswin11_aniso_unstablearea.tif"))
+monthly_aniso_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "unstablearea_5km","monthlyswin11_aniso_unstablearea.tif"))
+aniso_5km_unstablearea <- c(annual_aniso_5km_unstablearea , monthly_aniso_5km_unstablearea )
+names(aniso_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
 
 animation_function<- function (raster,index_name){
   animation_map<-
@@ -267,6 +295,7 @@ animation_function<- function (raster,index_name){
 
 animation_function(ndvi_5km_unstablearea, "ndvi")
 animation_function(evi_5km_unstablearea, "evi")
+animation_function(aniso_5km_unstablearea, "anisoevi")
 
 static_map_function<- function (raster,index_name){
   s_map<-
@@ -280,8 +309,12 @@ static_map_function<- function (raster,index_name){
 
 static_map_function(annual_evi_5km_unstablearea, "EVI_annual")
 static_map_function(monthly_evi_5km_unstablearea, "EVI_monthly")
+
 static_map_function(annual_ndvi_5km_unstablearea, "NDVI_annual")
 static_map_function(monthly_ndvi_5km_unstablearea, "NDVI_monthly")
+
+static_map_function(annual_aniso_5km_unstablearea, "anisoEVI_annual")
+static_map_function(monthly_aniso_5km_unstablearea, "anisoEVI_monthly")
 
 ```
 
@@ -299,6 +332,12 @@ Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "model
 
 Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
 Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+
+Sys.time(); monthly_aniso_swin11 <- read_files_function ("anisoEVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); annual_aniso_swin11 <- read_files_function ("anisoEVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+month_swin11 <- monthly_aniso_swin11 %>% select(c(cell, x, y))
+annual_aniso_swin11 <- annual_aniso_swin11 %>% left_join(month_swin11)
+remove(month_swin11)
 
 #results preparation such that no trend cells are classified to be 1 and remainder are 2
 results_df_function<- function (modelselection_df) {
@@ -326,6 +365,10 @@ Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys
 Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
 Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
 
+
+Sys.time(); annual_aniso_swin11 <- results_df_function(annual_aniso_swin11); Sys.time()
+Sys.time(); monthly_aniso_swin11 <- results_df_function(monthly_aniso_swin11); Sys.time()
+
 #raster preparation
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -348,9 +391,11 @@ Sys.time(); monthly_ndvi1km_trajectories <- results_raster_function(monthly_ndvi
 Sys.time(); annual_evi1km_trajectories <- results_raster_function(annual_evi_swin11); Sys.time()
 Sys.time(); monthly_evi1km_trajectories <- results_raster_function(monthly_evi_swin11); Sys.time()
 
+Sys.time(); annual_aniso1km_trajectories <- results_raster_function(annual_aniso_swin11); Sys.time()
+Sys.time(); monthly_aniso1km_trajectories <- results_raster_function(monthly_aniso_swin11); Sys.time()
+
 #coarsen to 5km & apply anthropogenic mask at 5km
 threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "mat_1981_2021.tif")) #from GEE
 
 count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
   x_1km_sameextent <- terra::resample(terra::segregate(trajectories_1km_raster), trajectories_1km_raster, method = "near")
@@ -371,6 +416,11 @@ Sys.time(); annual_evi_5km_counttrajectorytypes <- count_pixels_specific_traject
 writeRaster(annual_evi_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "results_rasters" , "annual", "binary_count_5km",  "annualswin11_evi_count_5km.tif"))
 Sys.time(); monthly_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_evi1km_trajectories); Sys.time()
 writeRaster(monthly_evi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "binary_count_5km", "monthlyswin11_evi_count_5km.tif"))
+
+Sys.time(); annual_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_aniso1km_trajectories); Sys.time()
+writeRaster(annual_aniso_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "results_rasters" , "annual", "binary_count_5km",  "annualswin11_aniso_count_5km.tif"))
+Sys.time(); monthly_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_aniso1km_trajectories); Sys.time()
+writeRaster(monthly_aniso_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "results_rasters" , "monthly" , "binary_count_5km", "monthlyswin11_aniso_count_5km.tif"))
 
 ```
 
@@ -425,43 +475,65 @@ quad_inc_classification2 <- function (trajectory_results_raster, annual_or_month
   writeRaster(x, here(output_file_path, annual_or_monthly,"binary_trajectories", file_name_with_tif))
 }
 
-Sys.time(); lin_dec_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_lin_dec.tif"); Sys.time()
-Sys.time(); lin_inc_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_lin_inc.tif"); Sys.time()
-Sys.time(); stable_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_stable.tif"); Sys.time()
-Sys.time(); step_dec_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_step_dec.tif"); Sys.time()
-Sys.time(); step_inc_classification(monthly_rds_list[[1]], "monthly", "evi_monthly_step_inc.tif"); Sys.time()
-Sys.time(); quad_dec_classification1(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_dec_acc.tif"); Sys.time()
-Sys.time(); quad_dec_classification2(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_dec_decc.tif"); Sys.time()
-Sys.time(); quad_inc_classification1(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_inc_acc.tif"); Sys.time()
-Sys.time(); quad_inc_classification2(monthly_rds_list[[1]], "monthly", "evi_monthly_quad_inc_decc.tif"); Sys.time()
+Sys.time(); lin_dec_classification(monthly_rds_list[[2]], "monthly", "evi_monthly_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(monthly_rds_list[[2]], "monthly", "evi_monthly_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(monthly_rds_list[[2]], "monthly", "evi_monthly_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(monthly_rds_list[[2]], "monthly", "evi_monthly_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(monthly_rds_list[[2]], "monthly", "evi_monthly_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(monthly_rds_list[[2]], "monthly", "evi_monthly_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(monthly_rds_list[[2]], "monthly", "evi_monthly_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(monthly_rds_list[[2]], "monthly", "evi_monthly_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(monthly_rds_list[[2]], "monthly", "evi_monthly_quad_inc_decc.tif"); Sys.time()
 
-Sys.time(); lin_dec_classification(annual_rds_list[[1]], "annual", "evi_annual_lin_dec.tif"); Sys.time()
-Sys.time(); lin_inc_classification(annual_rds_list[[1]], "annual", "evi_annual_lin_inc.tif"); Sys.time()
-Sys.time(); stable_classification(annual_rds_list[[1]], "annual", "evi_annual_stable.tif"); Sys.time()
-Sys.time(); step_dec_classification(annual_rds_list[[1]], "annual", "evi_annual_step_dec.tif"); Sys.time()
-Sys.time(); step_inc_classification(annual_rds_list[[1]], "annual", "evi_annual_step_inc.tif"); Sys.time()
-Sys.time(); quad_dec_classification1(annual_rds_list[[1]], "annual", "evi_annual_quad_dec_acc.tif"); Sys.time()
-Sys.time(); quad_dec_classification2(annual_rds_list[[1]], "annual", "evi_annual_quad_dec_decc.tif"); Sys.time()
-Sys.time(); quad_inc_classification1(annual_rds_list[[1]], "annual", "evi_annual_quad_inc_acc.tif"); Sys.time()
-Sys.time(); quad_inc_classification2(annual_rds_list[[1]], "annual", "evi_annual_quad_inc_decc.tif"); Sys.time()
+Sys.time(); lin_dec_classification(annual_rds_list[[2]], "annual", "evi_annual_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(annual_rds_list[[2]], "annual", "evi_annual_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(annual_rds_list[[2]], "annual", "evi_annual_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(annual_rds_list[[2]], "annual", "evi_annual_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(annual_rds_list[[2]], "annual", "evi_annual_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(annual_rds_list[[2]], "annual", "evi_annual_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(annual_rds_list[[2]], "annual", "evi_annual_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(annual_rds_list[[2]], "annual", "evi_annual_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(annual_rds_list[[2]], "annual", "evi_annual_quad_inc_decc.tif"); Sys.time()
 
-Sys.time(); lin_dec_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_lin_dec.tif"); Sys.time()
-Sys.time(); lin_inc_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_lin_inc.tif"); Sys.time()
-Sys.time(); stable_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_stable.tif"); Sys.time()
-Sys.time(); step_dec_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_step_dec.tif"); Sys.time()
-Sys.time(); step_inc_classification(monthly_rds_list[[2]], "monthly", "ndvi_monthly_step_inc.tif"); Sys.time()
-Sys.time(); quad_dec_classification1(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_dec_acc.tif"); Sys.time()
-Sys.time(); quad_dec_classification2(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_dec_decc.tif"); Sys.time()
-Sys.time(); quad_inc_classification1(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_inc_acc.tif"); Sys.time()
-Sys.time(); quad_inc_classification2(monthly_rds_list[[2]], "monthly", "ndvi_monthly_quad_inc_decc.tif"); Sys.time()
+Sys.time(); lin_dec_classification(monthly_rds_list[[3]], "monthly", "ndvi_monthly_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(monthly_rds_list[[3]], "monthly", "ndvi_monthly_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(monthly_rds_list[[3]], "monthly", "ndvi_monthly_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(monthly_rds_list[[3]], "monthly", "ndvi_monthly_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(monthly_rds_list[[3]], "monthly", "ndvi_monthly_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(monthly_rds_list[[3]], "monthly", "ndvi_monthly_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(monthly_rds_list[[3]], "monthly", "ndvi_monthly_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(monthly_rds_list[[3]], "monthly", "ndvi_monthly_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(monthly_rds_list[[3]], "monthly", "ndvi_monthly_quad_inc_decc.tif"); Sys.time()
 
-Sys.time(); lin_dec_classification(annual_rds_list[[2]], "annual", "ndvi_annual_lin_dec.tif"); Sys.time()
-Sys.time(); lin_inc_classification(annual_rds_list[[2]], "annual", "ndvi_annual_lin_inc.tif"); Sys.time()
-Sys.time(); stable_classification(annual_rds_list[[2]], "annual", "ndvi_annual_stable.tif"); Sys.time()
-Sys.time(); step_dec_classification(annual_rds_list[[1]], "annual", "ndvi_annual_step_dec.tif"); Sys.time()
-Sys.time(); step_inc_classification(annual_rds_list[[1]], "annual", "ndvi_annual_step_inc.tif"); Sys.time()
-Sys.time(); quad_dec_classification1(annual_rds_list[[1]], "annual", "ndvi_annual_quad_dec_acc.tif"); Sys.time()
-Sys.time(); quad_dec_classification2(annual_rds_list[[1]], "annual", "ndvi_annual_quad_dec_decc.tif"); Sys.time()
-Sys.time(); quad_inc_classification1(annual_rds_list[[1]], "annual", "ndvi_annual_quad_inc_acc.tif"); Sys.time()
-Sys.time(); quad_inc_classification2(annual_rds_list[[1]], "annual", "ndvi_annual_quad_inc_decc.tif"); Sys.time()
+Sys.time(); lin_dec_classification(annual_rds_list[[3]], "annual", "ndvi_annual_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(annual_rds_list[[3]], "annual", "ndvi_annual_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(annual_rds_list[[3]], "annual", "ndvi_annual_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(annual_rds_list[[3]], "annual", "ndvi_annual_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(annual_rds_list[[3]], "annual", "ndvi_annual_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(annual_rds_list[[3]], "annual", "ndvi_annual_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(annual_rds_list[[3]], "annual", "ndvi_annual_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(annual_rds_list[[3]], "annual", "ndvi_annual_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(annual_rds_list[[3]], "annual", "ndvi_annual_quad_inc_decc.tif"); Sys.time()
+
+Sys.time(); lin_dec_classification(monthly_rds_list[[1]], "monthly", "aniso_monthly_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(monthly_rds_list[[1]], "monthly", "aniso_monthly_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(monthly_rds_list[[1]], "monthly", "aniso_monthly_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(monthly_rds_list[[1]], "monthly", "aniso_monthly_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(monthly_rds_list[[1]], "monthly", "aniso_monthly_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(monthly_rds_list[[1]], "monthly", "aniso_monthly_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(monthly_rds_list[[1]], "monthly", "aniso_monthly_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(monthly_rds_list[[1]], "monthly", "aniso_monthly_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(monthly_rds_list[[1]], "monthly", "aniso_monthly_quad_inc_decc.tif"); Sys.time()
+
+Sys.time(); lin_dec_classification(annual_rds_list[[1]], "annual", "aniso_annual_lin_dec.tif"); Sys.time()
+Sys.time(); lin_inc_classification(annual_rds_list[[1]], "annual", "aniso_annual_lin_inc.tif"); Sys.time()
+Sys.time(); stable_classification(annual_rds_list[[1]], "annual", "aniso_annual_stable.tif"); Sys.time()
+Sys.time(); step_dec_classification(annual_rds_list[[1]], "annual", "aniso_annual_step_dec.tif"); Sys.time()
+Sys.time(); step_inc_classification(annual_rds_list[[1]], "annual", "aniso_annual_step_inc.tif"); Sys.time()
+Sys.time(); quad_dec_classification1(annual_rds_list[[1]], "annual", "aniso_annual_quad_dec_acc.tif"); Sys.time()
+Sys.time(); quad_dec_classification2(annual_rds_list[[1]], "annual", "aniso_annual_quad_dec_decc.tif"); Sys.time()
+Sys.time(); quad_inc_classification1(annual_rds_list[[1]], "annual", "aniso_annual_quad_inc_acc.tif"); Sys.time()
+Sys.time(); quad_inc_classification2(annual_rds_list[[1]], "annual", "aniso_annual_quad_inc_decc.tif"); Sys.time()
+
+
 ```
