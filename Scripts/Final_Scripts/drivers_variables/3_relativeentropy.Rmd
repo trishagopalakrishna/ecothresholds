@@ -128,9 +128,12 @@ tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables"
 remove(animation_x_time_map, raster_names)
 ```
 
-#Step 4- anomoly calculation
+#Step 4- mean re and anomoly calculation
 ```{r}
 annual_relative_entropy<-rast(here("Outputs", "OtherVariables", "Climate","annual_relative_entropy_1981_2021.tif"))
+
+mean_annual_re <- terra::app(annual_relative_entropy, fun ="mean")
+writeRaster(mean_annual_re,here("Outputs", "OtherVariables", "Climate","mean_annual_relative_entropy_1981_2021.tif") )
 
 #1- std deviation
 Sys.time(); std_re <- terra::app (annual_relative_entropy, fun = sd); Sys.time()

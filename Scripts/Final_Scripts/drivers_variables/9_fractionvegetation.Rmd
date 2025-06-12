@@ -91,6 +91,9 @@ forest_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogen
 grass_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "grass_percentage_5km_2002_2021.tif"))
 savanna_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "savanna_percentage_5km_2002_2021.tif"))
 
+mean_savanna<- terra::app(savanna_percentage, fun= "mean")
+writeRaster(mean_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_savanna_percentage_5km_2002_2021.tif")) 
+
 #1- std deviation
 Sys.time(); std_forest <- terra::app (forest_percentage, fun = sd); Sys.time()
 Sys.time(); std_grass <- terra::app (grass_percentage, fun = sd); Sys.time()
