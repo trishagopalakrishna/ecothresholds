@@ -88,10 +88,12 @@ binaryburn<- function (annual_frequency_raster){
 Sys.time(); annual_df<-annual_df %>% mutate(binaryburn= map(frequency, binaryburn)); Sys.time()
 
 at<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_1km.tif"))
+#at_5km<- rast(here("Outputs", "OtherVariables", "Climate", "at_1981_2021_5km.tif"))
+
 prop_aggregate <- function(binaryburn_raster) {
   terra::project(
-    terra::segregate(binaryburn_raster), at[[1]],# segregate()- binary (0/1) of classes 0,3,4,12
-    method = "average", res = res(at)[1]
+    terra::segregate(binaryburn_raster), at[[1]],# segregate()- binary (0/1) of classes 0,3,4,12 # change to 5km at if needed
+    method = "average", res = res(at)[1] #change to 5km at if needed
   )
 }
 
@@ -105,6 +107,7 @@ Sys.time(); annual_df<-annual_df %>% mutate(burnedarea= map(coarsened_binaryburn
 burnedarea_list<- annual_df$burnedarea
 burnedarea<- rast(burnedarea_list)
 #writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
+#writeRaster(burnedarea, here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
 
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
 years<-  rep(2002:2021,each = 1) 
@@ -130,9 +133,11 @@ tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables"
 
 #Step 3- mean burned area and trend calculation using theil sen regression that in turn uses kendall tau rho to determine the sen slope
 ```{r}
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
-mean_burnedarea <- terra::app (burnedarea, fun = "mean")
-writeRaster(mean_burnedarea, here("Outputs", "OtherVariables", "Fire", "mean_burnedarea_5km_2002_2021.tif"))
+burnedarea_5km<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_5km_2002_2021.tif"))
+mean_burnedarea_5km <- terra::app (burnedarea, fun = "mean")
+writeRaster(mean_burnedarea_5km, here("Outputs", "OtherVariables", "Fire", "mean_burnedarea_5km_2002_2021.tif"))
+
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
 
 
 #1- std deviation
@@ -206,7 +211,7 @@ Sys.time();kendaltau_map <- mapping_function (kendall_tau_burnedarea, "MannKenda
 Sys.time();theilsen_map <- mapping_function (theilsen_burnedarea , "Theil-Sen Regression"); Sys.time()
 
 anomoly_results_map<- tmap_arrange(std_map, lm_map, kendaltau_map, theilsen_map, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results2.png"),
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Fire", "anomoly_methods_results3.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 ```
 
