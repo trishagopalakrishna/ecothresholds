@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +15,6 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -26,11 +24,14 @@ In this script, I process SPEI as a pulse climate disturbance driver.
 I processed SPEI in GEE-https://code.earthengine.google.com/d853defebf48fdf53d12dde88f4b083b
 I used the SPEI product based on CRU data and the output that I exported out of GEE
 is a multiband raster, in which each band is the monthly SPEI (Jan 2002- Dec 2021) calculated
-using 1 month accumulation (of PET etc)
+using 12 month accumulation (of PET etc)
+(1) Data processing - mosaic, rename layers, crop/mask to cerrado
+(2) Collapsing monthly spei to annual by calculating  mean
+(3) Anomaly calculation- linear regression trends, kendal tau trends and variance/std
 
-#Data input
+#Step 1 - data input
 ```{r}
-gee_spei<- rast(here("Data", "Climate", "SPEI", "monthlySPEI.tif"))
+gee_spei<- rast(here("Data", "Climate", "SPEI", "annualSPEI.tif"))
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
@@ -49,24 +50,25 @@ for (i in 1:length(years)){
 }
 names(cru_spei_mask)<- raster_names
 
-writeRaster(cru_spei_mask, here("Data", "Climate", "SPEI" , "cerrado_spei_monthly_5km_2002_2021.tif"))
+writeRaster(cru_spei_mask, here("Data", "Climate", "SPEI" , "cerrado_spei_annual_5km_2002_2021.tif"))
 
 # #Anmation map of spei 2002- 2021
-# animation_x_time_map<-
-#   tm_shape(cerrado)+ tm_fill()+
-#   tm_shape (cru_spei_mask)+
-#   tm_raster(style = "cont", get_brewer_pal("Blues"),title="SPEI") +
-#   tm_layout (legend.position = c("left", "top"))+
-#               tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
-#   tm_shape(cerrado)+ tm_borders()
-# tmap_animation(animation_x_time_map, filename = here("Data", "Climate", "SPEI , "speimonthly_2002_2021.gif"),
-#                delay = 50, loop = TRUE, restart.delay = 500,
-#                width = 900, height = 900, dpi = 150)
-# remove(animation_x_time_map)
-remove(i, months, name, years, raster_names, gee_spei)
+animation_x_time_map<-
+  tm_shape(cerrado)+ tm_fill()+
+  tm_shape (cru_spei_mask) +
+  tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
+  tm_layout (legend.position = c("left", "top"))+
+  tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(cerrado)+ tm_borders()
+  tmap_animation(animation_x_time_map, filename = here("Data", "Climate", "SPEI" , "speiannual_2002_2021.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
 
+remove(animation_x_time_map)
+remove(i, months, name, years, raster_names, gee_spei)
 ```
-#Processing- annual spei
+
+#Step 2- calculation of mean of monthly SPEI values to obtain annual spei
 ```{r}
 cru_spei_mask
 
@@ -85,6 +87,89 @@ Sys.time();annual_df<-annual_df %>% mutate(annual_spei=map(monthlyspei_by_year, 
 
 annual_spei_list<- annual_df$annual_spei
 annual_spei<- rast(annual_spei_list)
+
+names(annual_spei) <- annual_years
+writeRaster(annual_spei, here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021_12monthsacc.tif"))
+
 remove(annual_spei_list, annual_spei_stack, spei_subset_stack)
-writeRaster(annual_spei, here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
+remove(annual_years, annual_df)
 ```
+
+#Step 3- mean spei and trends calculation
+```{r}
+annual_spei <- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021_12monthsacc.tif"))
+
+mean_annual_spei <- terra::app(annual_spei, fun ="mean")
+writeRaster(mean_annual_spei, here("Outputs", "OtherVariables", "Climate", "mean_annualspei.tif"))
+
+#1- std deviation
+Sys.time(); std_spei <- terra::app (annual_spei, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_spei <- terra::app (annual_spei, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_spei <- terra::app (annual_spei , fun = MKtau); Sys.time()
+
+#4- theil sen regression using kendall tau rho correlation coefficient- https://projects.itrcweb.org/gsmc-1/Content/GW%20Stats/5%20Methods%20in%20indiv%20Topics/5%205%20Trend%20Tests.htm
+#install.packages("mblm")
+library(mblm)
+theilsen_function <- function(z){
+  Y<- 1:length(z)
+  
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
+    slope_coefficient <- theilsen_model$coefficients[2]
+    slope_coefficient
+  }
+} 
+Sys.time(); theilsen_spei <- terra::app (annual_spei , fun = theilsen_function); Sys.time()
+writeRaster(theilsen_spei, here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(col.scale = tm_scale_continuous(values = "YlOrRd"),
+              col.legend = tm_legend (title = title)) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_spei, title = "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_spei, "Linear Regression"); Sys.time()
+Sys.time();kendaltau_map <- mapping_function (kendall_tau_spei, "MannKendall"); Sys.time()
+Sys.time();theilsen_map <- mapping_function (theilsen_spei , "Theil-Sen Regression"); Sys.time()
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, kendaltau_map, theilsen_map, ncol = 4, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_spei_5km.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
+
+```
+
