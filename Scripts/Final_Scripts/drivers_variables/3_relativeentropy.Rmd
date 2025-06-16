@@ -38,11 +38,20 @@ in GEE-https://code.earthengine.google.com/63b7aa4828e2d7046774a2f12c85a831
 
 #Step 1- Reading data, mosaicing, cropping and masking DO NOT RUN, OUTPUT WRITTEN OUT
 ```{r}
+#5km resolution
 gee_chirps<- rast(here("Data", "Climate", "Rainfall", "CHIRPS", "CHIRPS_monthlyrainfall.tif"))
 gee_chirps
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
 d_trans<- st_transform(d_trans, crs = 4326)
 cerrado<- d_trans %>% st_union()
+
+#1km resolution
+## 1- Mosaic
+# raster_filepath <- list.files(path = here("Data", "Climate", "Rainfall", "CHIRPS_1km_gee"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+# raster_list<-lapply(raster_filepath, rast)
+# tic(); gee_chirps_1km <- do.call(mosaic,raster_list); toc() #9.5 hours
+# writeRaster(gee_chirps_1km, here("Data", "Climate", "Rainfall", "CHIRPS_1km_gee", "mosiac_gee_chirps_1km.tif"))
+
 
 crop_rainfall<- terra::crop(gee_chirps, vect(cerrado))
 Sys.time(); mask_rainfall<- terra::mask(crop_rainfall, vect(cerrado)); Sys.time()#half hour
