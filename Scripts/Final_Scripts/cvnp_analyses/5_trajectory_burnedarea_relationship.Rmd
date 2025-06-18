@@ -1,0 +1,176 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I complete analyses to explore the relationship between the trajectories and fire ie burned area 
+(1) Data input of all trajectory results
+(2) Burned area processing in CVNP
+(3) EDA relationships
+
+#Step 1- data input of trajectory results
+```{r}
+cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) 
+
+input_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+
+cvnp_annual_evi<- rast(here(input_file_path,"cvnp_evi_annual.tif"))
+cvnp_annual_ndvi<- rast(here(input_file_path,"cvnp_ndvi_annual.tif"))
+cvnp_monthly_evi<- rast(here(input_file_path,"cvnp_evi_monthly.tif"))
+cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
+
+```
+
+#Step 2- processing burned area in CVNP using 1_fireprocessing.Rmd in drivres_processing
+```{r}
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
+
+cvnp_burnedarea <- terra::crop(burnedarea, cvnp_shp)
+cvnp_burnedarea <- terra::mask(cvnp_burnedarea, cvnp_shp)
+
+#burned area and trajectory results in cvnp do not have the same extent and resolution, hence resampling
+cvnp_burnedarea2 <- terra::resample(cvnp_burnedarea, cvnp_monthly_ndvi, method = "bilinear")
+#writeRaster(cvnp_burnedarea2, here("Scratch", "cvnp_burnedarea.tif"))
+```
+
+#Step 3a - relationship between average burned area through period and trajectories
+```{r}
+mean_cvnp_burnedarea<- terra::app(cvnp_burnedarea2, fun ="mean") 
+
+data_stack <- c(cvnp_annual_evi, cvnp_annual_ndvi,cvnp_monthly_evi,cvnp_monthly_ndvi, mean_cvnp_burnedarea)
+data_df <- terra::as.data.frame(data_stack)
+
+meanburnedarea_trajtype_boxplot_function <- function (traj_column, plot_title){
+  df_filter <- data_df %>% dplyr::select(mean, traj_column)
+  df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
+                                                                         df_filter[[traj_column]] == 3 ~"No trend",
+                                                                         df_filter[[traj_column]] == 4 ~"Step Decrease",
+                                                                         df_filter[[traj_column]] == 5 ~ "Step Increase",
+                                                                         df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
+                                                                         df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
+  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
+  plot<- ggplot(df_filter, aes(x = TrajType, y = mean, fill = TrajType)) + 
+    geom_boxplot() + ylab("average %burnedarea") +
+    labs(title = plot_title) +
+    theme_classic(base_size = 16) +
+     theme(axis.text.x =element_blank(),
+        axis.ticks.x =element_blank()) +
+    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
+  plot 
+}
+
+box_ndvi_monthly <- meanburnedarea_trajtype_boxplot_function("ndvi_swin11_monthly", "NDVI(monthly)")
+box_evi_monthly <- meanburnedarea_trajtype_boxplot_function("evi_swin11_monthly", "EVI(monthly)")
+box_ndvi_annual <- meanburnedarea_trajtype_boxplot_function("ndvi_swin11_annual", "NDVI(annual)")
+box_evi_annual <- meanburnedarea_trajtype_boxplot_function("evi_swin11_annual", "EVI(annual)")
+
+boxplot_plots <- ggarrange(box_ndvi_monthly, box_evi_monthly, box_ndvi_annual, box_evi_annual, ncol =2, nrow=2 )
+output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+ggsave(paste0(output_file_path, "//", "boxplot_trajectory_meanburnedarea.png"),
+       boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+
+remove(box_ndvi_annual, box_evi_annual, box_evi_monthly, box_ndvi_monthly, boxplot_plots, meanburnedarea_trajtype_boxplot_function)
+
+```
+
+#Step 3b - proportion of pixels in particular bins of burned area and the trajectory that the pixels belong to
+```{r}
+data_df <- data_df %>% mutate(bins = cut(mean, breaks = quantile(mean, na.rm= TRUE), right = FALSE, labels = FALSE, ordered_result = TRUE))
+data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), 4, bins))
+#data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), "No heterogeniety", bins))
+number_pixels_bin <- data_df %>% group_by(bins) %>% summarise(count=n())
+
+pivot_data_df <- data_df %>% pivot_longer(1:4)
+burnedarea_trajectory_df <- pivot_data_df %>%
+  group_by(name, bins, value) %>%
+  summarise(total_pixels = n())
+
+burnedarea_trajectory_df  <- inner_join(burnedarea_trajectory_df , number_pixels_bin)
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% filter(!is.na(value))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
+                                                                         value == 3 ~"No trend",
+                                                                         value == 4 ~"Step Decrease",
+                                                                         value == 5 ~ "Step Increase",
+                                                                         value == 8 ~ "Quadratic Increase (acc)",
+                                                                         value == 9 ~ "Quadratic Increase (dec)"))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(bins = case_when (bins == 1~"1st quantile",
+                                                                        bins == 2 ~ "2nd quantile",
+                                                                        bins == 3 ~ "3rd quantile",
+                                                                        bins == 4 ~ "4th quantile",
+                                                                        TRUE ~"No heterogeniety"))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(name = case_when (name == "evi_swin11_annual" ~"EVI(annual)",
+                                                                        name == "evi_swin11_monthly" ~"EVI(monthly)",
+                                                                        name == "ndvi_swin11_annual" ~"NDVI(annual)",
+                                                                        TRUE ~ "NDVI(monthly)"))
+
+plot <- ggplot(data = burnedarea_trajectory_df, aes(x = bins, y= Proportion, fill = TrajType))+
+    geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  xlab("Average burned area")+
+  scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))+
+  facet_grid(~name)
+ggsave(paste0(output_file_path, "//", "relationship_trajectory_meanburnedarea.png"),
+       plot ,dpi = 700, height = 80, width = 80, units = "cm")
+
+```
+
+#Step 3c - in year/month of step change, the relationship between burned area and trajectories
+From 2_stepchangepixel_analyses.Rmd in cvnp_analyses I know that most step increases happened
+in 2018 for monthly EVI and NDVI trajectories and 2017 for annual EVI & NDVI trajectories
+```{r}
+years<- 2002:2021
+names(cvnp_burnedarea2) <- years 
+
+year_burnedarea_trajectory <- c(cvnp_annual_evi, cvnp_annual_ndvi,cvnp_monthly_evi,cvnp_monthly_ndvi, cvnp_burnedarea2)
+data_df2 <- terra::as.data.frame(year_burnedarea_trajectory)
+
+data_df2 <- data_df2 %>% dplyr::select(c(evi_swin11_annual, ndvi_swin11_annual, evi_swin11_monthly, ndvi_swin11_monthly, '2017', '2018'))
+
+
+yearburnedarea_trajtype_boxplot_function <- function (traj_column, plot_title, step_changeyear){
+  df_filter <- data_df2 %>% dplyr::select(c(step_changeyear, traj_column))
+  df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
+                                                                         df_filter[[traj_column]] == 3 ~"No trend",
+                                                                         df_filter[[traj_column]] == 4 ~"Step Decrease",
+                                                                         df_filter[[traj_column]] == 5 ~ "Step Increase",
+                                                                         df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
+                                                                         df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
+  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
+  plot<- ggplot(df_filter, aes(x = TrajType, y = step_changeyear, fill = TrajType)) + 
+    geom_boxplot() + ylab("average %burnedarea") +
+    labs(title = plot_title) +
+    theme_classic(base_size = 16) +
+     theme(axis.text.x =element_blank(),
+        axis.ticks.x =element_blank()) +
+    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
+  plot 
+}
+
+year_box_ndvi_monthly <- yearburnedarea_trajtype_boxplot_function ("ndvi_swin11_monthly", "NDVI(monthly)", "2018")
+year_box_evi_monthly <- yearburnedarea_trajtype_boxplot_function ("evi_swin11_monthly", "EVI(monthly)", "2018")
+year_box_ndvi_annual <- yearburnedarea_trajtype_boxplot_function ("ndvi_swin11_annual", "NDVI(annual)", "2017")
+year_box_evi_annual <- yearburnedarea_trajtype_boxplot_function ("evi_swin11_annual", "EVI(annual)", "2017")
+
+
+```
