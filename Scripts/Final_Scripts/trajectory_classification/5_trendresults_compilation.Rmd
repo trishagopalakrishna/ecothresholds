@@ -177,6 +177,7 @@ Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "model
 
 Sys.time(); annual_aniso_swin11 <- read_files_function ("anisoEVI","annual", "modelselection_swindow_11.rds"); Sys.time()
 Sys.time(); monthly_aniso_swin11 <- read_files_function ("anisoEVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+
 #annual anisoEVI has no x, y. Extracting this information from monthly anisoEVI
 month_swin11 <- monthly_aniso_swin11 %>% select(c(cell, x, y))
 annual_aniso_swin11 <- annual_aniso_swin11 %>% left_join(month_swin11)
@@ -280,6 +281,11 @@ monthly_aniso_5km_unstablearea <- rast(here("Outputs", "TrendsResults", "results
 aniso_5km_unstablearea <- c(annual_aniso_5km_unstablearea , monthly_aniso_5km_unstablearea )
 names(aniso_5km_unstablearea) <- c("annual_swin11_unstablearea", "monthly_swin11_unstablearea")
 
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
 animation_function<- function (raster,index_name){
   animation_map<-
     tm_shape(cerrado)+ tm_borders()+
@@ -316,7 +322,10 @@ static_map_function(monthly_ndvi_5km_unstablearea, "NDVI_monthly")
 static_map_function(annual_aniso_5km_unstablearea, "anisoEVI_annual")
 static_map_function(monthly_aniso_5km_unstablearea, "anisoEVI_monthly")
 
-```
+``
+
+
+
 
 #Step 5- estiamtion of number (yes number) of 1km pixels
 within 5km pixel that are of a particular trajectory for further analyses
