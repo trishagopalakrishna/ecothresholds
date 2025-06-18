@@ -39,27 +39,26 @@ burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
 re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
 mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
-#spei<- rast(here("Outputs", "OtherVariables", "Climate", "annualspei_2002_2021.tif"))
+spei<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
 heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
-forestpercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
 savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
-grasspercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage.tif"))
+
 
 ```
 
 ##Preprocessing of all data- making appropriate data structure 
 
 ```{r}
-drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
+drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
 drivers
-names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "mat", "heatwave", "forestpercentage", "savannapercentage", "grasspercentage")
+names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "mat", "heatwave", "spei", "savannapercentage")
 
 instability<- c(ndvi_unstable, evi_unstable)
 names(instability)<- c("NDVI_instability", "EVI_instability")
 
 all_data<- c(instability, drivers)
 analyses_df<- terra::as.data.frame(all_data)
-remove( evi_unstable, ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, forestpercentage, savannapercentage, grasspercentage)
+remove( evi_unstable, ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
 remove(drivers, instability)
 ```
 
@@ -100,6 +99,12 @@ analyses_ndviinstability<- no_outliers_sample_df %>% dplyr::select(-c(EVI_instab
 scaled_analyses_ndviinstability<- data.frame(scale(analyses_ndviinstability, center= TRUE, scale= TRUE)) 
 chart.Correlation(scaled_analyses_ndviinstability, histogram = TRUE, pch= 19)
 
+#plot
+pivot_df <- scaled_analyses_ndviinstability  %>%
+  pivot_longer(1:9)
+distribution_plot <- ggplot(data = pivot_df, aes(value)) +
+  geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
+  theme_classic(base_size = 16)
 #analyses_evistability<- no_outliers_sample_df %>% dplyr::select(-c(NDVI_stability))
 #scaled_analyses_evistability<- data.frame(scale(analyses_evistability, center= TRUE, scale= TRUE)) 
 
@@ -125,7 +130,7 @@ comp_trial2<- '
   
   #Composite variables with equal weighting of indicators
   BACKGROUND_CLIMATE <~ re + mat
-  PULSE_STRESSORS <~  heatwave
+  PULSE_STRESSORS <~  heatwave + spei
   
   #Measurement model (Formative)
   INSTABILITY =~ NDVI_instability
@@ -148,7 +153,7 @@ Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability,
 cSEM::summarize(modeltrial4)
 x<-cSEM::assess(modeltrial4) #model fit statistics look good - R2 ffor structural regression equations from here
 cSEM::verify(modeltrial4) # model admissability looks good
-cSEM::testOMF(modeltrial4, fit_measures = TRUE) #reject null hypothesis, so model fit to observed data is poor
+modelfit<- cSEM::testOMF(modeltrial4) #reject null hypothesis, so model fit to observed data is poor
 
 ```
 
