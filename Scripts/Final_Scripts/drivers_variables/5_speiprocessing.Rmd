@@ -50,7 +50,7 @@ for (i in 1:length(years)){
 }
 names(cru_spei_mask)<- raster_names
 
-writeRaster(cru_spei_mask, here("Data", "Climate", "SPEI" , "cerrado_spei_annual_5km_2002_2021.tif"))
+#writeRaster(cru_spei_mask, here("Data", "Climate", "SPEI" , "cerrado_spei_annual_5km_2002_2021.tif"))
 
 # #Anmation map of spei 2002- 2021
 animation_x_time_map<-
