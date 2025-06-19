@@ -343,6 +343,7 @@ summary(df_data)
 
 df_data_noNA <- df_data %>% filter(!is.na(monthly_NDVI)) #NA values are around the boundary and a couple of water pixels
 df_veg_selected <- df_data_noNA %>% dplyr::select(c(percentage_grass, monthly_NDVI))
+
 df_veg_selected <- df_veg_selected %>% mutate(bins = cut(percentage_grass, breaks =seq(0,1,0.02), ordered_result = TRUE))
 number_pixels_bin<- df_veg_selected %>% group_by(bins) %>% summarise(count=n())
 pivot_df_veg_selected <- df_veg_selected %>% pivot_longer(1:2)
@@ -452,10 +453,62 @@ plot2 <- ggplot(data = heter_trajectory_df, aes(x = bins, y= Proportion, fill = 
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
   xlab("Heterogeniety")+
   scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) + 
-  xlab("Heterogeniety quantiles") + ylab ("Proportion of Step Increase pixels in CVNP")  +
+  xlab("Native physiognomies heterogeniety quantiles") + ylab ("Proportional area of CVNP")  +
   theme(legend.position = "none")
 ggsave(here("Outputs", "ATBC2025","cvnp_step-heterogeneity.jpg"),
        plot2,dpi = 700, height = 15, width= 15, units = "cm")
 
 
 #cvnp burned area
+#reran lines 302- 205
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
+
+cvnp_burnedarea <- terra::crop(burnedarea, cvnp_shp)
+cvnp_burnedarea <- terra::mask(cvnp_burnedarea, cvnp_shp)
+
+#burned area and trajectory results in cvnp do not have the same extent and resolution, hence resampling
+cvnp_burnedarea2 <- terra::resample(cvnp_burnedarea, cvnp_monthly_ndvi, method = "bilinear")
+
+mean_cvnp_burnedarea<- terra::app(cvnp_burnedarea2, fun ="mean") 
+
+data_stack <- c(cvnp_monthly_ndvi, mean_cvnp_burnedarea)
+data_df <- terra::as.data.frame(data_stack)
+
+data_df <- data_df %>% mutate(bins = cut(mean, breaks = quantile(mean, na.rm= TRUE), right = FALSE, labels = FALSE, ordered_result = TRUE))
+data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), 4, bins))
+#data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), "No heterogeniety", bins))
+number_pixels_bin <- data_df %>% group_by(bins) %>% summarise(count=n())
+
+pivot_data_df <- data_df %>% pivot_longer(1:2)
+burnedarea_trajectory_df <- pivot_data_df %>%
+  group_by(name, bins, value) %>%
+  summarise(total_pixels = n())
+burnedarea_trajectory_df  <- inner_join(burnedarea_trajectory_df , number_pixels_bin)
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% filter(!is.na(value))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
+                                                                                     value == 3 ~"No trend",
+                                                                                     value == 4 ~"Step Decrease",
+                                                                                     value == 5 ~ "Step Increase",
+                                                                                     value == 8 ~ "Quadratic Increase (acc)",
+                                                                                     value == 9 ~ "Quadratic Increase (dec)"))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(bins = case_when (bins == 1~"1st quantile",
+                                                                                  bins == 2 ~ "2nd quantile",
+                                                                                  bins == 3 ~ "3rd quantile",
+                                                                                  bins == 4 ~ "4th quantile",
+                                                                                  TRUE ~"No heterogeniety"))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(name = case_when (name == "evi_swin11_annual" ~"EVI(annual)",
+                                                                                  name == "evi_swin11_monthly" ~"EVI(monthly)",
+                                                                                  name == "ndvi_swin11_annual" ~"NDVI(annual)",
+                                                                                  TRUE ~ "NDVI(monthly)"))
+burnedarea_trajectory_df <- burnedarea_trajectory_df %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
+plot3 <- ggplot(data = burnedarea_trajectory_df, aes(x = bins, y= Proportion, fill = TrajType, alpha = my_alpha))+
+  geom_bar(stat = "identity", position = position_dodge()) + 
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  xlab("Heterogeniety")+
+  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) + 
+  xlab("Average burned area (2002- 2021) quantiles") + ylab ("Proportional area of CVNP")  +
+  theme(legend.position = "none")
+ggsave(here("Outputs", "ATBC2025","cvnp_step-averageburnedarea.jpg"),
+       plot3,dpi = 700, height = 15, width= 15, units = "cm")
