@@ -7,7 +7,7 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
+
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +16,6 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -75,7 +74,7 @@ summary(analyses_df)
 analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
 
 set.seed(1000)
-sample_df<- analyses_df_NA %>% slice_sample(prop=0.2, replace= FALSE) #20% randomly sampled
+sample_df<- analyses_df_NA %>% slice_sample(prop=0.3, replace= FALSE) #20% randomly sampled
 summary(sample_df)
 
 #install.packages("PerformanceAnalytics")
