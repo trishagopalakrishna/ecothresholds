@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +15,6 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -175,3 +173,13 @@ year_box_evi_annual <- yearburnedarea_trajtype_boxplot_function ("evi_swin11_ann
 
 
 ```
+
+
+#Step 4- statistical analyses of relationship between heterogeniety and trajectory types (categorical variable) using anova
+```{r}
+ndvimonthlytraj_burnedarea_aov<- lm(average_burnedarea ~ as.factor(monthly_NDVI),
+                                data_df_noNA %>% filter(monthly_NDVI == 5 | monthly_NDVI == 3)) 
+summary(ndvimonthlytraj_burnedarea_aov)
+```
+
+No difference in group means of mean burned area in step increase and no trend trajectories. 
