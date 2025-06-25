@@ -58,18 +58,19 @@ mean_cvnp_burnedarea<- terra::app(cvnp_burnedarea2, fun ="mean")
 
 data_stack <- c(cvnp_annual_evi, cvnp_annual_ndvi,cvnp_monthly_evi,cvnp_monthly_ndvi, mean_cvnp_burnedarea)
 data_df <- terra::as.data.frame(data_stack)
+data_df_noNA <- data_df %>% drop_na()
+names(data_df_noNA) <- c("annual_EVI", "annual_NDVI", "monthly_EVI", "monthly_NDVI", "average_burnedarea")
 
 meanburnedarea_trajtype_boxplot_function <- function (traj_column, plot_title){
-  df_filter <- data_df %>% dplyr::select(mean, traj_column)
+  df_filter <- data_df_noNA %>% dplyr::select(average_burnedarea, traj_column)
   df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
                                                                          df_filter[[traj_column]] == 3 ~"No trend",
                                                                          df_filter[[traj_column]] == 4 ~"Step Decrease",
                                                                          df_filter[[traj_column]] == 5 ~ "Step Increase",
                                                                          df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
                                                                          df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
-  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
-  plot<- ggplot(df_filter, aes(x = TrajType, y = mean, fill = TrajType)) + 
-    geom_boxplot() + ylab("average %burnedarea") +
+  plot<- ggplot(df_filter, aes(x = reorder(TrajType, average_burnedarea, FUN = median), y = average_burnedarea, fill = TrajType)) + 
+    geom_boxplot() + ylab("average %burnedarea") + xlab("Trajectory types")+
     labs(title = plot_title) +
     theme_classic(base_size = 16) +
      theme(axis.text.x =element_blank(),
@@ -78,10 +79,10 @@ meanburnedarea_trajtype_boxplot_function <- function (traj_column, plot_title){
   plot 
 }
 
-box_ndvi_monthly <- meanburnedarea_trajtype_boxplot_function("ndvi_swin11_monthly", "NDVI(monthly)")
-box_evi_monthly <- meanburnedarea_trajtype_boxplot_function("evi_swin11_monthly", "EVI(monthly)")
-box_ndvi_annual <- meanburnedarea_trajtype_boxplot_function("ndvi_swin11_annual", "NDVI(annual)")
-box_evi_annual <- meanburnedarea_trajtype_boxplot_function("evi_swin11_annual", "EVI(annual)")
+box_ndvi_monthly <- meanburnedarea_trajtype_boxplot_function("monthly_NDVI", "NDVI(monthly)")
+box_evi_monthly <- meanburnedarea_trajtype_boxplot_function("monthly_EVI", "EVI(monthly)")
+box_ndvi_annual <- meanburnedarea_trajtype_boxplot_function("annual_NDVI", "NDVI(annual)")
+box_evi_annual <- meanburnedarea_trajtype_boxplot_function("annual_EVI", "EVI(annual)")
 
 boxplot_plots <- ggarrange(box_ndvi_monthly, box_evi_monthly, box_ndvi_annual, box_evi_annual, ncol =2, nrow=2 )
 output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
