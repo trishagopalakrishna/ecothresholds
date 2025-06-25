@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -16,7 +15,6 @@ library(terra)
 
 library(tmap)
 library(tmaptools)
-library(RColorBrewer)
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -71,8 +69,7 @@ coarse_lev1_phy <- coarsening_function(lev1_phy)
 remove(coarsening_function)
 ```
 
-
-#Step 3 - eda of relationship between trajectories and veg physiognomies
+#Step 3a - eda grass, forest and savanna spread in pixels classified as each of the trajectories
 ```{r}
 data <- c(coarse_lev1_phy, cvnp_annual_evi, cvnp_annual_ndvi, cvnp_monthly_evi, cvnp_monthly_ndvi)
 df_data <- terra::as.data.frame(data, cells = TRUE, xy = TRUE)
@@ -85,6 +82,59 @@ summary(df_data)
 
 df_data_noNA <- df_data %>% filter(!is.na(annual_EVI)) #NA values are around the boundary and a couple of water pixels
 
+veg_trajtype_boxplot_function <- function (traj_column, veg_column, plot_title){
+  df_filter <- df_data_noNA  %>% dplyr::select(veg_column, traj_column)
+  df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
+                                                                         df_filter[[traj_column]] == 3 ~"No trend",
+                                                                         df_filter[[traj_column]] == 4 ~"Step Decrease",
+                                                                         df_filter[[traj_column]] == 5 ~ "Step Increase",
+                                                                         df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
+                                                                         df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
+  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
+
+  plot<- ggplot(df_filter, aes(x = reorder(TrajType, df_filter[[veg_column]]), y = df_filter[[veg_column]], fill = TrajType)) + 
+    geom_boxplot() + ylab("native vegetation proportion") + xlab("Trajectory types") +
+    labs(title = plot_title) +
+    theme_classic(base_size = 16) +
+     theme(axis.text.x =element_blank(),
+        axis.ticks.x =element_blank()) +
+    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
+  plot 
+}
+
+grass_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_grass", "NDVI(monthly)")
+grass_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_grass", "EVI(monthly)")
+grass_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_grass", "NDVI(annual)")
+grass_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_grass", "EVI(annual)")
+
+grass_boxplot_plots <- ggarrange(grass_ndvi_monthly, grass_evi_monthly, grass_ndvi_annual, grass_evi_annual, ncol =2, nrow=2 )
+output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+ggsave(paste0(output_file_path, "//", "boxplot_trajectory_grass.png"),
+       grass_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+
+savanna_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_savanna", "NDVI(monthly)")
+savanna_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_savanna", "EVI(monthly)")
+savanna_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_savanna", "NDVI(annual)")
+savanna_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_savanna", "EVI(annual)")
+
+savanna_boxplot_plots <- ggarrange(savanna_ndvi_monthly, savanna_evi_monthly, savanna_ndvi_annual, savanna_evi_annual, ncol =2, nrow=2 )
+ggsave(paste0(output_file_path, "//", "boxplot_trajectory_savanna.png"),
+       savanna_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+
+woodland_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_woodland", "NDVI(monthly)")
+woodland_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_woodland", "EVI(monthly)")
+woodland_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_woodland", "NDVI(annual)")
+woodland_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_woodland", "EVI(annual)")
+
+woodland_boxplot_plots <- ggarrange(woodland_ndvi_monthly, woodland_evi_monthly, woodland_ndvi_annual, woodland_evi_annual, ncol =2, nrow=2 )
+ggsave(paste0(output_file_path, "//", "boxplot_trajectory_woodland.png"),
+       woodland_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+
+```
+
+
+#Step 3b - eda of relationship between trajectories and veg physiognomies using boxplots
+```{r}
 veg_binning_function <- function (df, veg_formation_selected){
   df_veg_selected <- df %>% dplyr::select(c(veg_formation_selected, annual_EVI, annual_NDVI, monthly_EVI, monthly_NDVI))
   df_veg_selected <- df_veg_selected %>% rename("veg_selected"=veg_formation_selected)
@@ -156,3 +206,13 @@ ggsave(paste0(output_file_path, "//", "trajectory_forestproportion_relationship.
        forest_plots,dpi = 700, height = 80, width = 80, units = "cm")
 
 ```
+
+
+#Step 4- statistical analyses of relationship between percentage savanna and trajectory types (categorical variable) using anova
+```{r}
+ndvimonthlytraj_savanna_aov<- lm(percentage_savanna ~ as.factor(monthly_NDVI),
+                                df_data_noNA %>% filter(monthly_NDVI == 5 | monthly_NDVI == 3)) 
+summary(ndvimonthlytraj_savanna_aov)
+```
+
+No difference in group means of percentage grass in step increase and no trend trajectories. 
