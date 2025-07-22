@@ -299,216 +299,86 @@ ggsave(here("Outputs", "ATBC2025","cvnp_yearstep.jpg"),
        y,dpi = 700, height = 4, width=4, units = "cm")
 
 # CVNP veg proportions
-cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) 
-
-input_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
-cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
-
-veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
-#0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
-#9=cerradao, 10=mata de galeria, 11-pasture, 12- water, 13- plantation, 14- agriculture, 15- nonvegetated
-
-crop_veg_phy<- terra::crop(veg_phy, vect(cvnp_shp))
-mask_veg_phy<- terra::mask(crop_veg_phy, vect(cvnp_shp))
-remove(crop_veg_phy, veg_phy)
-
-#Reclassifying to level 1 typology as all the campo are grasslands-1, both cerrado and verada are savannas-2
-#cerradao and mata de galeria is woodland-3. Remainder are anthropic-4, water is NA
-m<- rbind(c(0,1), c(1,1), c(3,1), c(5,2), 
-          c(6,2), c(8,2), c(9,3), c(10,3), 
-          c(11,4), c(12,NA), c(13,4), c(14,4), c(15,4))
-
-lev1_phy<- terra::classify(mask_veg_phy, m)
-remove(m)
-
-coarsening_function <- function (classified_raster){
-  x_1km<- terra::project(
-    terra::segregate(classified_raster), cvnp_monthly_ndvi,
-    method = "average", res = res(cvnp_monthly_ndvi)[1])
-  
-  x_1km_mask <- terra::mask(x_1km, cvnp_shp)
-  x_1km_mask
-}
-
-coarse_lev1_phy <- coarsening_function(lev1_phy)
-remove(coarsening_function)
-
-data <- c(coarse_lev1_phy, cvnp_monthly_ndvi)
-df_data <- terra::as.data.frame(data, cells = TRUE, xy = TRUE)
+#In cvnp_analyses>3_trajectory_vegproportions, I ran the first and second chunks
+data_only_ndvimonthly <- c(coarse_lev1_phy, cvnp_monthly_ndvi)
+df_data <- terra::as.data.frame(data_only_ndvimonthly, cells = TRUE, xy = TRUE)
 df_data <- df_data %>% rename("cell" ="cell", "x"="x", "y"="y",
                               "percentage_grass"="1", "percentage_savanna"="2",
                               "percentage_woodland"= "3", "percentage_anthropic"="4",
-                          "monthly_NDVI"="ndvi_swin11_monthly")
+                              "monthly_NDVI"="ndvi_swin11_monthly")
 summary(df_data)
 
 df_data_noNA <- df_data %>% filter(!is.na(monthly_NDVI)) #NA values are around the boundary and a couple of water pixels
-df_veg_selected <- df_data_noNA %>% dplyr::select(c(percentage_grass, monthly_NDVI))
+df_data_noNA  <- df_data_noNA  %>% mutate(TrajType = case_when(monthly_NDVI == 2~" Linear Increase",
+                                                               monthly_NDVI == 3 ~"No trend",
+                                                               monthly_NDVI == 4 ~"Step Decrease",
+                                                               monthly_NDVI == 5 ~ "Step Increase",
+                                                               monthly_NDVI == 8 ~ "Quadratic Increase (acc)",
+                                                               monthly_NDVI == 9 ~ "Quadratic Increase (dec)"))
+df_data_noNA <- df_data_noNA %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
 
-df_veg_selected <- df_veg_selected %>% mutate(bins = cut(percentage_grass, breaks =seq(0,1,0.02), ordered_result = TRUE))
-number_pixels_bin<- df_veg_selected %>% group_by(bins) %>% summarise(count=n())
-pivot_df_veg_selected <- df_veg_selected %>% pivot_longer(1:2)
-veg_trajectory_df <- pivot_df_veg_selected %>%
-    group_by(name, bins, value) %>%
-    summarise(total_pixels = n())
-veg_trajectory_df <- inner_join(veg_trajectory_df, number_pixels_bin)
-veg_trajectory_df<- veg_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
-  
-larger_bins<- rep(c("1_20%", "21_40%", "41_60%", "61_80%", "81_100%"),each=10)
-bin_lookup<- data.frame(bins=levels(veg_trajectory_df$bins), larger_bins=larger_bins)
-  
-veg_trajectory_df <-  veg_trajectory_df  %>% left_join(bin_lookup)
-veg_trajectory_df <-  veg_trajectory_df  %>% mutate(bins=if_else(is.na(bins), "No grass", bins)) #there are pixels where %veg is 0 which I treat as a seperate category.
-veg_trajectory_df <- veg_trajectory_df %>% mutate(larger_bins=if_else(is.na(larger_bins), "No grass", larger_bins))
-  
-veg_trajectory_df <- veg_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
-                                                                         value == 3 ~"No trend",
-                                                                         value == 4 ~"Step Decrease",
-                                                                         value == 5 ~ "Step Increase",
-                                                                         value == 8 ~ "Quadratic Increase (acc)",
-                                                                         value == 9 ~ "Quadratic Increase (dec)"))
-veg_trajectory_df <- veg_trajectory_df %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
-
-plot<- ggplot(veg_trajectory_df %>% filter(!is.na(TrajType)), 
-              aes(x = larger_bins, y = Proportion, fill = TrajType, alpha = my_alpha)) + 
-    geom_boxplot() +theme_classic(base_size = 14) +
-    scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3"))+
-  xlab("Proportion covered by grassy physionomies") + ylab ("Proportion of Step Increase pixels in CVNP")  +
-  theme(legend.position = "none")
-plot
-ggsave(here("Outputs", "ATBC2025","cvnp_step- grass.jpg"),
+plot<- ggplot(df_data_noNA, aes(x = reorder(TrajType, percentage_savanna), y = percentage_savanna, fill = TrajType, alpha = my_alpha)) + 
+  geom_boxplot() + ylab("Proportion covered by savanna physionomies")+
+  theme_classic(base_size = 14) +
+  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) +
+  theme(legend.position = "none")+
+  theme(axis.title.x=element_blank(),
+    axis.text.x =element_blank(),
+    axis.ticks.x =element_blank())
+ggsave(here("Outputs", "ATBC2025","cvnp_trajectory_savanna.jpg"),
        plot,dpi = 700, height = 15, width= 15, units = "cm")
 
 # CVNP heterogeniety 
-#reran lines 302- 205
-veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
-#0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
-#9=cerradao, 10=mata de galeria, 11-pasture, 12- water, 13- plantation, 14- agriculture, 15- nonvegetated
-
-crop_veg_phy<- terra::crop(veg_phy, vect(cvnp_shp))
-mask_veg_phy<- terra::mask(crop_veg_phy, vect(cvnp_shp))
-remove(crop_veg_phy, veg_phy)
-
-m_nativephysiognomies_only<- rbind(c(0,0), c(1,1), c(3,3), c(5,5), c(6,6), c(8,8),
-                                   c(9,9), c(10,10), c(11,NA), c(12,NA), c(13,NA), c(14,NA), c(15, NA)) # Excluding anthropic physiognomies and calculating richness of native physiognomies
-reclass_veg_phy <- terra::classify(mask_veg_phy, m_nativephysiognomies_only)
-remove(m_nativephysiognomies_only)
-
-coarsening_function <- function (classified_raster){
-  x_1km<- terra::project(
-    terra::segregate(classified_raster), cvnp_monthly_ndvi,
-    method = "average", res = res(cvnp_monthly_ndvi)[1])
-  
-  x_1km_mask <- terra::mask(x_1km, cvnp_shp)
-  x_1km_mask
-}
-
-coarse_reclass_veg_phy <- coarsening_function(reclass_veg_phy)
-remove(coarsening_function)
-
-library(vegan) ##Shannon's diversity index
-shannon_diversity<- function (reclass_coarse_raster) {
-  x_df<- as.data.frame(reclass_coarse_raster, cells=TRUE, xy=TRUE)
-  x_diversity<- vegan::diversity(x_df %>% dplyr::select(-c(cell,x,y)), index="shannon")
-  x_diversity<- as.data.frame(x_diversity)
-  x_df<- bind_cols(x_df, x_diversity)
-  trial_vector<- terra::vect(x_df %>% dplyr::select(c("cell", "x", "y", "x_diversity")), geom=c("x", "y"), crs="epsg:4326")
-  trial_raster<- terra::rasterize(trial_vector, reclass_coarse_raster, "x_diversity", fun="max")
-  trial_raster
-}
-Sys.time(); heterogen <- shannon_diversity (coarse_reclass_veg_phy);Sys.time()
-remove(shannon_diversity)
-
+#In cvnp_analyses>4_trajectory_heterogeniety, I ran the first and second chunk (only till the map making lines ie line 81)
 data_stack <- c(cvnp_monthly_ndvi, heterogen)
 data_df <- terra::as.data.frame(data_stack)
+data_df_noNA <- data_df %>% drop_na()
+names(data_df_noNA) <- c("monthly_NDVI", "heterogeneity")
 
-data_df <- data_df %>% mutate(bins = cut(max, breaks = quantile(max, na.rm= TRUE), right = FALSE, labels = FALSE, ordered_result = TRUE))
-data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), 4, bins))
-#data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), "No heterogeniety", bins))
-number_pixels_bin <- data_df %>% group_by(bins) %>% summarise(count=n())
+data_df_noNA <- data_df_noNA %>% mutate(TrajType = case_when(monthly_NDVI == 2~" Linear Increase",
+                                                             monthly_NDVI == 3 ~"No trend",
+                                                             monthly_NDVI == 4 ~"Step Decrease",
+                                                             monthly_NDVI == 5 ~ "Step Increase",
+                                                             monthly_NDVI == 8 ~ "Quadratic Increase (acc)",
+                                                             monthly_NDVI == 9 ~ "Quadratic Increase (dec)"))
 
-pivot_data_df <- data_df %>% pivot_longer(1:2)
-heter_trajectory_df <- pivot_data_df %>%
-  group_by(name, bins, value) %>%
-  summarise(total_pixels = n())
 
-heter_trajectory_df  <- inner_join(heter_trajectory_df , number_pixels_bin)
-heter_trajectory_df <- heter_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
-heter_trajectory_df <- heter_trajectory_df %>% filter(!is.na(value))
-heter_trajectory_df <- heter_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
-                                                                           value == 3 ~"No trend",
-                                                                           value == 4 ~"Step Decrease",
-                                                                           value == 5 ~ "Step Increase",
-                                                                           value == 8 ~ "Quadratic Increase (acc)",
-                                                                           value == 9 ~ "Quadratic Increase (dec)"))
-heter_trajectory_df <- heter_trajectory_df %>% mutate(bins = case_when (bins == 1~"1st quantile",
-                                                                        bins == 2 ~ "2nd quantile",
-                                                                        bins == 3 ~ "3rd quantile",
-                                                                        bins == 4 ~ "4th quantile",
-                                                                        TRUE ~"No heterogeniety"))
+data_df_noNA  <- data_df_noNA %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
 
-heter_trajectory_df <- heter_trajectory_df %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
-plot2 <- ggplot(data = heter_trajectory_df, aes(x = bins, y= Proportion, fill = TrajType, alpha = my_alpha))+
-  geom_bar(stat = "identity", position = position_dodge()) + 
+plot2<- ggplot(data_df_noNA, aes(x = reorder(TrajType, heterogeneity, FUN = median), y = heterogeneity, fill = TrajType, alpha = my_alpha)) + 
+  geom_boxplot() + ylab("native vegetation heterogeneity") +
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
-  xlab("Heterogeniety")+
-  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) + 
-  xlab("Native physiognomies heterogeniety quantiles") + ylab ("Proportional area of CVNP")  +
-  theme(legend.position = "none")
-ggsave(here("Outputs", "ATBC2025","cvnp_step-heterogeneity.jpg"),
+  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) +
+  theme(legend.position = "none")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x =element_blank(),
+        axis.ticks.x =element_blank())
+ggsave(here("Outputs", "ATBC2025","cvnp_trajectories_heterogeneity.jpg"),
        plot2,dpi = 700, height = 15, width= 15, units = "cm")
 
-
 #cvnp burned area
-#reran lines 302- 205
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "burnedarea_1km_2002_2021.tif"))
-
-cvnp_burnedarea <- terra::crop(burnedarea, cvnp_shp)
-cvnp_burnedarea <- terra::mask(cvnp_burnedarea, cvnp_shp)
-
-#burned area and trajectory results in cvnp do not have the same extent and resolution, hence resampling
-cvnp_burnedarea2 <- terra::resample(cvnp_burnedarea, cvnp_monthly_ndvi, method = "bilinear")
-
-mean_cvnp_burnedarea<- terra::app(cvnp_burnedarea2, fun ="mean") 
-
+#In cvnp_analyses>5_trajectory_burnedarea, I ran the first and second chunks and in the third chunk line 55 only
 data_stack <- c(cvnp_monthly_ndvi, mean_cvnp_burnedarea)
 data_df <- terra::as.data.frame(data_stack)
+data_df_noNA <- data_df %>% drop_na()
+names(data_df_noNA) <- c("monthly_NDVI", "average_burnedarea")
 
-data_df <- data_df %>% mutate(bins = cut(mean, breaks = quantile(mean, na.rm= TRUE), right = FALSE, labels = FALSE, ordered_result = TRUE))
-data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), 4, bins))
-#data_df <- data_df %>% mutate(bins = ifelse(is.na(bins), "No heterogeniety", bins))
-number_pixels_bin <- data_df %>% group_by(bins) %>% summarise(count=n())
+data_df_noNA <- data_df_noNA%>% mutate(TrajType = case_when(monthly_NDVI == 2~" Linear Increase",
+                                                            monthly_NDVI == 3 ~"No trend",
+                                                            monthly_NDVI == 4 ~"Step Decrease",
+                                                            monthly_NDVI == 5 ~ "Step Increase",
+                                                            monthly_NDVI == 8 ~ "Quadratic Increase (acc)",
+                                                            monthly_NDVI == 9 ~ "Quadratic Increase (dec)"))
 
-pivot_data_df <- data_df %>% pivot_longer(1:2)
-burnedarea_trajectory_df <- pivot_data_df %>%
-  group_by(name, bins, value) %>%
-  summarise(total_pixels = n())
-burnedarea_trajectory_df  <- inner_join(burnedarea_trajectory_df , number_pixels_bin)
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>% filter(!is.na(value))
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
-                                                                                     value == 3 ~"No trend",
-                                                                                     value == 4 ~"Step Decrease",
-                                                                                     value == 5 ~ "Step Increase",
-                                                                                     value == 8 ~ "Quadratic Increase (acc)",
-                                                                                     value == 9 ~ "Quadratic Increase (dec)"))
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(bins = case_when (bins == 1~"1st quantile",
-                                                                                  bins == 2 ~ "2nd quantile",
-                                                                                  bins == 3 ~ "3rd quantile",
-                                                                                  bins == 4 ~ "4th quantile",
-                                                                                  TRUE ~"No heterogeniety"))
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>% mutate(name = case_when (name == "evi_swin11_annual" ~"EVI(annual)",
-                                                                                  name == "evi_swin11_monthly" ~"EVI(monthly)",
-                                                                                  name == "ndvi_swin11_annual" ~"NDVI(annual)",
-                                                                                  TRUE ~ "NDVI(monthly)"))
-burnedarea_trajectory_df <- burnedarea_trajectory_df %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
-plot3 <- ggplot(data = burnedarea_trajectory_df, aes(x = bins, y= Proportion, fill = TrajType, alpha = my_alpha))+
-  geom_bar(stat = "identity", position = position_dodge()) + 
+data_df_noNA <- data_df_noNA %>%  mutate(my_alpha = ifelse(TrajType == "Step Increase" | TrajType == "No trend", 1, 0.5))
+
+plot3<- ggplot(data_df_noNA, aes(x = reorder(TrajType, average_burnedarea, FUN = median), y = average_burnedarea, fill = TrajType, alpha = my_alpha)) + 
+  geom_boxplot() + ylab("average %burnedarea") + 
   theme_classic(base_size = 14) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
-  xlab("Heterogeniety")+
-  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) + 
-  xlab("Average burned area (2002- 2021) quantiles") + ylab ("Proportional area of CVNP")  +
-  theme(legend.position = "none")
-ggsave(here("Outputs", "ATBC2025","cvnp_step-averageburnedarea.jpg"),
+  scale_fill_manual(values=c("#44AA99", "slateblue1", "#88CCEE", "#DDCC77" , "#882255",  "sienna3")) +
+  theme(legend.position = "none")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x =element_blank(),
+        axis.ticks.x =element_blank())
+ggsave(here("Outputs", "ATBC2025","cvnp_trajectory_averageburnedarea.jpg"),
        plot3,dpi = 700, height = 15, width= 15, units = "cm")
