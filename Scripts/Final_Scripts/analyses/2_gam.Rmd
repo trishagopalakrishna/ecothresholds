@@ -731,8 +731,8 @@ Sys.time(); model_interact_previous_savanna_temp_re <- mgcv::bam( cbind(ndvi_mon
                                ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
                                ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
                                ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
-                               ti(anthropic_dist, mean_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
-                               ti(anthropic_dist, mean_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
+                               ti(anthropic_dist, trend_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, trend_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
                                ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
                                ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
                                ti(trend_savannapercentage, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
@@ -746,6 +746,41 @@ Sys.time(); model_interact_previous_savanna_temp_re <- mgcv::bam( cbind(ndvi_mon
 summary(model_interact_previous_savanna_temp_re)
 gratia::draw (model_interact_previous_savanna_temp_re, rug= F)
 
+#Interaction 11 -previous model excluding mean of predictors
+#Sys.time(); model_interact_previous_no_means<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+#                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+#                             s(hand, bs= "ts", fx= TRUE) +
+#                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+#                               s(trend_re, bs= "ts", fx= TRUE) +
+#                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+#                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+#                               s(trend_spei, bs= "ts", fx= TRUE) +
+#                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+#                               #s(mat, bs= "ts", fx= TRUE) +
+#                               #s(mean_heatwave,  bs= "ts",fx= TRUE)+
+#                               #s(mean_burnedarea, bs= "ts", fx= TRUE) +
+#                               #s(mean_re, bs= "ts", fx= TRUE)+
+#                               #s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+#                               #s(mean_spei, bs= "ts") +
+#                               s(x,y, bs= "ts", fx= TRUE) +
+#                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+#                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+#                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+#                               ti(anthropic_dist, trend_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+#                               ti(anthropic_dist, trend_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
+#                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+#                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+#                               ti(trend_savannapercentage, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+#                               ti(trend_savannapercentage, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE), 
+#                           data = no_outliers_sample_df %>% 
+#                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+#                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+#                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+#                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+#                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = #"logit")); Sys.time()
+#summary(model_interact_previous_no_means)
+#gratia::draw (model_interact_previous_no_means, rug= F)
+#### The adjusted Rsq and deviance explained drops by 1.5%. Need to ask Theo how to select models, AIC?
 
 ```
 
@@ -838,6 +873,7 @@ lines(tempgrid, x3Eff, col="blue")
 #lines(tempgrid,apply(x4Eff[401:600,],1,quantile,probs=0.975), type="l", lty =3)
 
 ######### ggplot version of above
+output_file_path <- here("Outputs", "AnalysesResults", "GAMResults")
 #1- make df of tempgrid, x1Eff, x2Eff, x3Eff
 plot_df <- data.frame(trend_annualtemp = tempgrid)
 plot_df <- plot_df %>% mutate(more_uniform_rainfall = x1Eff,
@@ -851,12 +887,219 @@ plot_interaction_temp_re <- ggplot(pivot_plot_df, aes(x = trend_annualtemp, y = 
   ylab ("Partial Effect") + 
   xlab ("Trend in annual temperature") +
   theme(legend.title=element_blank())
+ggsave(here(output_file_path, paste0("2way_interact_temp_re_ndvisteinc.png")),
+       plot_interaction_temp_re,dpi = 700, height = 15, width=15, units = "cm")
 
-
-######### function to create ggplot for remaining 2 way interactions
 
 
 ```
+
+
+Plotting remaining 2 way interaction plots
+```{r}
+#interaction of heatwaves and spei
+#interaction with anthropic area and burnedarea
+#interaction of anthropic distance and savanna percentage
+
+#1. Heatwaves and SPEI 
+heatwavegrid <- seq(min(no_outliers_sample_df$trend_heatwave),max(no_outliers_sample_df$trend_heatwave),len=200)
+speigrid <- c((mean(no_outliers_sample_df$trend_spei) - sd(no_outliers_sample_df$trend_spei)),
+               0, 
+               (mean(no_outliers_sample_df$trend_spei) + sd(no_outliers_sample_df$trend_spei)))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendsavanna <- mean(no_outliers_sample_df$trend_savannapercentage)
+trendre <- mean(no_outliers_sample_df$trend_re)
+trendannualtemp <- mean(no_outliers_sample_df$trend_annualtemp)
+trendburnedarea <- mean(no_outliers_sample_df$trend_burnedarea)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+newd <- data.frame(expand.grid(heatwavegrid, speigrid))
+names(newd) <- c("trend_heatwave","trend_spei")
+newd <- newd %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_annualtemp = trendannualtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = trendburnedarea, 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+pred <- predict(model_interact_previous_savanna_temp_re, newdata = newd, type="terms") 
+
+ind <- 1:200
+x1Eff <- rowSums(pred[ind, c(6, 18)] )
+#plot(heatwavegrid,x1Eff,type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred[ind2, c(6, 18)] )
+#lines(heatwavegrid, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred[ind3, c(6, 18)] )
+#lines(heatwavegrid, x3Eff, col="blue")
+
+plot_df <- data.frame(trend_heatwaves = heatwavegrid)
+plot_df <- plot_df %>% mutate(more_droughts_through_time = x1Eff,
+                              no_trend_in_drought = x2Eff,
+                              less_droughts_through_time = x3Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(2:4)
+plot_interaction_heatwave_spei <- ggplot(pivot_plot_df, aes(x = trend_heatwaves, y = value, group = name)) +
+  geom_line(aes(color = name), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + 
+  ylab ("Partial Effect") + 
+  xlab ("Trend in heatwaves") +
+  theme(legend.title=element_blank())
+
+#2. Anthropic area and burned area
+anthropicgrid <- seq(min(no_outliers_sample_df$anthropic_dist),max(no_outliers_sample_df$anthropic_dist),len=200)
+burnedareagrid <- c((mean(no_outliers_sample_df$trend_burnedarea) - sd(no_outliers_sample_df$trend_burnedarea)),
+               0, 
+               (mean(no_outliers_sample_df$trend_burnedarea) + sd(no_outliers_sample_df$trend_burnedarea)))
+
+#Other predictors at mean of their value
+hand <- mean(no_outliers_sample_df$hand)
+trendsavanna <- mean(no_outliers_sample_df$trend_savannapercentage)
+trendre <- mean(no_outliers_sample_df$trend_re)
+trendannualtemp <- mean(no_outliers_sample_df$trend_annualtemp)
+meanburnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+trendspei <- mean(no_outliers_sample_df$trend_spei)
+trendheatwave <- mean(no_outliers_sample_df$trend_heatwave)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+newd <- data.frame(expand.grid(anthropicgrid, burnedareagrid))
+names(newd) <- c("anthropic_dist","trend_burnedarea")
+newd <- newd %>% mutate(hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_annualtemp = trendannualtemp, 
+                        trend_re = trendre, 
+                        trend_heatwave = trendheatwave,
+                        trend_spei = trendspei,
+                        mean_burnedarea = meanburnedarea, 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+pred <- predict(model_interact_previous_savanna_temp_re, newdata = newd, type="terms") 
+
+ind <- 1:200
+x1Eff <- rowSums(pred[ind, c(1, 19)] )
+#plot(heatwavegrid,x1Eff,type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred[ind2, c(1, 19)] )
+#lines(heatwavegrid, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred[ind3, c(1, 19)] )
+#lines(heatwavegrid, x3Eff, col="blue")
+
+plot_df <- data.frame(anthropic_dist = anthropicgrid)
+plot_df <- plot_df %>% mutate(decburn = x1Eff,
+                              nochange = x2Eff,
+                              incburn = x3Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(2:4)
+plot_interaction_anthropicdist_burnedarea <- ggplot(pivot_plot_df, aes(x = anthropic_dist, y = value, group = name)) +
+  geom_line(aes(color = name), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + 
+  ylab ("Partial Effect") + 
+  xlab ("Anthropic Distance") +
+  theme(legend.title=element_blank())
+
+#3. Anthropic area and savanna percentage
+anthropicgrid <- seq(min(no_outliers_sample_df$anthropic_dist),max(no_outliers_sample_df$anthropic_dist),len=200)
+savannagrid <- c((mean(no_outliers_sample_df$trend_savannapercentage) - sd(no_outliers_sample_df$trend_savannapercentage)),
+               0, 
+               (mean(no_outliers_sample_df$trend_savannapercentage) + sd(no_outliers_sample_df$trend_savannapercentage)))
+
+#Other predictors at mean of their value
+hand <- mean(no_outliers_sample_df$hand)
+trendburnedarea <- mean(no_outliers_sample_df$trend_burnedarea)
+trendre <- mean(no_outliers_sample_df$trend_re)
+trendannualtemp <- mean(no_outliers_sample_df$trend_annualtemp)
+meanburnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+trendspei <- mean(no_outliers_sample_df$trend_spei)
+trendheatwave <- mean(no_outliers_sample_df$trend_heatwave)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+newd <- data.frame(expand.grid(anthropicgrid, savannagrid))
+names(newd) <- c("anthropic_dist","trend_savannapercentage")
+newd <- newd %>% mutate(hand = hand, 
+                        trend_burnedarea = trendburnedarea, 
+                        trend_annualtemp = trendannualtemp, 
+                        trend_re = trendre, 
+                        trend_heatwave = trendheatwave,
+                        trend_spei = trendspei,
+                        mean_burnedarea = meanburnedarea, 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+pred <- predict(model_interact_previous_savanna_temp_re, newdata = newd, type="terms") 
+
+ind <- 1:200
+x1Eff <- rowSums(pred[ind, c(1, 20)] )
+#plot(heatwavegrid,x1Eff,type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred[ind2, c(1, 20)] )
+#lines(heatwavegrid, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred[ind3, c(1, 20)] )
+#lines(heatwavegrid, x3Eff, col="blue")
+
+plot_df <- data.frame(anthropic_dist = anthropicgrid)
+plot_df <- plot_df %>% mutate(dec.trend.savanna = x1Eff,
+                              nochange.savanna = x2Eff,
+                              inc.trend.savanna = x3Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(2:4)
+plot_interaction_anthropicdist_savannapercentage <- ggplot(pivot_plot_df, aes(x = anthropic_dist, y = value, group = name)) +
+  geom_line(aes(color = name), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + 
+  ylab ("Partial Effect") + 
+  xlab ("Anthropic Distance") +
+  theme(legend.title=element_blank())
+
+```
+
 
 Plotting  3 way interactions - basic + ggplot
 I have decided to consider three scenarios of the 3 terms ie 3 panels and within each panel
@@ -1011,5 +1254,517 @@ plot_interaction_temp_re_burnedarea <- ggplot(pivot_plot_df, aes(x = trend_annua
   ylab ("Partial Effect") + 
   xlab ("Trend in annual temperature") +
   theme(legend.title=element_blank())
+ggsave(here(output_file_path, paste0("3way_interact_temp_re_burnarea_ndvisteinc.png")),
+       plot_interaction_temp_re_burnedarea,dpi = 700, height = 15, width=25, units = "cm")
+
+```
+
+Plotting remaining 3 way interactions
+```{r}
+#1. Savannas, annual temp and relative entropy
+#1- Creating range of temp and re like previous chunk 
+tempgrid_1 <- seq(min(no_outliers_sample_df$trend_annualtemp),max(no_outliers_sample_df$trend_annualtemp), len = 200)
+regrid_1 <- c(min(no_outliers_sample_df$trend_re), 0, max(no_outliers_sample_df$trend_re))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendburnarea <- mean(no_outliers_sample_df$trend_burnedarea)
+trendheatwave <- mean(no_outliers_sample_df$trend_heatwave)
+trendspei <- mean(no_outliers_sample_df$trend_spei)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+# 3 savanna percentage trend scenarios
+savanna_decreasing <- mean(no_outliers_sample_df$trend_savannapercentage) +sd(no_outliers_sample_df$trend_savannapercentage)
+savanna_nochange <- 0
+savanna_increasing <- mean(no_outliers_sample_df$trend_savannapercentage) - sd(no_outliers_sample_df$trend_savannapercentage)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+df_savanna_dec <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_savanna_dec) <- c("trend_annualtemp","trend_re")
+df_savanna_dec <- df_savanna_dec %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_decreasing,  #changed 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_savanna_nochange <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_savanna_nochange) <- c("trend_annualtemp","trend_re")
+df_savanna_nochange <- df_savanna_nochange %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_nochange,  #changed 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_savanna_inc <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_savanna_inc) <- c("trend_annualtemp","trend_re")
+df_savanna_inc <- df_savanna_inc %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_increasing, 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+# 2- Predicting the model for the above test grid created
+pred_savanna_inc <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_inc, type="terms") 
+pred_savanna_nochange <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_nochange, type="terms") 
+pred_savanna_dec <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_dec, type="terms") 
+
+par(mfrow = c(1, 3))
+
+#3- plots
+# savanna decreasing partial effects
+ind <- 1:200
+x1Eff <- rowSums(pred_savanna_dec [ind, c(5,17,24)] )
+plot(tempgrid_1, x1Eff, type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred_savanna_dec [ind2, c(5,17,24)] )
+lines(tempgrid_1, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred_savanna_dec[ind3, c(5,17,24)] )
+lines(tempgrid_1, x3Eff, col="blue")
+
+# savanna nochange partial effects
+ind4 <- 1:200
+x4Eff <- rowSums(pred_savanna_nochange [ind4, c(5,17,24)] )
+plot(tempgrid_1, x4Eff, type="l")
+ind5 <- 201:400
+x5Eff <- rowSums( pred_savanna_nochange [ind5, c(5,17,24)] )
+lines(tempgrid_1, x5Eff, col="red")
+ind6 <- 401:600
+x6Eff <- rowSums( pred_savanna_nochange[ind6, c(5,17,24)] )
+lines(tempgrid_1, x6Eff, col="blue")
+
+# savanna increasing partial effects
+ind7 <- 1:200
+x7Eff <- rowSums(pred_savanna_inc [ind7, c(5,17,24)] )
+plot(tempgrid_1, x7Eff, type="l")
+ind8 <- 201:400
+x8Eff <- rowSums( pred_savanna_inc [ind8, c(5,17,24)] )
+lines(tempgrid_1, x8Eff, col="red")
+ind9 <- 401:600
+x9Eff <- rowSums( pred_savanna_inc[ind9, c(5,17,24)] )
+lines(tempgrid_1, x9Eff, col="blue")
+
+plot_df <- data.frame(trend_annualtemp = tempgrid_1)
+plot_df <- plot_df %>% mutate(more.uniform.rainfall_decsavannatrend = x1Eff,
+                              no.trend.rainfall.seasonality_decsavannatrend = x2Eff,
+                              more.seasonal.rainfall_decsavannatrend = x3Eff,
+                              more.uniform.rainfall_nochange = x4Eff,
+                              no.trend.rainfall.seasonality_nochange = x5Eff,
+                              more.seasonal.rainfall_nochange = x6Eff,
+                              more.uniform.rainfall_incsavannatrend = x7Eff,
+                              no.trend.rainfall.seasonality_incsavannatrend = x8Eff,
+                              more.seasonal.rainfall_incsavannatrend = x9Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(-1)
+pivot_plot_df <- pivot_plot_df %>% separate(name, into =c("rainfallseasonality", "savannapercentagetrend"), sep = "_" )
+
+plot_interaction_temp_re_savanna <- ggplot(pivot_plot_df, aes(x = trend_annualtemp, y = value, group = rainfallseasonality)) +
+  geom_line(aes(color = rainfallseasonality), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + facet_grid(~factor(savannapercentagetrend, levels = c("decsavannatrend", "nochange", "incsavannatrend"))) +
+  ylab ("Partial Effect") + 
+  xlab ("Trend in annual temperature") +
+  theme(legend.title=element_blank())
+
+#2. Burnedarea, SPEI and heatwaves
+#1- Creating range of temp and re like previous chunk 
+heatwavesgrid_1 <- seq(min(no_outliers_sample_df$trend_heatwave),max(no_outliers_sample_df$trend_heatwave), len = 200)
+speigrid_1 <- c(min(no_outliers_sample_df$trend_spei), 0, max(no_outliers_sample_df$trend_spei))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendsavanna <- mean(no_outliers_sample_df$trend_savannapercentage)
+trendtemp <- mean(no_outliers_sample_df$trend_annualtemp)
+trendre <- mean(no_outliers_sample_df$trend_re)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+# 3 burned area scenarios - decreasing burned area, no change in burned area and increasing burned area
+burn_decreasing <- mean(no_outliers_sample_df$trend_burnedarea) +sd(no_outliers_sample_df$trend_burnedarea)
+burn_nochange <- 0
+burn_increasing <- mean(no_outliers_sample_df$trend_burnedarea) - sd(no_outliers_sample_df$trend_burnedarea)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+
+df_burn_dec <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_burn_dec) <- c("trend_heatwave","trend_spei")
+df_burn_dec <- df_burn_dec %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = burn_decreasing, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_burn_nochange <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_burn_nochange) <- c("trend_heatwave","trend_spei")
+df_burn_nochange <- df_burn_nochange %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre,
+                        trend_burnedarea = burn_nochange, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_burn_inc <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_burn_inc) <- c("trend_heatwave","trend_spei")
+df_burn_inc <- df_burn_inc %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = burn_increasing, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+# 2- Predicting the model for the above test grid created
+pred_burn_inc <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_inc, type="terms") 
+pred_burn_nochange <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_nochange, type="terms") 
+pred_burn_dec <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_dec, type="terms") 
+
+par(mfrow = c(1, 3))
+
+#3- plots
+# burn decreasing partial effects
+ind <- 1:200
+x1Eff <- rowSums(pred_burn_dec [ind, c(6,18,22)] )
+plot(heatwavesgrid_1, x1Eff, type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred_burn_dec [ind2, c(6,18, 22)] )
+lines(heatwavesgrid_1, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred_burn_dec[ind3, c(6,18, 22)] )
+lines(heatwavesgrid_1, x3Eff, col="blue")
+
+# burn nochange partial effects
+ind4 <- 1:200
+x4Eff <- rowSums(pred_burn_nochange [ind4, c(6,18,22)] )
+plot(heatwavesgrid_1, x4Eff, type="l")
+ind5 <- 201:400
+x5Eff <- rowSums( pred_burn_nochange [ind5, c(6,18, 22)] )
+lines(heatwavesgrid_1, x5Eff, col="red")
+ind6 <- 401:600
+x6Eff <- rowSums( pred_burn_nochange[ind6, c(6,18, 22)] )
+lines(heatwavesgrid_1, x6Eff, col="blue")
+
+# burn increasing partial effects
+ind7 <- 1:200
+x7Eff <- rowSums(pred_burn_inc [ind7, c(6,18, 22)] )
+plot(heatwavesgrid_1, x7Eff, type="l")
+ind8 <- 201:400
+x8Eff <- rowSums( pred_burn_inc [ind8, c(6,18, 22)] )
+lines(heatwavesgrid_1, x8Eff, col="red")
+ind9 <- 401:600
+x9Eff <- rowSums( pred_burn_inc[ind9, c(6,18, 22)] )
+lines(heatwavesgrid_1, x9Eff, col="blue")
+
+######### ggplot version
+#1- compile df
+plot_df <- data.frame(trend_heatwave = heatwavesgrid_1)
+plot_df <- plot_df %>% mutate(dec.droughts_decburn = x1Eff,
+                              no.trend.droughts_decburn = x2Eff,
+                              inc.droughts_decburn = x3Eff,
+                              dec.droughts_nochange = x4Eff,
+                              no.trend.droughts_nochange = x5Eff,
+                              inc.droughts_nochange = x6Eff,
+                              dec.droughts_incburn = x7Eff,
+                              no.trend.droughts_incburn = x8Eff,
+                              inc.droughts_incburn = x9Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(-1)
+pivot_plot_df <- pivot_plot_df %>% separate(name, into =c("droughttrend", "burntrend"), sep = "_" )
+
+plot_interaction_spei_heatwave_burnedarea <- ggplot(pivot_plot_df, aes(x = trend_heatwave, y = value, group = droughttrend)) +
+  geom_line(aes(color = droughttrend), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + facet_grid(~factor(burntrend, levels = c("decburn", "nochange", "incburn"))) +
+  ylab ("Partial Effect") + 
+  xlab ("Trend in heatwaves") +
+  theme(legend.title=element_blank())
+
+#3. Savannas, SPEI and heatwaves
+#1- Creating range of temp and re like previous chunk 
+heatwavesgrid_1 <- seq(min(no_outliers_sample_df$trend_heatwave),max(no_outliers_sample_df$trend_heatwave), len = 200)
+speigrid_1 <- c(min(no_outliers_sample_df$trend_spei), 0, max(no_outliers_sample_df$trend_spei))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendburnarea <- mean(no_outliers_sample_df$trend_burnedarea)
+trendtemp <- mean(no_outliers_sample_df$trend_annualtemp)
+trendre <- mean(no_outliers_sample_df$trend_re)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+# 3 savanna percentage trend scenarios
+savanna_decreasing <- mean(no_outliers_sample_df$trend_savannapercentage) +sd(no_outliers_sample_df$trend_savannapercentage)
+savanna_nochange <- 0
+savanna_increasing <- mean(no_outliers_sample_df$trend_savannapercentage) - sd(no_outliers_sample_df$trend_savannapercentage)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+df_savanna_dec <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_savanna_dec) <- c("trend_heatwave","trend_spei")
+df_savanna_dec <- df_savanna_dec %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_decreasing,  #changed 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_savanna_nochange <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_savanna_nochange) <- c("trend_heatwave","trend_spei")
+df_savanna_nochange <- df_savanna_nochange %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_nochange,  #changed 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_savanna_inc <- data.frame(expand.grid(heatwavesgrid_1, speigrid_1))
+names(df_savanna_inc) <- c("trend_heatwave","trend_spei")
+df_savanna_inc <- df_savanna_inc %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = savanna_increasing, 
+                        trend_annualtemp = trendtemp, 
+                        trend_re = trendre, 
+                        trend_burnedarea = trendburnarea,
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+# 2- Predicting the model for the above test grid created
+pred_savanna_inc <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_inc, type="terms") 
+pred_savanna_nochange <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_nochange, type="terms") 
+pred_savanna_dec <- predict(model_interact_previous_savanna_temp_re, newdata = df_savanna_dec, type="terms") 
+
+par(mfrow = c(1, 3))
+
+#3- plots
+# savanna decreasing partial effects
+ind <- 1:200
+x1Eff <- rowSums(pred_savanna_dec [ind, c(6,18,23)] )
+plot(heatwavesgrid_1, x1Eff, type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred_savanna_dec [ind2, c(6,18,23)] )
+lines(heatwavesgrid_1, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred_savanna_dec[ind3, c(6,18,23)] )
+lines(heatwavesgrid_1, x3Eff, col="blue")
+
+# savanna nochange partial effects
+ind4 <- 1:200
+x4Eff <- rowSums(pred_savanna_nochange [ind4, c(6,18,23)] )
+plot(heatwavesgrid_1, x4Eff, type="l")
+ind5 <- 201:400
+x5Eff <- rowSums( pred_savanna_nochange [ind5, c(6,18,23)] )
+lines(heatwavesgrid_1, x5Eff, col="red")
+ind6 <- 401:600
+x6Eff <- rowSums( pred_savanna_nochange[ind6, c(6,18,23)] )
+lines(heatwavesgrid_1, x6Eff, col="blue")
+
+# savanna increasing partial effects
+ind7 <- 1:200
+x7Eff <- rowSums(pred_savanna_inc [ind7, c(6,18,23)] )
+plot(heatwavesgrid_1, x7Eff, type="l")
+ind8 <- 201:400
+x8Eff <- rowSums( pred_savanna_inc [ind8, c(6,18,23)] )
+lines(heatwavesgrid_1, x8Eff, col="red")
+ind9 <- 401:600
+x9Eff <- rowSums( pred_savanna_inc[ind9, c(6,18,23)] )
+lines(heatwavesgrid_1, x9Eff, col="blue")
+
+######### ggplot version
+#1- compile df
+plot_df <- data.frame(trend_heatwave = heatwavesgrid_1)
+plot_df <- plot_df %>% mutate(dec.droughts_decsavannatrend = x1Eff,
+                              no.trend.droughts_decsavannatrend = x2Eff,
+                              inc.droughts_decsavannatrend = x3Eff,
+                              dec.droughts_nochange = x4Eff,
+                              no.trend.droughts_nochange = x5Eff,
+                              inc.droughts_nochange = x6Eff,
+                              dec.droughts_incsavannatrend = x7Eff,
+                              no.trend.droughts_incsavannatrend = x8Eff,
+                              inc.droughts_incsavannatrend = x9Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(-1)
+pivot_plot_df <- pivot_plot_df %>% separate(name, into =c("droughttrend", "savannapercentagetrend"), sep = "_" )
+
+plot_interaction_spei_heatwave_savanna <- ggplot(pivot_plot_df, aes(x = trend_heatwave, y = value, group = droughttrend)) +
+  geom_line(aes(color = droughttrend), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + facet_grid(~factor(savannapercentagetrend, levels = c("decsavannatrend", "nochange", "incsavannatrend"))) +
+  ylab ("Partial Effect") + 
+  xlab ("Trend in heatwaves") +
+  theme(legend.title=element_blank())
+
+```
+
+
+Plotting one variable partial effects plots similar to 2nd Phd paper
+```{r}
+theme_set(theme_classic())
+#plot_dir <- "C://Users//tg505//OneDrive - University of Exeter//DPhil//Paper2//Docs//Writing_Drafts//FinalDrafts//Communications Earth & Environment//MajorRevisions//Figs//"
+
+
+
+# 1. Extract smooth shapes as data frame using gratia
+onevariable_smooths <- gratia::smooth_estimates(model_interact_previous_savanna_temp_re,
+                                                select = c("s(anthropic_dist)", "s(trend_savannapercentage)", "s(trend_re)",
+                                                           "s(trend_annualtemp)", "s(trend_heatwave)", "s(trend_spei)", "s(trend_burnedarea)",
+                                                           "s(mat)", "s(mean_heatwave)", "s(mean_burnedarea)", "s(mean_re)", "s(mean_savannapercentage)",
+                                                           "s(mean_spei)"),
+                                                n=100, unconditional = TRUE) %>%
+  mutate(ci_low= .estimate - .se * 1.96,
+         ci_high = .estimate + .se * 1.96)
+
+write.csv(onevariable_smooths , here("Outputs", "AnalysesResults", "GAMResults", "GAM_onevariable_smooths.csv"))
+
+# Read in data labels lookup table
+all_var_labels <- read_csv(here("Outputs", "AnalysesResults", "GAMResults", "var_labels.csv"))
+all_var_list <- all_var_labels$vars
+all_var_plots <- list(length = length(all_var_list))
+
+# 2. Generate plots
+library(scales)
+library(patchwork)
+library(purrr)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+all_var_plots <- purrr::map(all_var_list, function(var) {
+  
+  # Labels for each facet window
+  # Create expressions for those with superscript/subscripts
+  x_label <- all_var_labels$label[all_var_labels$vars == var]
+  if (all_var_labels$parse[all_var_labels$vars == var]) {
+    x_label <- parse(text = x_label)
+  }
+  
+  # Plot data density plot
+  data_df <- no_outliers_sample_df %>%
+    dplyr::select(all_of(var)) %>%
+    dplyr::rename(z = 1)
+  
+  density <- ggplot(data_df, aes(x = z)) +
+    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    theme_void()
+  
+  # Plot model smooths
+  smooth_df <- onevariable_smooths  %>%
+    dplyr::select(.smooth, .type, .estimate, .se, ci_low, ci_high, all_of(var)) %>%
+    rename(var0 = 7) %>%
+    drop_na()
+  
+  plot <- ggplot(smooth_df, aes(x = var0, y = .estimate)) +
+    geom_ribbon(aes(ymin = ci_low, ymax = ci_high),fill="#8dbfa8", alpha = 0.7) +
+    geom_line(colour= "#26897e",alpha = 0.8, lwd = 0.6) +
+    scale_x_continuous( labels = label_number())+ 
+    #ylim(-1.4, 1.6) +
+    labs(x = x_label,
+         y = "Partial effect") +
+    theme (text= element_text(size=20))
+  
+  # Arrange into small multiples with patchwork package 
+  density + plot +
+    patchwork::plot_layout(ncol = 1, nrow = 2, widths = 4, heights = c(1, 4))
+})
+
+gam_plot1 <- ggpubr::ggarrange(plotlist = all_var_plots[1:7], labels=c("a)", "b)", "c)", "d)", "e)", "f)", "g)"),
+                      ncol = 3, nrow = 3, common.legend = TRUE)
+ggsave(here(output_file_path, paste0("oneway_variablepartialeffects_trends.png")),
+       gam_plot1,dpi = 700, height = 40, width=40, units = "cm")
+
+gam_plot2 <- ggpubr::ggarrange(plotlist = all_var_plots[8:13], labels=c("a)", "b)", "c)", "d)", "e)", "f)", "g)"),
+                      ncol = 3, nrow = 3, common.legend = TRUE)
+ggsave(here(output_file_path, paste0("oneway_variablepartialeffects_means.png")),
+       gam_plot2,dpi = 700, height = 40, width=40, units = "cm")
 
 ```
