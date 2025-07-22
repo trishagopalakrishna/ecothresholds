@@ -164,7 +164,7 @@ So I will use binomial distribution (logit link) with a two column integer matri
 count of that trajectory, count of not that trajectory i.e. count r, 25-r because
 25 is the highest possible number of cells having the selected trajectory.
 
-(a) considering "no trend" response
+(a) considering "no trend" response (DO NOT RUN)
 ```{r}
 
 ############################################# No trend analyses ######################################################
@@ -308,6 +308,7 @@ gam.check(model_interact_mat_trend)
 ```
 
 (b) considering "step increase" response
+I consider quasibinomial regression model as this type of model can account for over or under dispersion in data by including a "psi" variable which includes variance 
 ```{r}
 ################################################ Considering means
 #basic model without xy and no interactions
@@ -369,55 +370,8 @@ summary(model_no_interactions)
 gratia::draw(model_no_interactions, rug= F)
 mgcv::gam.check(model_no_interactions)
 
-#basic model without interactions and only means- TAKIN TOO LONG
-Sys.time(); model_no_interactions_onlymeans<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
-                             s(anthropic_dist,   bs= "ts") +
-                                s(hand, bs= "ts") +
-                             s(mean_savannapercentage,  bs= "ts")+
-                               s(mean_re, bs= "ts")+
-                               s(mat, bs= "ts") +
-                               s(mean_heatwave, bs ="ts")+
-                               s(mean_spei, bs= "ts")+
-                               s(mean_burnedarea, bs = "ts")+
-                               ti(x,y, bs= "ts"), 
-                           data = no_outliers_sample_df %>% 
-                             dplyr::select(-c(trend_burnedarea, trend_re, trend_annualtemp, trend_spei, trend_heatwave,
-                                              ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
-                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
-                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
-                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec,
-                                              trend_forestpercentage, trend_grasspercentage)),
-                 method = "fREML",
-                 family = quasibinomial(link = "logit")); Sys.time()
-summary(model_no_interactions_onlymeans) 
-gratia::draw(model_no_interactions_onlymeans, rug= F)
-mgcv::gam.check(model_no_interactions_onlymeans)
-
-#basic model without interactions and only trends
-Sys.time(); model_no_interactions_onlytrends<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
-                             s(anthropic_dist,   bs= "ts") +
-                                s(hand, bs= "ts") +
-                             s(trend_savannapercentage,  bs= "ts")+
-                               s(trend_re, bs= "ts")+
-                               s(trend_annualtemp, bs= "ts") +
-                               s(trend_heatwave, bs ="ts")+
-                               s(trend_spei, bs= "ts")+
-                               s(trend_burnedarea, bs = "ts")+
-                               ti(x,y, bs= "ts"), 
-                           data = no_outliers_sample_df %>% 
-                             dplyr::select(-c(mean_burnedarea, mean_re, mat, mean_spei, mean_heatwave,
-                                              ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
-                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
-                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
-                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, mean_savannapercentage, 
-                                              trend_forestpercentage, trend_grasspercentage)),
-                 method = "fREML",
-                 family = quasibinomial(link = "logit")); Sys.time()
-summary(model_no_interactions_onlytrends) #~15.3%
-gratia::draw(model_no_interactions_onlytrends, rug= F)
-mgcv::gam.check(model_no_interactions_onlytrends)
-
 #Interaction 1- considering only trends, trends in temp with x,y
+########################## DID NOT CONVERGE ##################################
 Sys.time(); model_onlytrends_tempxy<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
                              s(anthropic_dist,   bs= "ts") +
                                 s(hand, bs= "ts") +
@@ -438,7 +392,7 @@ Sys.time(); model_onlytrends_tempxy<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25
                                               trend_forestpercentage, trend_grasspercentage)),
                  method = "fREML",
                  family = quasibinomial(link = "logit")); Sys.time()
-summary(model_onlytrends_tempxy) #DID NOT CONVERGE
+summary(model_onlytrends_tempxy) 
 gratia::draw(model_onlytrends_tempxy, rug= F)
 mgcv::gam.check(model_onlytrends_tempxy)
 
@@ -465,8 +419,8 @@ Sys.time(); model_onlytrends_tempxy2<- mgcv::bam( cbind(ndvi_monthly_step_inc, 2
                                               trend_forestpercentage, trend_grasspercentage)),
                  method = "fREML",
                  family = quasibinomial(link = "logit")); Sys.time()
-summary(model_onlytrends_tempxy) 
-gratia::draw(model_onlytrends_tempxy, rug= F)
+summary(model_onlytrends_tempxy2) 
+gratia::draw(model_onlytrends_tempxy2, rug= F)
 mgcv::gam.check(model_onlytrends_tempxy)
 
 #Interaction 2- considering only trends, interaction in trends in temp with x,y and interaction in temp, re
@@ -493,6 +447,7 @@ Sys.time(); model_onlytrends_tempxy2_tempretrend<- mgcv::bam( cbind(ndvi_monthly
                  family = quasibinomial(link = "logit")); Sys.time()
 summary( model_onlytrends_tempxy2_tempretrend) 
 gratia::draw (model_onlytrends_tempxy2_tempretrend, rug= F)
+vis.gam(model_onlytrends_tempxy2_tempretrend, view = c("trend_re", "trend_annualtemp" ),  theta = 120, n.grid = 50, lwd = 0.4, color = "topo", type = "link")
 mgcv::gam.check( model_onlytrends_tempxy2_tempretrend)
 
 #Interaction 3- considering only trends, interaction in trends in temp with x,y and interaction in heatwaves spei
@@ -523,11 +478,538 @@ gratia::draw (model_onlytrends_tempxy2_heatwavespeitrend, rug= F)
 mgcv::gam.check( model_onlytrends_tempxy2_heatwavespeitrend)
 model_onlytrends_tempxy2_heatwavespeitrend <- mgcViz::getViz(model_onlytrends_tempxy2_heatwavespeitrend)
 mgcViz::plotRGL(sm(model_onlytrends_tempxy2_heatwavespeitrend, 12), fix = c("z" = 0), residuals = TRUE)
-vis.gam(model_onlytrends_tempxy2_heatwavespeitrend, view = c("trend_re", "trend_annualtemp"), theta = 120, plot.type = "persp")
-vis.gam(model_onlytrends_tempxy2_heatwavespeitrend, view = c("trend_heatwave", "trend_spei"), theta = 120, plot.type = "persp")
+vis.gam(model_onlytrends_tempxy2_heatwavespeitrend, view = c("trend_re", "trend_annualtemp"), theta = 120, plot.type = "persp", color = "topo")
+vis.gam(model_onlytrends_tempxy2_heatwavespeitrend, view = c("trend_heatwave", "trend_spei"), theta = 120, plot.type = "persp", color =  "topo")
+
+#Interaction 4- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate and interaction between annual temp and re
+Sys.time(); model_onlytrends_tempxy2_heatwavespeitrend_mean<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE), 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), 
+                           method = "fREML", 
+                           family = quasibinomial(link = "logit"),
+                           select = TRUE); Sys.time()
+summary( model_onlytrends_tempxy2_heatwavespeitrend_mean) 
+gratia::draw (model_onlytrends_tempxy2_heatwavespeitrend_mean, rug= F, scales = "fixed")
+mgcv::gam.check( model_onlytrends_tempxy2_heatwavespeitrend_mean)
+
+vis.gam(model_onlytrends_tempxy2_heatwavespeitrend_mean, view = c("trend_re", "trend_annualtemp"), theta = 120, plot.type = "persp", color = "topo")
+vis.gam(model_onlytrends_tempxy2_heatwavespeitrend_mean, view = c("trend_heatwave", "trend_spei"), theta = 120, plot.type = "persp", color =  "topo")
 
 
+#Interaction 5- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate,  interaction between annual temp and re and interaction between hand and anthropic pressure
+Sys.time(); model_interact_hand_anthropicpressure<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(hand, anthropic_dist, bs=c("ts", "ts"), k=c(5,5), fx= TRUE), 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_hand_anthropicpressure)
+gratia::draw (model_interact_hand_anthropicpressure, rug= F)
+###################### ABOVE MODEL- interaction between hand and anthropic pressure is not significant and does
+##################### not improve the model, so not considering it
+
+#Interaction 6- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate,  interaction between annual temp and re and interaction trends in burned area, temp and re
+Sys.time(); model_interact_burnedarea_temp_re<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE), 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_burnedarea_temp_re)
+gratia::draw (model_interact_burnedarea_temp_re, rug= F)
+
+#Interaction 7- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate,  interaction between annual temp and re, interaction trends in burned area, temp and re and interaction trends in burned area, spei and heatwaves
+Sys.time(); model_interact_burnedarea_temp_re_spei_heatwave<- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) , 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_burnedarea_temp_re_spei_heatwave)
+gratia::draw (model_interact_burnedarea_temp_re_spei_heatwave, rug= F)
+
+#Interaction 8- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate, interaction between annual temp and re, interaction trends in burned area, temp and re, interaction trends in burned area, spei and heatwaves and interaction between anthropic dist and burnedarea
+Sys.time(); model_interact_burnedarea_temp_re_spei_heatwave_anthropic_burnedarea <- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) , 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_burnedarea_temp_re_spei_heatwave_anthropic_burnedarea)
+gratia::draw (model_interact_burnedarea_temp_re_spei_heatwave_anthropic_burnedarea, rug= F)
 
 
+#Interaction 9- considering only trends, interaction in trends in temp with x,y,interaction in heatwaves spei and mean values of climate, interaction between annual temp and re, interaction trends in burned area, temp and re, interaction trends in burned area, spei and heatwaves, interaction between anthropic dist and burnedarea and interaction between anthropic dist and savanna percentage
+Sys.time(); model_interact_previous_anthropic_savanna <- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) , 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_previous_anthropic_savanna)
+gratia::draw (model_interact_previous_anthropic_savanna, rug= F)
+
+#Interaction 10 -previous + interaction between savanna, spei and heatwaves trends
+Sys.time(); model_interact_previous_savanna_spei_heatwave <- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                              s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_savannapercentage, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) , 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_previous_savanna_spei_heatwave)
+gratia::draw (model_interact_previous_savanna_spei_heatwave, rug= F)
+
+#Interaction 10 -previous + interaction between savanna, annual temp and re trends
+Sys.time(); model_interact_previous_savanna_temp_re <- mgcv::bam( cbind(ndvi_monthly_step_inc, 25- ndvi_monthly_step_inc) ~ 
+                             s(anthropic_dist, bs= "ts", fx= TRUE) +
+                             s(hand, bs= "ts", fx= TRUE) +
+                             s(trend_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(trend_re, bs= "ts", fx= TRUE) +
+                               s(trend_annualtemp, bs= "ts", fx= TRUE) +
+                               s(trend_heatwave, bs ="ts", fx= TRUE) +
+                               s(trend_spei, bs= "ts", fx= TRUE) +
+                               s(trend_burnedarea, bs = "ts", fx= TRUE) +
+                               s(mat, bs= "ts", fx= TRUE) +
+                               s(mean_heatwave,  bs= "ts",fx= TRUE)+
+                               s(mean_burnedarea, bs= "ts", fx= TRUE) +
+                               s(mean_re, bs= "ts", fx= TRUE)+
+                               s(mean_savannapercentage, bs= "ts", fx= TRUE) +
+                               s(mean_spei, bs= "ts") +
+                               s(x,y, bs= "ts", fx= TRUE) +
+                               ti(trend_annualtemp, x,y, d=c(1,2), bs=c("ts", "ts"), k=c(5,12), fx= TRUE) +
+                               ti(trend_annualtemp, trend_re, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(trend_heatwave, trend_spei, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_burnedarea, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) +
+                               ti(anthropic_dist, mean_savannapercentage, bs=c("ts", "ts"), k=c(5,5), fx= TRUE) + 
+                               ti(trend_burnedarea, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_burnedarea, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_savannapercentage, trend_spei, trend_heatwave, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE) +
+                               ti(trend_savannapercentage, trend_annualtemp, trend_re, bs=c("ts", "ts", "ts"), k=c(5,5,5), fx= TRUE), 
+                           data = no_outliers_sample_df %>% 
+                             dplyr::select(-c(ndvi_monthly_lin_dec, ndvi_monthly_lin_inc,
+                                              ndvi_monthly_step_dec, ndvi_monthly_stable,
+                                              ndvi_monthly_quad_dec_acc, ndvi_monthly_quad_dec_decc, 
+                                              ndvi_monthly_quad_inc_acc, ndvi_monthly_quad_inc_dec, 
+                                              trend_forestpercentage, trend_grasspercentage)), method = "fREML", family = quasibinomial(link = "logit")); Sys.time()
+summary(model_interact_previous_savanna_temp_re)
+gratia::draw (model_interact_previous_savanna_temp_re, rug= F)
+
+
+```
+
+Plotting  2 way interactions - basic + ggplot
+```{r}
+#Trial 2 way interaction- partial effect of interaction of trend in annual temperatures and relative entropy
+
+######### basic version of above
+
+#1- Creating a grid of values of temp and re ie predictors over which to predict response
+
+#Interaction terms
+tempgrid <- seq(min(no_outliers_sample_df$trend_annualtemp),max(no_outliers_sample_df$trend_annualtemp),len=200)
+regrid <- c(min(no_outliers_sample_df$trend_re), 0, max(no_outliers_sample_df$trend_re))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendsavanna <- mean(no_outliers_sample_df$trend_savannapercentage)
+trendheatwave <- mean(no_outliers_sample_df$trend_heatwave)
+trendspei <- mean(no_outliers_sample_df$trend_spei)
+trendburnedarea <- mean(no_outliers_sample_df$trend_burnedarea)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+newd <- data.frame(expand.grid(tempgrid,regrid))
+names(newd) <- c("trend_annualtemp","trend_re")
+newd <- newd %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = trendburnedarea, 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+
+# 2- Predicting the model for the above test grid created
+pred <- predict(model_interact_previous_savanna_temp_re, newdata = newd, type="terms") #The "terms" option returns a matrix giving the fitted values of each term in the model formula on the linear predictor scale.
+pred[1:10,]
+
+par(mfrow = c(1, 4))
+
+ind <- 1:200
+x1Eff <- rowSums(pred[ind, c(5,17)] )
+plot(tempgrid,x1Eff,type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred[ind2, c(5,17)] )
+lines(tempgrid, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred[ind3, c(5,17)] )
+lines(tempgrid, x3Eff, col="blue")
+
+#3- including 95% CI for above plot- NEED TO FIGURE OUT
+# with uncertainty
+#X <- predict(model_onlytrends_tempxy2_heatwavespeitrend_mean, newdata = newd, type="lpmatrix")
+# beta uncertainty
+#n.sims <- 1000
+#b_sims <- rmvn(n.sims,coef(model_onlytrends_tempxy2_heatwavespeitrend_mean),model_onlytrends_tempxy2_heatwavespeitrend_mean$Vp)
+# pick x1 "effects"
+#coef(model_onlytrends_tempxy2_heatwavespeitrend_mean)
+#coef_index <- grep("trend_annualtemp", names(coef(model_onlytrends_tempxy2_heatwavespeitrend_mean)), fixed = T)
+# compute the spline
+#x4Eff <- tcrossprod( X[,coef_index] , b_sims[,coef_index] )
+
+#plot(tempgrid,apply(x4Eff[1:200,],1,mean), type="l")
+#lines(tempgrid,apply(x4Eff[1:200,],1,quantile,probs=0.025), type="l", lty =3)
+#lines(tempgrid,apply(x4Eff[1:200,],1,quantile,probs=0.975), type="l", lty =3)
+
+#plot(tempgrid,apply(x4Eff[201:400,],1,mean), type="l")
+#lines(tempgrid,apply(x4Eff[201:400,],1,quantile,probs=0.025), type="l", lty =3)
+#lines(tempgrid,apply(x4Eff[201:400,],1,quantile,probs=0.975), type="l", lty =3)
+
+#plot(tempgrid,apply(x4Eff[401:600,],1,mean), type="l")
+#lines(tempgrid,apply(x4Eff[401:600,],1,quantile,probs=0.025), type="l", lty =3)
+#lines(tempgrid,apply(x4Eff[401:600,],1,quantile,probs=0.975), type="l", lty =3)
+
+######### ggplot version of above
+#1- make df of tempgrid, x1Eff, x2Eff, x3Eff
+plot_df <- data.frame(trend_annualtemp = tempgrid)
+plot_df <- plot_df %>% mutate(more_uniform_rainfall = x1Eff,
+                              no_trend_rainfall_seasonality = x2Eff,
+                              more_seasonal_rainfall = x3Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(2:4)
+plot_interaction_temp_re <- ggplot(pivot_plot_df, aes(x = trend_annualtemp, y = value, group = name)) +
+  geom_line(aes(color = name), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + 
+  ylab ("Partial Effect") + 
+  xlab ("Trend in annual temperature") +
+  theme(legend.title=element_blank())
+
+
+######### function to create ggplot for remaining 2 way interactions
+
+
+```
+
+Plotting  3 way interactions - basic + ggplot
+I have decided to consider three scenarios of the 3 terms ie 3 panels and within each panel
+plot for 3 different values of the remaining 2 terms ie 3 lines, with x axis being the remaining variable. 
+
+For example, 3 panels of different trends in burned area- decreasing burned area, no change in burned area and
+increasing burned area. And within each panel, I plot interaction of trend in temp and entropy like above.
+
+```{r}
+#Trial 3 way interaction- partial effect of interaction of trends in burnedarea, annual temperatures and relative entropy
+
+######### basic version 
+
+#1- Creating range of temp and re like previous chunk 
+tempgrid_1 <- seq(min(no_outliers_sample_df$trend_annualtemp),max(no_outliers_sample_df$trend_annualtemp), len = 200)
+regrid_1 <- c(min(no_outliers_sample_df$trend_re), 0, max(no_outliers_sample_df$trend_re))
+
+#Other predictors at mean of their value
+anthropicdist <- mean(no_outliers_sample_df$anthropic_dist)
+hand <- mean(no_outliers_sample_df$hand)
+trendsavanna <- mean(no_outliers_sample_df$trend_savannapercentage)
+trendheatwave <- mean(no_outliers_sample_df$trend_heatwave)
+trendspei <- mean(no_outliers_sample_df$trend_spei)
+mean_mat <- mean(no_outliers_sample_df$mat)
+mean_heatwave <- mean(no_outliers_sample_df$mean_heatwave)
+mean_burnedarea <- mean(no_outliers_sample_df$mean_burnedarea)
+mean_re <- mean(no_outliers_sample_df$mean_re)
+mean_savannaperentage <- mean(no_outliers_sample_df$mean_savannapercentage)
+mean_spei <- mean(no_outliers_sample_df$mean_spei)
+
+# 3 burned area scenarios - decreasing burned area, no change in burned area and increasing burned area
+burn_decreasing <- mean(no_outliers_sample_df$trend_burnedarea) +sd(no_outliers_sample_df$trend_burnedarea)
+burn_nochange <- 0
+burn_increasing <- mean(no_outliers_sample_df$trend_burnedarea) - sd(no_outliers_sample_df$trend_burnedarea)
+
+#at a particular position of x, y
+x1 <- -43.2781
+y1 <- -4.0213
+
+
+df_burn_dec <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_burn_dec) <- c("trend_annualtemp","trend_re")
+df_burn_dec <- df_burn_dec %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = burn_decreasing, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_burn_nochange <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_burn_nochange) <- c("trend_annualtemp","trend_re")
+df_burn_nochange <- df_burn_nochange %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = burn_nochange, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+df_burn_inc <- data.frame(expand.grid(tempgrid_1,regrid_1))
+names(df_burn_inc) <- c("trend_annualtemp","trend_re")
+df_burn_inc <- df_burn_inc %>% mutate(anthropic_dist = anthropicdist, 
+                        hand = hand, 
+                        trend_savannapercentage = trendsavanna, 
+                        trend_heatwave = trendheatwave, 
+                        trend_spei = trendspei, 
+                        trend_burnedarea = burn_increasing, #changed 
+                        mat = mean_mat,
+                        mean_heatwave = mean_heatwave, 
+                        mean_burnedarea = mean_burnedarea, 
+                        mean_re = mean_re,
+                        mean_savannapercentage = mean_savannaperentage,
+                        mean_spei = mean_spei,
+                        x = x1,
+                        y = y1)
+
+# 2- Predicting the model for the above test grid created
+pred_burn_inc <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_inc, type="terms") 
+pred_burn_nochange <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_nochange, type="terms") 
+pred_burn_dec <- predict(model_interact_previous_savanna_temp_re, newdata = df_burn_dec, type="terms") 
+
+par(mfrow = c(1, 3))
+
+#3- plots
+# burn decreasing partial effects
+ind <- 1:200
+x1Eff <- rowSums(pred_burn_dec [ind, c(5,17,21)] )
+plot(tempgrid_1, x1Eff, type="l")
+ind2 <- 201:400
+x2Eff <- rowSums( pred_burn_dec [ind2, c(5,17, 21)] )
+lines(tempgrid_1, x2Eff, col="red")
+ind3 <- 401:600
+x3Eff <- rowSums( pred_burn_dec[ind3, c(5,17, 21)] )
+lines(tempgrid_1, x3Eff, col="blue")
+
+# burn nochange partial effects
+ind4 <- 1:200
+x4Eff <- rowSums(pred_burn_nochange [ind4, c(5,17,21)] )
+plot(tempgrid_1, x4Eff, type="l")
+ind5 <- 201:400
+x5Eff <- rowSums( pred_burn_nochange [ind5, c(5,17, 21)] )
+lines(tempgrid_1, x5Eff, col="red")
+ind6 <- 401:600
+x6Eff <- rowSums( pred_burn_nochange[ind6, c(5,17, 21)] )
+lines(tempgrid_1, x6Eff, col="blue")
+
+# burn increasing partial effects
+ind7 <- 1:200
+x7Eff <- rowSums(pred_burn_inc [ind7, c(5,17, 21)] )
+plot(tempgrid_1, x7Eff, type="l")
+ind8 <- 201:400
+x8Eff <- rowSums( pred_burn_inc [ind8, c(5,17, 21)] )
+lines(tempgrid_1, x8Eff, col="red")
+ind9 <- 401:600
+x9Eff <- rowSums( pred_burn_inc[ind9, c(5,17, 21)] )
+lines(tempgrid_1, x9Eff, col="blue")
+
+######### ggplot version
+#1- compile df
+plot_df <- data.frame(trend_annualtemp = tempgrid_1)
+plot_df <- plot_df %>% mutate(more.uniform.rainfall_decburn = x1Eff,
+                              no.trend.rainfall.seasonality_decburn = x2Eff,
+                              more.seasonal.rainfall_decburn = x3Eff,
+                              more.uniform.rainfall_nochange = x4Eff,
+                              no.trend.rainfall.seasonality_nochange = x5Eff,
+                              more.seasonal.rainfall_nochange = x6Eff,
+                              more.uniform.rainfall_incburn = x7Eff,
+                              no.trend.rainfall.seasonality_incburn = x8Eff,
+                              more.seasonal.rainfall_incburn = x9Eff)
+
+pivot_plot_df <- plot_df %>% pivot_longer(-1)
+pivot_plot_df <- pivot_plot_df %>% separate(name, into =c("rainfallseasonality", "burntrend"), sep = "_" )
+
+plot_interaction_temp_re_burnedarea <- ggplot(pivot_plot_df, aes(x = trend_annualtemp, y = value, group = rainfallseasonality)) +
+  geom_line(aes(color = rainfallseasonality), linewidth = 1) + theme_classic() +
+  scale_color_manual(values=c("#990066", "#333333", "#336600")) + facet_grid(~factor(burntrend, levels = c("decburn", "nochange", "incburn"))) +
+  ylab ("Partial Effect") + 
+  xlab ("Trend in annual temperature") +
+  theme(legend.title=element_blank())
 
 ```
