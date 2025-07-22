@@ -52,6 +52,8 @@ cerrado<- d_trans %>% st_union()
 # tic(); gee_chirps_1km <- do.call(mosaic,raster_list); toc() #9.5 hours
 # writeRaster(gee_chirps_1km, here("Data", "Climate", "Rainfall", "CHIRPS_1km_gee", "mosiac_gee_chirps_1km.tif"))
 
+gee_chirps_1km <- rast(here("Data", "Climate", "Rainfall", "CHIRPS_1km_gee", "mosiac_gee_chirps_1km.tif"))
+
 
 crop_rainfall<- terra::crop(gee_chirps, vect(cerrado))
 Sys.time(); mask_rainfall<- terra::mask(crop_rainfall, vect(cerrado)); Sys.time()#half hour
