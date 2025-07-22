@@ -8,14 +8,12 @@ library(lattice)
 library(tidyverse)
 library(here)
 
-
 library(ggplot2)
 library(ggpubr)
 library(sf)
 library(terra)
 
 library(tmap)
-library(tmaptools)
 library(viridis)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
@@ -27,61 +25,78 @@ environmental drives and stability at the biome scale.
 
 ##Data input
 ```{r}
-#response- stable area from all three indices
-#aniso_stable<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "agg_stability_am_11_trajresults.tif"))
+#response- "stable" area derived from analyses of satellite derived vegetation productivity 
 ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" , "unstablearea_5km", "monthlyswin11_ndvi_unstablearea.tif"))
-evi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly", "unstablearea_5km", "monthlyswin11_evi_unstablearea.tif"))
 
-#drivers
+#drivers of "instability"
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
+
+burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
 re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
 mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
 spei<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
 heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
 savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
-
-
 ```
 
-##Preprocessing of all data- making appropriate data structure 
+1) anthropic_dist - distance of the particular 5x5km grid cell to the closest anthropogenic land use
+2) hand - water table depth, so value is the water table depth in meters
 
+3) burnedarea - trend in the proportion of the 5x5km grid cell that burned through time
+trend is calculated as the slope of a theilsen regression of annual burned area ~ time (21 years).
+This theilsen regression has been applied to other "temporal" predictor variables explained below.
+Basically the value in this column of the df is the slope from theilsen regression.
+4) re- this is relative entropy which is a metric of seasonality. So positive slope values
+means that actual rainfall in the 5x5km grid cell is becoming different from a equal amount of rainfall through the year 
+(like uniform distribution across 12 months) faster and negative values is the same meaning but slower
+4) mat - trend in annual temp. Similar interpretation- postive values mean that 
+that 5x5km grid cell is getting hotter 
+5) spei- this variable is also a trend where negative values mean that overall there are more droughts and
+positive values mean that there are less droughts
+6) heatwave- positive values means annual number of heatwaves is increasing 
+7) savannapercentage- area of savanna vegetation in the 5x5 km grid cell that is increasing (positive values)
+Above variables has not unit because its all slope. All trend varibales were calculated between 2002 and 2021.
+
+
+##Preprocessing of all data- making appropriate data structure ie makign a dataframe (df) from 
+geospatial data format
 ```{r}
 drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
 drivers
 names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "mat", "heatwave", "spei", "savannapercentage")
 
-instability<- c(ndvi_unstable, evi_unstable)
-names(instability)<- c("NDVI_instability", "EVI_instability")
+instability<- c(ndvi_unstable)
+names(instability)<- c("NDVI_instability")
 
 all_data<- c(instability, drivers)
 analyses_df<- terra::as.data.frame(all_data)
-remove( evi_unstable, ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
+remove( ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
 remove(drivers, instability)
 ```
 
-
-##SEM
-#EDA
+#Exploratory data analyses
 First because the sample size is the population, I know that all test statistics will
 be unreliable, especially statistics like chi sq that are dependent on sample size. 
-Hence I sample a % of the total data. I then do EDA because SEM usually
-is run on Gaussian distributed data
+Hence I sample a % of the total data to run the SEM. I also plot the 
+data to check if the different variables follow a Guassian distribution. 
+
+I also scale the dataframe because all the units and magnitudes of variables int he df are 
+very different.
 ```{r}
 analyses_df
 summary(analyses_df)
 analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
 
+### Sampling 30% of the data resulting in 6306 rows of data
 set.seed(1000)
-sample_df<- analyses_df_NA %>% slice_sample(prop=0.3, replace= FALSE) #20% randomly sampled
+sample_df<- analyses_df_NA %>% slice_sample(prop=0.3, replace= FALSE) #30% randomly sampled of entire dataset
 summary(sample_df)
 
-#install.packages("PerformanceAnalytics")
 library(PerformanceAnalytics)
 chart.Correlation(sample_df, histogram = TRUE, pch= 19)
 
-#Removing outliers considering distribution of HAND
+#Removing outliers considering distribution of height above nearest drainage variable
 no_outliers_sample_df <- sample_df %>% 
           mutate (IQR = IQR(hand),
                   O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
@@ -92,32 +107,31 @@ no_outliers_sample_df <- sample_df %>%
 
 chart.Correlation(no_outliers_sample_df, histogram = TRUE, pch= 19)
 
-no_outliers_sample_df
+### Scaling data by centering around means due as the units and values of all variables are very different
+scaled_analyses_ndviinstability<- data.frame(scale(no_outliers_sample_df, center= TRUE, scale= TRUE)) 
 
-analyses_ndviinstability<- no_outliers_sample_df %>% dplyr::select(-c(EVI_instability))
-scaled_analyses_ndviinstability<- data.frame(scale(analyses_ndviinstability, center= TRUE, scale= TRUE)) 
-chart.Correlation(scaled_analyses_ndviinstability, histogram = TRUE, pch= 19)
+### Checking the covariance matrix of scaled data
+cov_matrix_scaled_data <- cov(scaled_analyses_ndviinstability)
 
-#plot
+#plot of distributions of scaled data
 pivot_df <- scaled_analyses_ndviinstability  %>%
   pivot_longer(1:9)
 distribution_plot <- ggplot(data = pivot_df, aes(value)) +
   geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
   theme_classic(base_size = 16)
-#analyses_evistability<- no_outliers_sample_df %>% dplyr::select(-c(NDVI_stability))
-#scaled_analyses_evistability<- data.frame(scale(analyses_evistability, center= TRUE, scale= TRUE)) 
+distribution_plot
 
 ```
-All response variables of stable area by index are right skewed (because most of the Cerrado is stable).
-Heatwaves# is normally distributed, while the remaining variables are not. I excluded outliers beyond the 
-interquartile range for hand. After exclusion of outliers, most variables are still not normally distributed. 
+Response variables of "stable" area is right skewed (because most of the Brazilian savanna biome is stable).
+Most of the drivers/predictors are normally distributed.
 
-#Analyses
-I first consider on NDVI based stable area response variable
+#Analyses - 1 considering composite SEM using partial least square path modelling using cSEM in R
+
 ```{r}
 scaled_analyses_ndviinstability
-#scaled_analyses_evistability
+
 #install.packages("cSEM")
+library(lavaan)
 library(cSEM)
 
 comp_trial2<- '
@@ -138,11 +152,7 @@ comp_trial2<- '
   FIRE =~ burnedarea
   ANTHROPIC_PRESSURES =~ anthropic_dist
 '
-#Sys.time(); modeltrial2<- cSEM::csem(.data =  scaled_analyses_ndvistability %>% dplyr::select(-c(forestpercentage, grasspercentage)), 
-#                                     .model = comp_trial2); Sys.time()
-#Sys.time(); modeltrial3<- cSEM::csem(.data =  scaled_analyses_ndvistability %>% dplyr::select(-c(forestpercentage, grasspercentage)), 
-#                                     .model = comp_trial2, 
-#                                     .resample_method = "bootstrap"); Sys.time()
+
 Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability, 
                                      .model = comp_trial2, 
                                      .approach_weights = "PLS-PM",
@@ -150,12 +160,101 @@ Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability,
                                      .R =1000,
                                      .seed= 1000); Sys.time()
 cSEM::summarize(modeltrial4)
-x<-cSEM::assess(modeltrial4) #model fit statistics look good - R2 ffor structural regression equations from here
-cSEM::verify(modeltrial4) # model admissability looks good
-modelfit<- cSEM::testOMF(modeltrial4) #reject null hypothesis, so model fit to observed data is poor
+x<-cSEM::assess(modeltrial4) #model fit statistics look good - R2 for structural regression equations from here for reporting
+cSEM::verify(modeltrial4) # model admissibility looks good
+modelfit<- cSEM::testOMF(modeltrial4) #reject null hypothesis, so model fit to observed data is poor! Need to clarify
 
 ```
 
-VBerification of model fit ie the acceptable range of values of various model fit statistics is from 
+Verification of model fit ie the acceptable range of values of various model fit statistics can be taken from
 https://www.smartpls.com/documentation/functionalities/thresholds
-which is the thresholds used by SmartPLS software. 
+which includes the thresholds used by SmartPLS software.
+
+#Analyses - 2- using H-O specification
+Based on Yu et al 2025- A flexible way to study composites in ecology using structural equation modeling, I decided
+to use the H-O specification to overcome the problems of 2 step (above chunk and generally used for composited) and 1 step
+SEM. As per Schuberth's email, cSEM freely estimates the weights of the composites using partial least square path modelling. 
+So implementing H-O with free weights option.
+```{r}
+library(lavaan)
+
+modelho_f1<-'
+
+# Specify emergent variables and label their loadings.
+Background_Climate =~ NA*re + l11*mat + l12*re
+l11 + l12 == 1
+
+Pulse_Shocks =~ NA*heatwave + l13*spei + l14*heatwave
+l13 + l14 == 1
+
+# Label the variances of emergent variables.
+Background_Climate ~~ vbackgroundclimate*Background_Climate
+Pulse_Shocks ~~ vpulseshocks*Pulse_Shocks
+
+# Specify the excrescent variables and label their loadings.
+nu1 =~ re + 122*mat
+nu2 =~ heatwave + 131*spei
+
+# Label the variances of excrescent variables.
+nu1 ~~ vnu1*nu1
+nu2 ~~ vnu2*nu2
+
+# Specify common factors.
+Instability =~ NDVI_instability
+NDVI_instability ~~ 1*NDVI_instability
+
+Fire =~ burnedarea
+burnedarea ~~ 1*burnedarea
+
+AnthropicPressure =~ anthropic_dist
+anthropic_dist ~~ 1*anthropic_dist
+
+SavannaPhy =~ savannapercentage
+savannapercentage ~~ 1*savannapercentage
+
+WaterTable =~ hand
+hand ~~ 1*hand
+
+# Constrain the covariances of the excrescent variables
+# with other variables in the structural model to zero.
+# Label the covariances among excrescent variables within blocks.
+nu1 ~~ 0*Background_Climate + 0*Pulse_Shocks + 0*Instability + 0*Fire + 0*AnthropicPressure + 0*SavannaPhy + 0*WaterTable + 0*nu2
+nu2 ~~ 0*Background_Climate + 0*Pulse_Shocks + 0*Instability + 0*Fire + 0*AnthropicPressure + 0*SavannaPhy + 0*WaterTable
+
+# Fix the variances of the measurement errors to zero.
+re ~~ 0*re
+mat ~~ 0*mat
+heatwave ~~ 0*heatwave
+spei ~~ 0*spei
+
+# Specify the structural model.
+Instability ~ Background_Climate + Pulse_Shocks + WaterTable + SavannaPhy + AnthropicPressure + Fire
+SavannaPhy  ~ Pulse_Shocks  + Background_Climate + AnthropicPressure + Fire
+Fire ~ Pulse_Shocks + Background_Climate + AnthropicPressure
+WaterTable ~ AnthropicPressure
+
+# Specify weights
+wre := 1 / (l11 + l12)
+wmat := 1 / (l11 + l12)
+
+wheatwave := 1 / (l13 + l14)
+wdrought := 1 / (l13 + l14)
+
+vre := ((l12)*(l12)*(vbackgroundclimate)) + ((1)*(1)*(vnu1))
+vmat := ((l11)*(l11)*(vbackgroundclimate)) + ((1)*(1)*(vnu1))
+
+vheatwave := (l14)*(l14)*(vpulseshocks) + (-1)*(-1)*(vnu2)
+vdrought := (l13)*(l13)*(vpulseshocks) + (1)*(1)*(vnu2)
+
+wres := wre * sqrt(vre / vbackgroundclimate)
+wmats := wmat * sqrt(vmat / vbackgroundclimate)
+
+wheatwaves := wheatwave * sqrt(vheatwave / vpulseshocks)
+wdroughts := wdrought * sqrt(vdrought / vpulseshocks)
+'
+
+Sys.time(); outho_f1=sem(model = modelho_f1, data = scaled_analyses_ndviinstability); Sys.time()
+summary(outho_f1, standardized=T, fit.measures=T)  
+standardizedsolution(outho_f1)
+
+```
