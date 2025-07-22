@@ -1,4 +1,4 @@
-##Extraction of time series for each index for different trajectories
+##Extraction of time series for each index for different trajectories for random points
 library(tidyverse)
 library(terra)
 library(here)
@@ -220,7 +220,7 @@ mappalette1[[4]]<- "#FFFF33"
 mappalette1[[5]]<- "#A65628"
 Sys.time(); step4("NDVI", "central", "Central", mappalette1);Sys.time() #because Quad trajectories exist
 
-mappalette2<- brewer.pal(n=5, "Set1")
+mappalette2<- brewer.pal(n=5, "Set1") #no Quad trajectories
 mappalette2[[3]]<- "#333333"
 mappalette2[[4]]<- "#984EA3"
 mappalette2[[5]]<- "#FF7F00"
