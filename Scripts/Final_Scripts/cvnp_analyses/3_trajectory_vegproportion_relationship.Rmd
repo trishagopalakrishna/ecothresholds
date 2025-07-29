@@ -35,6 +35,7 @@ cvnp_annual_evi<- rast(here(input_file_path,"cvnp_evi_annual.tif"))
 cvnp_annual_ndvi<- rast(here(input_file_path,"cvnp_ndvi_annual.tif"))
 cvnp_monthly_evi<- rast(here(input_file_path,"cvnp_evi_monthly.tif"))
 cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
+
 ```
 
 #Step 2 - veg physiognomies input and processing
@@ -66,69 +67,77 @@ coarsening_function <- function (classified_raster){
 }
 
 coarse_lev1_phy <- coarsening_function(lev1_phy)
+names(coarse_lev1_phy) <- c("grasslands", "savannas", "woodland", "anthropic")
 remove(coarsening_function)
 ```
 
 #Step 3a - eda grass, forest and savanna spread in pixels classified as each of the trajectories
 ```{r}
-data <- c(coarse_lev1_phy, cvnp_annual_evi, cvnp_annual_ndvi, cvnp_monthly_evi, cvnp_monthly_ndvi)
-df_data <- terra::as.data.frame(data, cells = TRUE, xy = TRUE)
-df_data <- df_data %>% rename("cell" ="cell", "x"="x", "y"="y",
-                              "percentage_grass"="1", "percentage_savanna"="2",
-                              "percentage_woodland"= "3", "percentage_anthropic"="4",
-                              "annual_EVI"="evi_swin11_annual", "annual_NDVI"="ndvi_swin11_annual",
-                              "monthly_EVI"="evi_swin11_monthly", "monthly_NDVI"="ndvi_swin11_monthly")
-summary(df_data)
-
-df_data_noNA <- df_data %>% filter(!is.na(annual_EVI)) #NA values are around the boundary and a couple of water pixels
-
-veg_trajtype_boxplot_function <- function (traj_column, veg_column, plot_title){
-  df_filter <- df_data_noNA  %>% dplyr::select(veg_column, traj_column)
-  df_filter <- df_filter %>% mutate(TrajType = case_when(df_filter[[traj_column]] == 2~" Linear Increase",
-                                                                         df_filter[[traj_column]] == 3 ~"No trend",
-                                                                         df_filter[[traj_column]] == 4 ~"Step Decrease",
-                                                                         df_filter[[traj_column]] == 5 ~ "Step Increase",
-                                                                         df_filter[[traj_column]] == 8 ~ "Quadratic Increase (acc)",
-                                                                         df_filter[[traj_column]] == 9 ~ "Quadratic Increase (dec)"))
-  df_filter <- df_filter %>% filter(!is.na(df_filter[[traj_column]]))
-
-  plot<- ggplot(df_filter, aes(x = reorder(TrajType, df_filter[[veg_column]]), y = df_filter[[veg_column]], fill = TrajType)) + 
-    geom_boxplot() + ylab("native vegetation proportion") + xlab("Trajectory types") +
-    labs(title = plot_title) +
-    theme_classic(base_size = 16) +
-     theme(axis.text.x =element_blank(),
-        axis.ticks.x =element_blank()) +
-    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
-  plot 
+formation_trajectory <- function(trajectory_results_raster) {
+  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
+  trajectory_names <- c("Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_inc_acc", "Quad_inc_dec")
+  df_for_histogram<- list()
+  for (i in 1:nlyr(split_trajectory)){
+    stack_raster <- c(split_trajectory[[i]], coarse_lev1_phy)
+    names(stack_raster)<- c(trajectory_names[[i]], "grasslands", "savannas", "woodland", "anthropic")
+    stack_df <- terra::as.data.frame(stack_raster, na.rm = T)
+    df_for_histogram[[i]]<- stack_df
+  }
+  df_for_histogram
 }
 
-grass_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_grass", "NDVI(monthly)")
-grass_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_grass", "EVI(monthly)")
-grass_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_grass", "NDVI(annual)")
-grass_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_grass", "EVI(annual)")
+Sys.time(); monthly_ndvi_composition_trajectories <- formation_trajectory(cvnp_monthly_ndvi); Sys.time()
+Sys.time(); monthly_evi_composition_trajectories <- formation_trajectory(cvnp_monthly_evi); Sys.time()
+Sys.time(); annual_ndvi_composition_trajectories <- formation_trajectory(cvnp_annual_ndvi); Sys.time()
+Sys.time(); annual_evi_composition_trajectories <- formation_trajectory(cvnp_annual_evi); Sys.time()
 
-grass_boxplot_plots <- ggarrange(grass_ndvi_monthly, grass_evi_monthly, grass_ndvi_annual, grass_evi_annual, ncol =2, nrow=2 )
+
+df_prep_function <- function (df_veg_trajectory){
+  prepped_df_list <- list()
+  for(i in 1:length(df_veg_trajectory)){
+    x_pivot <- pivot_longer(df_veg_trajectory[[i]], 2:5)
+    x_pivot <- x_pivot %>% mutate(TrajType = (names(x_pivot)[1])) %>%
+      dplyr::select(c(-1))
+    prepped_df_list[[i]] <- x_pivot
+  }
+  prepped_data <- bind_rows(prepped_df_list)
+  prepped_data
+}
+
+Sys.time(); df_prep_monthly_ndvi_trajcomp <- df_prep_function( monthly_ndvi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_monthly_evi_trajcomp <- df_prep_function( monthly_evi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_annual_ndvi_trajcomp <- df_prep_function( annual_ndvi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_annual_evi_trajcomp <- df_prep_function( annual_evi_composition_trajectories); Sys.time()
+
 output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
-ggsave(paste0(output_file_path, "//", "boxplot_trajectory_grass.png"),
-       grass_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+hist_plot_function <- function (plot_df){
+  ggplot(plot_df, aes(x = value)) + 
+   geom_histogram(position = "identity", bins = 10) + 
+  theme_classic(base_size = 14) + scale_x_continuous(c(0,1)) +
+  facet_grid(name ~ TrajType) + 
+  theme(axis.title.x = element_blank(),
+    #axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()) + 
+  theme(legend.position="none")
+}
+monthly_ndvi_hist_traj_comp <- hist_plot_function(df_prep_monthly_ndvi_trajcomp)
+ggsave(paste0(output_file_path, "//", "monthly_ndvi_traj_composition.png"),
+       monthly_ndvi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
 
-savanna_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_savanna", "NDVI(monthly)")
-savanna_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_savanna", "EVI(monthly)")
-savanna_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_savanna", "NDVI(annual)")
-savanna_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_savanna", "EVI(annual)")
+monthly_evi_hist_traj_comp <- hist_plot_function(df_prep_monthly_evi_trajcomp)
+ggsave(paste0(output_file_path, "//", "monthly_evi_traj_composition.png"),
+       monthly_evi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
 
-savanna_boxplot_plots <- ggarrange(savanna_ndvi_monthly, savanna_evi_monthly, savanna_ndvi_annual, savanna_evi_annual, ncol =2, nrow=2 )
-ggsave(paste0(output_file_path, "//", "boxplot_trajectory_savanna.png"),
-       savanna_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+annual_ndvi_hist_traj_comp <- hist_plot_function(df_prep_annual_ndvi_trajcomp)
+ggsave(paste0(output_file_path, "//", "annual_ndvi_traj_composition.png"),
+       annual_ndvi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
 
-woodland_ndvi_monthly <- veg_trajtype_boxplot_function("monthly_NDVI", "percentage_woodland", "NDVI(monthly)")
-woodland_evi_monthly <- veg_trajtype_boxplot_function("monthly_EVI", "percentage_woodland", "EVI(monthly)")
-woodland_ndvi_annual <- veg_trajtype_boxplot_function("annual_NDVI", "percentage_woodland", "NDVI(annual)")
-woodland_evi_annual <- veg_trajtype_boxplot_function("annual_EVI", "percentage_woodland", "EVI(annual)")
-
-woodland_boxplot_plots <- ggarrange(woodland_ndvi_monthly, woodland_evi_monthly, woodland_ndvi_annual, woodland_evi_annual, ncol =2, nrow=2 )
-ggsave(paste0(output_file_path, "//", "boxplot_trajectory_woodland.png"),
-       woodland_boxplot_plots ,dpi = 700, height = 80, width = 80, units = "cm")
+annual_evi_hist_traj_comp <- hist_plot_function(df_prep_annual_evi_trajcomp)
+ggsave(paste0(output_file_path, "//", "annual_evi_traj_composition.png"),
+       annual_evi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
 
 ```
 
