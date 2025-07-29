@@ -54,7 +54,7 @@ names(cru_spei_mask)<- raster_names
 
 # #Anmation map of spei 2002- 2021
 animation_x_time_map<-
-  tm_shape(cerrado)+ tm_fill()+
+  tm_shape(cerrado)+ tm_fill() +
   tm_shape (cru_spei_mask) +
   tm_raster(col.scale = tm_scale_intervals(n=5, style= "quantile", values = "Reds")) +
   tm_layout (legend.position = c("left", "top"))+
