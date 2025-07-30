@@ -68,7 +68,12 @@ coarsening_function <- function (classified_raster){
 
 coarse_lev1_phy <- coarsening_function(lev1_phy)
 names(coarse_lev1_phy) <- c("grasslands", "savannas", "woodland", "anthropic")
-remove(coarsening_function)
+
+coarse_og_phy <- coarsening_function(veg_phy)
+names(coarse_og_phy) <- c("open_wet_grass", "well_drained_grass", "rupestrian_grass", "typical_cerrado", "rupestrian_cerrado", 
+                          "palm_swamp", "dense_woodland", "gallery_forest", "pasture", "water", "plantation", "agriculture", "nonvegetated")
+
+
 ```
 
 #Step 3a - eda grass, forest and savanna spread in pixels classified as each of the trajectories
@@ -95,7 +100,7 @@ Sys.time(); annual_evi_composition_trajectories <- formation_trajectory(cvnp_ann
 df_prep_function <- function (df_veg_trajectory){
   prepped_df_list <- list()
   for(i in 1:length(df_veg_trajectory)){
-    x_pivot <- pivot_longer(df_veg_trajectory[[i]], 2:5)
+    x_pivot <- pivot_longer(df_veg_trajectory[[i]], 2:dim(df_veg_trajectory[[i]])[2])
     x_pivot <- x_pivot %>% mutate(TrajType = (names(x_pivot)[1])) %>%
       dplyr::select(c(-1))
     x_pivot <- x_pivot %>% group_by (name, TrajType) %>%
@@ -147,7 +152,35 @@ ggsave(paste0(output_file_path, "//", "annual_evi_traj_composition.png"),
 ```
 
 
-#Step 3b - eda of relationship between trajectories and veg physiognomies using boxplots
+#Step 3b - eda of original physiognomies in pixels classified as each of the trajectories
+```{r}
+ogphy_formation_trajectory <- function(trajectory_results_raster) {
+  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
+  trajectory_names <- c("Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_inc_acc", "Quad_inc_dec")
+  df_for_histogram<- list()
+  for (i in 1:nlyr(split_trajectory)){
+    stack_raster <- c(split_trajectory[[i]], coarse_og_phy)
+    names(stack_raster)<- c(trajectory_names[[i]], "open_wet_grass", "well_drained_grass", "rupestrian_grass", "typical_cerrado", "rupestrian_cerrado", "palm_swamp", "dense_woodland", "gallery_forest", "pasture", "water", "plantation", "agriculture", "nonvegetated")
+    stack_df <- terra::as.data.frame(stack_raster, na.rm = T)
+    df_for_histogram[[i]]<- stack_df
+  }
+  df_for_histogram
+}
+
+Sys.time(); monthly_ndvi_ogphy_composition_trajectories <- ogphy_formation_trajectory(cvnp_monthly_ndvi); Sys.time()
+Sys.time(); monthly_evi_og_phy_composition_trajectories <- ogphy_formation_trajectory(cvnp_monthly_evi); Sys.time()
+
+Sys.time(); df_prep_monthly_ndvi_traj_ogphy_comp <- df_prep_function(monthly_ndvi_ogphy_composition_trajectories); Sys.time()
+Sys.time(); df_prep_monthly_evi_traj_ogphy_comp <- df_prep_function(monthly_evi_og_phy_composition_trajectories); Sys.time()
+
+monthly_ndvi_hist_traj_ogphy_comp <- hist_plot_function(df_prep_monthly_ndvi_traj_ogphy_comp)
+ggsave(paste0(output_file_path, "//", "monthly_ndvi_traj_og_phy_composition.png"),
+       monthly_ndvi_hist_traj_ogphy_comp ,dpi = 700, height = 50, width = 50, units = "cm")
+
+```
+
+
+#Step 3c - eda of relationship between trajectories and veg physiognomies using boxplots
 ```{r}
 veg_binning_function <- function (df, veg_formation_selected){
   df_veg_selected <- df %>% dplyr::select(c(veg_formation_selected, annual_EVI, annual_NDVI, monthly_EVI, monthly_NDVI))
