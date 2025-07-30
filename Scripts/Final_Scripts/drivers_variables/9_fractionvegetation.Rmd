@@ -25,13 +25,14 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ##Introduction 
 In this script I calculate the fractional area of savanna, forest and grass formation according
 to Mapbiomas through time and look at anomalies/trends. 
-(1) Crop /mask data from gee - https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fdefault%3AAbruptChanges_Cerrado%2FDrivers%2Fmapbiomas_Formations
+(1) Crop /mask data from gee exported at 5km resolution - https://code.earthengine.google.com/?scriptPath=users%2Ftrishagopalakrishna%2Fdefault%3AAbruptChanges_Cerrado%2FDrivers%2Fmapbiomas_Formation
+(2) Processing of mean annual % vegetation formation at 5km resolution 
 (2) Anomalies/trend through time
 
 #Step 1- reading data processed in gee, crop/mask and animation map 
 ```{r}
 #Data input
-raster_filepath <- list.files(path = here("Data", "Mapbiomas_formations"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+raster_filepath <- list.files(path = here("Data", "Mapbiomas_formations"), pattern= paste0("*","_5km","*"), all.files=TRUE, full.names=TRUE)
 raster_list<-lapply(raster_filepath, rast)
 
 d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -85,14 +86,24 @@ remove(animation_map_function, map_forest, map_grass, map_savanna)
 
 ```
 
-#Step 2 - anomalies/trend calculation
+
+#Step 2- mean annual % veg formation at 5km  
 ```{r}
 forest_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "forest_percentage_5km_2002_2021.tif"))
 grass_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "grass_percentage_5km_2002_2021.tif"))
 savanna_percentage<- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "savanna_percentage_5km_2002_2021.tif"))
 
-mean_savanna<- terra::app(savanna_percentage, fun= "mean")
+mean_savanna <- terra::app(savanna_percentage, fun= "mean")
 writeRaster(mean_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_savanna_percentage_5km_2002_2021.tif")) 
+mean_grass <- terra::app(grass_percentage, fun= "mean")
+writeRaster(mean_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_grass_percentage_5km_2002_2021.tif"))
+mean_forest <- terra::app(forest_percentage, fun= "mean")
+writeRaster(mean_forest, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_forest_percentage_5km_2002_2021.tif"))
+
+```
+
+#Step 3 - anomalies/trend calculation at 5km resolution
+```{r}
 
 #1- std deviation
 Sys.time(); std_forest <- terra::app (forest_percentage, fun = sd); Sys.time()
@@ -143,11 +154,11 @@ theilsen_function <- function(z){
   }
 } 
 Sys.time(); theilsen_forest <- terra::app (forest_percentage, fun = theilsen_function); Sys.time()
-#writeRaster(theilsen_forest, here("Outputs","OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage.tif"))
+writeRaster(theilsen_forest, here("Outputs","OtherVariables", "Formations_Heterogeniety", "theilsen_forestpercentage_5km.tif"))
 Sys.time(); theilsen_grass <- terra::app (grass_percentage, fun = theilsen_function); Sys.time()
-#writeRaster(theilsen_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage.tif"))
+writeRaster(theilsen_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_grasspercentage_5km.tif"))
 Sys.time(); theilsen_savanna <- terra::app (savanna_percentage, fun = theilsen_function); Sys.time()
-#writeRaster(theilsen_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
+writeRaster(theilsen_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage_5km.tif"))
 
 
 #Map making
@@ -170,7 +181,7 @@ Sys.time();tau_forest <- mapping_function (kendall_tau_forest, "Mann-Kendall"); 
 Sys.time();theilsen_forest <- mapping_function (theilsen_forest, "Theil-Sen Regression"); Sys.time()
 
 anomoly_results_forest<- tmap_arrange(std_forest, lm_forest, tau_forest, theilsen_forest, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_forest, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "anomoly_forestpercentage_methods_results.png"),
+tmap_save(anomoly_results_forest, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "5kmanomoly_forestpercentage_methods_results.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 Sys.time();std_grass <- mapping_function (std_grass, "Std"); Sys.time()
@@ -179,7 +190,7 @@ Sys.time();tau_grass <- mapping_function (kendall_tau_grass, "Mann-Kendall"); Sy
 Sys.time();theilsen_grass <- mapping_function (theilsen_grass, "Theil-Sen Regression"); Sys.time()
 
 anomoly_results_grass<- tmap_arrange(std_grass, lm_grass, tau_grass, theilsen_grass, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "anomoly_grasspercentage_methods_results.png"),
+tmap_save(anomoly_results_grass, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "5kmanomoly_grasspercentage_methods_results.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 Sys.time();std_savanna <- mapping_function (std_savanna, "Std"); Sys.time()
@@ -188,7 +199,7 @@ Sys.time();tau_savanna <- mapping_function (kendall_tau_savannna, "Mann-Kendall"
 Sys.time();theilsen_savanna <- mapping_function (theilsen_savanna, "Theil-Sen Regression"); Sys.time()
 
 anomoly_results_savanna<- tmap_arrange(std_savanna, lm_savanna, tau_savanna, theilsen_savanna, ncol = 4, nrow= 1) 
-tmap_save(anomoly_results_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "anomoly_savannapercentage_methods_results.png"),
+tmap_save(anomoly_results_savanna, here("Outputs", "OtherVariables", "Formations_Heterogeniety", "5kmanomoly_savannapercentage_methods_results.png"),
         height = 50, width = 50, units = "cm", dpi=700)
 
 ```
