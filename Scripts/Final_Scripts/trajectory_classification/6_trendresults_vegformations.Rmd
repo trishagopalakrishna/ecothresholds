@@ -148,7 +148,7 @@ Sys.time(); composition_ndvitrajectories <- formation_trajectory(monthly_rds_lis
 
 ```
 
-#Step 4- visualization of results
+#Step 4- visualization of results - histogram and boxplot
 ```{r}
 df_prep_function <- function (df_veg_trajectory){
   prepped_df_list <- list()
@@ -167,7 +167,7 @@ df_prep_function <- function (df_veg_trajectory){
 
 Sys.time(); df_trial <- df_prep_function(composition_ndvitrajectories); Sys.time()
 
-y <- ggplot(df_trial, aes(x = value)) + 
+y_hist <- ggplot(df_trial, aes(x = value)) + 
    geom_histogram(position = "identity", bins = 10) + 
   theme_classic(base_size = 14) + scale_x_continuous(c(0,1)) +
   facet_grid(name ~ TrajType) + 
@@ -183,16 +183,32 @@ y <- ggplot(df_trial, aes(x = value)) +
     axis.title.y = element_blank(),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank()) 
-ggsave(here("Outputs", "TrendsResults", "veg_composition_NDVItrajectories.png"),
-       y,dpi = 700, height = 50, width = 50, units = "cm")
+ggsave(here("Outputs", "TrendsResults", "hist_veg_composition_NDVItrajectories.png"),
+       y_hist,dpi = 700, height = 50, width = 50, units = "cm")
+
+Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
+y_boxplot <- ggplot(df_trial %>% dplyr::select(-c(mean, median)), aes(y = value, x = TrajType, group = TrajType)) +
+  geom_boxplot(aes(fill = TrajType)) + 
+  facet_grid(.~name) +
+  theme_bw(base_size = 14) +
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90)) +
+  scale_fill_manual(values = Set1palette) +
+  theme(legend.position = "none") +
+  xlab("Model Type") +ylab("Proportion of 1km pixel")
+ggsave(here("Outputs", "TrendsResults", "boxplot_veg_composition_NDVItrajectories.png"),
+       y_boxplot,dpi = 700, height = 50, width = 50, units = "cm")
 
 ```
 
-#Step 5- proportion of each trajectory with more than the mean proportion of the three veg formations
+#Step 5- proportion of each trajectory with more than the average and the 75th percentile ie upper quartile of the three veg formations
 ```{r}
 df_trial
 
-x<- df_trial %>% 
+x_mean <- df_trial %>% 
   dplyr::select(-c(median)) %>%
   count(value > mean) %>%
   group_by(TrajType) %>% #total is the number of all pixels of each trajectory type
@@ -208,8 +224,7 @@ x<- df_trial %>%
   coord_flip() +
   theme_bw(base_size = 14)
 ggsave(here("Outputs", "TrendsResults", "more_than_average_veg_composition_NDVItrajectories.png"),
-      x,dpi = 700, height = 50, width = 50, units = "cm")
-
+      x_mean,dpi = 700, height = 50, width = 50, units = "cm")
 
 ```
 
