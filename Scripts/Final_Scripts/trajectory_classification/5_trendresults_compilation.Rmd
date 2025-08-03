@@ -405,18 +405,17 @@ Sys.time(); monthly_aniso1km_trajectories <- results_raster_function(monthly_ani
 
 #coarsen to 5km but apply anthropogenic mask at 1km at first before coarsening
 threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
-threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
 
 count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
   
-  trajectories_studyarea <- terra::mask(trajectories_1km_raster, threshold20_1km)
-  
-  x_1km_sameextent <- terra::resample(terra::segregate(trajectories_studyarea), trajectories_1km_raster, method = "near")
+  x_1km_sameextent <- terra::resample(terra::segregate(trajectories_1km_raster), trajectories_1km_raster, method = "near")
  
   x_5km_count <- terra::aggregate (x_1km_sameextent, fact = 5, fun = "sum")
   x_5km_count_sameextent <- terra::resample(x_5km_count, threshold20_5km, method = "near")
   
-  x_5km_count_sameextent
+  x_5km_mask <- terra::mask(x_5km_count_sameextent, threshold20_5km)
+  
+  x_5km_mask
 }
   
 Sys.time(); annual_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_ndvi1km_trajectories); Sys.time()
