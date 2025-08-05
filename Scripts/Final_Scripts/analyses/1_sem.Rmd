@@ -21,23 +21,22 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 
 ##Introduction
 In this script, I do structural equation modeling to understand causal relationships between 
-environmental drives and stability at the biome scale.
+environmental drives and abrupt shift count 
 
 ##Data input
 ```{r}
-#response- "stable" area derived from analyses of satellite derived vegetation productivity 
-ndvi_unstable<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" , "unstablearea_5km", "monthlyswin11_ndvi_unstablearea.tif"))
+ndvi_count_5km<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" , "binary_count_5km", "monthlyswin11_ndvi_count_5km.tif"))
 
-#drivers of "instability"
+
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
 
 burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
 re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
-mat<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
+at<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
 spei<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
 heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
-savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage.tif"))
+savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage_5km.tif"))
 ```
 
 1) anthropic_dist - distance of the particular 5x5km grid cell to the closest anthropogenic land use
@@ -62,17 +61,22 @@ Above variables has not unit because its all slope. All trend varibales were cal
 ##Preprocessing of all data- making appropriate data structure ie makign a dataframe (df) from 
 geospatial data format
 ```{r}
-drivers<- c(anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
+drivers<- c(anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
 drivers
-names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "mat", "heatwave", "spei", "savannapercentage")
+names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "at", "heatwave", "spei", "savannapercentage")
 
-instability<- c(ndvi_unstable)
-names(instability)<- c("NDVI_instability")
+ndvi_step_inc <- ndvi_count_5km[[5]]
+names(ndvi_step_inc)<- "positive_abrupt"
+ndvi_step_dec <- ndvi_count_5km[[4]]
+names(ndvi_step_dec)<- "negative_abrupt"
 
-all_data<- c(instability, drivers)
-analyses_df<- terra::as.data.frame(all_data)
-remove( ndvi_unstable, anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
-remove(drivers, instability)
+inc_df <- c(ndvi_step_inc, drivers)
+inc_df <- terra::as.data.frame(inc_df)
+dec_df <- c(ndvi_step_dec, drivers)
+dec_df <- terra::as.data.frame(dec_df)
+
+remove(anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
+remove(drivers, ndvi_step_inc, ndvi_step_dec)
 ```
 
 #Exploratory data analyses
@@ -84,43 +88,52 @@ data to check if the different variables follow a Guassian distribution.
 I also scale the dataframe because all the units and magnitudes of variables int he df are 
 very different.
 ```{r}
-analyses_df
-summary(analyses_df)
-analyses_df_NA <- analyses_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
+inc_df_noNA <- inc_df %>% drop_na()
+dec_df_noNA <- dec_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
 
 ### Sampling 30% of the data resulting in 6306 rows of data
 set.seed(1000)
-sample_df<- analyses_df_NA %>% slice_sample(prop=0.3, replace= FALSE) #30% randomly sampled of entire dataset
-summary(sample_df)
+sample_inc_df <- inc_df_noNA %>% slice_sample(prop=0.3, replace =F)
+sample_dec_df <- dec_df_noNA %>% slice_sample(prop=0.3, replace= F) #30% randomly sampled of entire dataset
 
-library(PerformanceAnalytics)
-chart.Correlation(sample_df, histogram = TRUE, pch= 19)
+
+#library(PerformanceAnalytics)
+#chart.Correlation(sample_df, histogram = TRUE, pch= 19)
 
 #Removing outliers considering distribution of height above nearest drainage variable
-no_outliers_sample_df <- sample_df %>% 
-          mutate (IQR = IQR(hand),
-                  O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
-                  O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
-                  ) %>% 
-          filter(O_lower <= hand & hand <= O_upper) %>%
-          dplyr::select(-c(IQR, O_upper, O_lower))
+no_outliers_sample_inc_df <- sample_inc_df %>% 
+  mutate (IQR = IQR(hand),
+          O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
+          O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
+  ) %>% 
+  filter(O_lower <= hand & hand <= O_upper) %>%
+  dplyr::select(-c(IQR, O_upper, O_lower))
 
-chart.Correlation(no_outliers_sample_df, histogram = TRUE, pch= 19)
+no_outliers_sample_dec_df <- sample_dec_df %>% 
+  mutate (IQR = IQR(hand),
+          O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
+          O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
+  ) %>% 
+  filter(O_lower <= hand & hand <= O_upper) %>%
+  dplyr::select(-c(IQR, O_upper, O_lower))
+
 
 ### Scaling data by centering around means due as the units and values of all variables are very different
-scaled_analyses_ndviinstability<- data.frame(scale(no_outliers_sample_df, center= TRUE, scale= TRUE)) 
-
-### Checking the covariance matrix of scaled data
-cov_matrix_scaled_data <- cov(scaled_analyses_ndviinstability)
+scaled_analyses_stepinc<- data.frame(scale(no_outliers_sample_inc_df, center= TRUE, scale= TRUE)) 
+scaled_analyses_stepdec<- data.frame(scale(no_outliers_sample_dec_df, center= TRUE, scale= TRUE)) 
 
 #plot of distributions of scaled data
-pivot_df <- scaled_analyses_ndviinstability  %>%
+pivot_df_inc <- scaled_analyses_stepinc  %>%
   pivot_longer(1:9)
-distribution_plot <- ggplot(data = pivot_df, aes(value)) +
+inc_distribution_plot <- ggplot(data = pivot_df_inc, aes(value)) +
   geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
   theme_classic(base_size = 16)
-distribution_plot
 
+pivot_df_dec <- scaled_analyses_stepdec  %>%
+  pivot_longer(1:9)
+dec_distribution_plot <- ggplot(data = pivot_df_dec, aes(value)) +
+  geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
+  theme_classic(base_size = 16)
 ```
 Response variables of "stable" area is right skewed (because most of the Brazilian savanna biome is stable).
 Most of the drivers/predictors are normally distributed.
@@ -128,41 +141,74 @@ Most of the drivers/predictors are normally distributed.
 #Analyses - 1 considering composite SEM using partial least square path modelling using cSEM in R
 
 ```{r}
-scaled_analyses_ndviinstability
-
 #install.packages("cSEM")
 library(lavaan)
 library(cSEM)
 
-comp_trial2<- '
-  #Structural model
-  INSTABILITY ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
-  VEGETATION  ~ PULSE_STRESSORS  + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES + FIRE
+######## Step inc model
+stepinc1 <- '
+  STEPINC ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
+  VEGETATION ~ PULSE_STRESSORS + BACKGROUND_CLIMATE +ANTHROPIC_PRESSURES + FIRE
   FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   WATER_ACCESS ~ ANTHROPIC_PRESSURES
   
-  #Composite variables with equal weighting of indicators
-  BACKGROUND_CLIMATE <~ re + mat
-  PULSE_STRESSORS <~  heatwave + spei
+  BACKGROUND_CLIMATE <~ re+at
+  PULSE_STRESSORS <~ heatwave + spei
   
-  #Measurement model (Formative)
-  INSTABILITY =~ NDVI_instability
+  STEPINC =~ positive_abrupt
   WATER_ACCESS =~ hand
-  VEGETATION =~ savannapercentage 
+  VEGETATION =~ savannapercentage
   FIRE =~ burnedarea
   ANTHROPIC_PRESSURES =~ anthropic_dist
 '
+Sys.time(); stepinc_model1 <- cSEM::csem(.data = no_outliers_sample_inc_df,
+                                         .model = stepinc1,
+                                         .approach_weights = "PLS-PM",
+                                         .resample_method = "bootstrap",
+                                         .R =1000,
+                                         .seed = 1000
+                                         ); Sys.time()
 
-Sys.time(); modeltrial4<- cSEM::csem(.data =  scaled_analyses_ndviinstability, 
-                                     .model = comp_trial2, 
-                                     .approach_weights = "PLS-PM",
-                                     .resample_method = "bootstrap",
-                                     .R =1000,
-                                     .seed= 1000); Sys.time()
-cSEM::summarize(modeltrial4)
-x<-cSEM::assess(modeltrial4) #model fit statistics look good - R2 for structural regression equations from here for reporting
-cSEM::verify(modeltrial4) # model admissibility looks good
-modelfit<- cSEM::testOMF(modeltrial4) #reject null hypothesis, so model fit to observed data is poor! Need to clarify
+
+cSEM::summarize(stepinc_model1)
+x_inc_assess <- cSEM::assess(stepinc_model1)
+cSEM::verify(stepinc_model1)
+inc_modelfit <- cSEM::testOMF(stepinc_model1)
+
+######## Step dec model
+stepdec1 <- '
+  STEPDEC ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
+  VEGETATION ~ PULSE_STRESSORS + BACKGROUND_CLIMATE +ANTHROPIC_PRESSURES + FIRE
+  FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
+  WATER_ACCESS ~ ANTHROPIC_PRESSURES
+  
+  BACKGROUND_CLIMATE <~ re+at
+  PULSE_STRESSORS <~ heatwave + spei
+  
+  STEPDEC =~ negative_abrupt
+  WATER_ACCESS =~ hand
+  VEGETATION =~ savannapercentage
+  FIRE =~ burnedarea
+  ANTHROPIC_PRESSURES =~ anthropic_dist
+'
+Sys.time(); stepdec_model1 <- cSEM::csem(.data = no_outliers_sample_dec_df,
+                                         .model = stepdec1,
+                                         .approach_weights = "PLS-PM",
+                                         .resample_method = "bootstrap",
+                                         .R =1000,
+                                         .seed = 1000
+); Sys.time()
+
+cSEM::summarize(stepdec_model1)
+x_dec_assess <- cSEM::assess(stepdec_model1)
+cSEM::verify(stepdec_model1)
+dec_modelfit <- cSEM::testOMF(stepdec_model1)
+
+
+
+ #model fit statistics look good - R2 for structural regression equations from "assess()" results for reporting
+ # model admissibility looks good
+ #reject null hypothesis, so model fit to observed data is poor! Need to clarify
 
 ```
 
