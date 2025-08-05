@@ -36,7 +36,7 @@ re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
 at<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
 spei<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
 heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
-savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "theilsen_savannapercentage_5km.tif"))
+savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_savanna_percentage_5km_2002_2021.tif"))
 ```
 
 1) anthropic_dist - distance of the particular 5x5km grid cell to the closest anthropogenic land use
@@ -75,7 +75,7 @@ inc_df <- terra::as.data.frame(inc_df)
 dec_df <- c(ndvi_step_dec, drivers)
 dec_df <- terra::as.data.frame(dec_df)
 
-remove(anthropic_dist, burnedarea, hand, re, mat, heatwave, spei, savannapercentage)
+remove(anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
 remove(drivers, ndvi_step_inc, ndvi_step_dec)
 ```
 
