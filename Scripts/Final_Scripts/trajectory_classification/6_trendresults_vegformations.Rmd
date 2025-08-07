@@ -23,17 +23,17 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 #Introduction
 In this script, I evaluate the composition, in terms of veg formations from Mapbiomas, in each trajectory type 
-at 1km resolution 
-(1) Read final trajectory type results for all indices and mapbiomass annual lulc product
+at 1km resolution and across aggregated trajectories across all indices
+(1) Read final trajectory type results for all indices, aggregated trajectories for all indices and mapbiomass annual lulc product
 Note mapbiomas 1km %formation product was processed on GEE
-(2) Process mapbiomass annual product by cropping/masking, aligning projection, resolution against trajectory result rasters
-and average composition across years
-(3) Preliminary data analyses 
+(2) Process mapbiomass annual product by cropping/masking, aligning projection, resolution against trajectory result rasters and average composition across years
+(3) Preliminary data analyses of the distribution of mean veg formation (#2) across seperate trajectories and aggregated trajectories across all indices
 (4) Visualization of above results
 (5) Proportion of each trajectory covered by more than half of a veg composition & visualization
 
-#Step 1- read data
+#Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}
+#separate trajectories 
 monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
 monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
 monthly_file_list <- gtools::mixedsort(monthly_file_list)
@@ -43,10 +43,37 @@ names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
 names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
 names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
+annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+annual_rds_list<- lapply(annual_file_list, rast)
+names(annual_rds_list[[2]])<- "evi_swin11_annual"
+names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
+
+#aggregate trajectories
+aggregate_results_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
+aggregate_file_list <- list.files(path = paste0(aggregate_results_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+
+aggregate_rds_list <- lapply(aggregate_file_list, rast)
+names(aggregate_rds_list[[1]])<- "annual_aniso1km_agg"
+names(aggregate_rds_list[[2]])<- "annual_evi1km_agg"
+names(aggregate_rds_list[[3]])<- "annual_ndvi1km_agg"
+names(aggregate_rds_list[[4]])<- "monthly_aniso1km_agg"
+names(aggregate_rds_list[[5]])<- "monthly_evi1km_agg"
+names(aggregate_rds_list[[6]])<- "monthly_ndvi1km_agg"
+
+remove(aggregate_results_input_file_path , aggregate_file_list)
+
+#mapbiomas %area of 1km of savanna, forest and grassland
 mapbiomas_input_file_path <- here("Data", "Mapbiomas_formations")
 mapbiomas_file_list <- list.files(path = paste0(mapbiomas_input_file_path , "/"), pattern = paste0("*","_1km","*"), all.files = T, full.names = T)
 
 mapbiomas_rds_list<- lapply(mapbiomas_file_list, rast)
+remove(mapbiomas_input_file_path, mapbiomas_file_list )
 
 ```
 
@@ -86,17 +113,17 @@ animation_map_function <- function (timeseries_raster){
 }
 
 map_forest<- animation_map_function(forest_percentage)
-tmap_animation(map_forest, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_forestformationpercentage_2002_2021.gif"),
-                delay = 50, loop = TRUE, restart.delay = 500,
-                width = 900, height = 900, dpi = 150)
+#tmap_animation(map_forest, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_forestformationpercentage_2002_2021.gif"),
+#                delay = 50, loop = TRUE, restart.delay = 500,
+#                width = 900, height = 900, dpi = 150)
 map_grass<- animation_map_function(grass_percentage)
-tmap_animation(map_grass, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_grassformationpercentage_2002_2021.gif"),
-                delay = 50, loop = TRUE, restart.delay = 500,
-                width = 900, height = 900, dpi = 150)
+#tmap_animation(map_grass, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_grassformationpercentage_2002_2021.gif"),
+#                delay = 50, loop = TRUE, restart.delay = 500,
+#                width = 900, height = 900, dpi = 150)
 map_savanna<- animation_map_function(savanna_percentage)
-tmap_animation(map_savanna, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_savannaformationpercentage_2002_2021.gif"),
-                delay = 50, loop = TRUE, restart.delay = 500,
-                width = 900, height = 900, dpi = 150)
+#tmap_animation(map_savanna, filename = here("Outputs", "OtherVariables", "Formations_Heterogeniety", "1km_annual_savannaformationpercentage_2002_2021.gif"),
+#                delay = 50, loop = TRUE, restart.delay = 500,
+#                width = 900, height = 900, dpi = 150)
 remove(crop_mask_function, mapbiomas_file_list, mapbiomas_input_file_path)
 remove(animation_map_function, map_forest, map_grass, map_savanna)
 remove(monthly_file_list, monthly_input_file_path)
@@ -122,16 +149,17 @@ resample_mean_savanna <- resample_mean_vegformation(mean_savanna)
 remove(mean_forest, mean_savanna, mean_grass, forest_percentage, savanna_percentage, grass_percentage, mean_formation, resample_mean_vegformation)
 remove(mapbiomas_rds_list)
 
-```
-
-#Step 3- analyses of veg composition in each trajectory at 1km
-```{r}
 resample_veg_formation <- c( resample_mean_grass, resample_mean_savanna, resample_mean_forest)
 names(resample_veg_formation)<- c( "average_grass_percentage", "average_savanna_percentage", "average_forest_percentage")
 
 studyarea_veg_formation <- terra::mask (resample_veg_formation, monthly_rds_list[[3]]) #crop and mask to trajectory result rasters
+```
 
-formation_trajectory <- function(trajectory_results_raster) {
+#Step 3- analyses of veg composition in each seperate trajectory at 1km(annual and monthly) and for aggregate trajectories at 1km (annual and monthly)
+```{r}
+studyarea_veg_formation
+
+seperate_trajectory_veg <- function(trajectory_results_raster) {
   split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
   trajectory_names <- c("Lin_dec", "Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_dec_acc", "Quad_dec_dec", "Quad_inc_acc", "Quad_inc_dec")
   df_for_histogram<- list()
@@ -144,11 +172,38 @@ formation_trajectory <- function(trajectory_results_raster) {
   df_for_histogram
 }
 
-Sys.time(); composition_ndvitrajectories <- formation_trajectory(monthly_rds_list[[3]]); Sys.time()
+Sys.time(); monthly_aniso_seperate <- seperate_trajectory_veg(monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_evi_seperate <- seperate_trajectory_veg(monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_ndvi_seperate <- seperate_trajectory_veg(monthly_rds_list[[3]]); Sys.time()
+
+Sys.time(); annual_aniso_seperate <- seperate_trajectory_veg(annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_evi_seperate <- seperate_trajectory_veg(annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_ndvi_seperate <- seperate_trajectory_veg(annual_rds_list[[3]]); Sys.time()
+
+aggregate_trajectory_veg <- function(agg_trajectory_results_raster) {
+  split_trajectory <- terra::segregate(agg_trajectory_results_raster, other = NA)
+  trajectory_names <- c("Decrease", "Increase", "No_trend")
+  df_for_histogram<- list()
+  for (i in 1:3){
+    stack_raster <- c(split_trajectory[[i]], resample_veg_formation)
+    names(stack_raster)<- c(trajectory_names[[i]], "average_grass_percentage", "average_savanna_percentage", "average_forest_percentage")
+    stack_df <- terra::as.data.frame(stack_raster, na.rm = T)
+    df_for_histogram[[i]]<- stack_df
+  }
+  df_for_histogram
+}
+
+Sys.time(); monthly_aniso_agg <- aggregate_trajectory_veg(aggregate_rds_list[[4]]); Sys.time()
+Sys.time(); monthly_evi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[5]]); Sys.time()
+Sys.time(); monthly_ndvi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[6]]); Sys.time()
+
+Sys.time(); annual_aniso_agg <- aggregate_trajectory_veg(aggregate_rds_list[[1]]); Sys.time()
+Sys.time(); annual_evi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[2]]); Sys.time()
+Sys.time(); annual_ndvi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[3]]); Sys.time()
 
 ```
 
-#Step 4- visualization of results - histogram and boxplot
+#Step 4- visualization of results - violin plots
 ```{r}
 df_prep_function <- function (df_veg_trajectory){
   prepped_df_list <- list()
@@ -156,75 +211,102 @@ df_prep_function <- function (df_veg_trajectory){
     x_pivot <- pivot_longer(df_veg_trajectory[[i]], 2:4)
     x_pivot <- x_pivot %>% mutate(TrajType = (names(x_pivot)[1])) %>%
       dplyr::select(c(-1))
-    x_pivot <- x_pivot %>% group_by (name, TrajType) %>%
-      mutate(mean = mean(value),
-                median = median (value))
+   x_pivot <- x_pivot %>% mutate(Vegformation = case_when(name == "average_grass_percentage"~"Grass",
+                                                          name == "average_savanna_percentage"~ "Savanna",
+                                                          TRUE ~"Forest"))
     prepped_df_list[[i]] <- x_pivot
   }
   prepped_data <- bind_rows(prepped_df_list)
   prepped_data
 }
 
-Sys.time(); df_trial <- df_prep_function(composition_ndvitrajectories); Sys.time()
+Sys.time(); df_monthly_aniso_seperate <- df_prep_function(monthly_aniso_seperate); Sys.time()
+Sys.time(); df_monthly_evi_seperate <- df_prep_function(monthly_evi_seperate); Sys.time()
+Sys.time(); df_monthly_ndvi_seperate <- df_prep_function(monthly_ndvi_seperate); Sys.time()
 
-y_hist <- ggplot(df_trial, aes(x = value)) + 
-   geom_histogram(position = "identity", bins = 10) + 
-  theme_classic(base_size = 14) + scale_x_continuous(c(0,1)) +
-  facet_grid(name ~ TrajType) + 
-  geom_vline(aes(xintercept = mean, colour = 'mean')) +
-  geom_text(data = dplyr::distinct(df_trial, mean), 
-            aes(x = (mean + 0.2), y = 200000, label = round(mean,2), angle =90), position = position_dodge(0.5)) +
-    geom_vline(aes(xintercept = median, colour = 'median')) +
-  geom_text(data = dplyr::distinct(df_trial, median), 
-            aes(x = (median - 0.2), y = 200000, label = round(median,2), angle =90), position = position_dodge(0.5)) +
-    scale_color_manual(name = "statistics", values = c(median = "blue", mean = "red")) +
-  theme(axis.title.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.title.y = element_blank(),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank()) 
-ggsave(here("Outputs", "TrendsResults", "hist_veg_composition_NDVItrajectories.png"),
-       y_hist,dpi = 700, height = 50, width = 50, units = "cm")
+Sys.time(); df_annual_aniso_seperate <- df_prep_function(annual_aniso_seperate); Sys.time()
+Sys.time(); df_annual_evi_seperate <- df_prep_function(annual_evi_seperate); Sys.time()
+Sys.time(); df_annual_ndvi_seperate <- df_prep_function(annual_ndvi_seperate); Sys.time()
 
-Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
-y_boxplot <- ggplot(df_trial %>% dplyr::select(-c(mean, median)), aes(y = value, x = TrajType, group = TrajType)) +
-  geom_boxplot(aes(fill = TrajType)) + 
-  facet_grid(.~name) +
-  theme_bw(base_size = 14) +
-  theme(strip.placement  = "outside",
-        panel.spacing    = unit(0, "points"),
-        strip.background = element_blank(),
-        strip.text       = element_text(size = 12, angle = 90),
-        axis.text.x = element_text(size = 12, angle = 90)) +
-  scale_fill_manual(values = Set1palette) +
-  theme(legend.position = "none") +
-  xlab("Model Type") +ylab("Proportion of 1km pixel")
-ggsave(here("Outputs", "TrendsResults", "boxplot_veg_composition_NDVItrajectories.png"),
-       y_boxplot,dpi = 700, height = 50, width = 50, units = "cm")
+Sys.time(); df_monthly_aniso_agg <- df_prep_function(monthly_aniso_agg); Sys.time()
+Sys.time(); df_monthly_evi_agg <- df_prep_function(monthly_evi_agg ); Sys.time()
+Sys.time(); df_monthly_ndvi_agg <- df_prep_function(monthly_ndvi_agg); Sys.time()
+
+Sys.time(); df_annual_aniso_agg <- df_prep_function(annual_aniso_agg); Sys.time()
+Sys.time(); df_annual_evi_agg <- df_prep_function(annual_evi_agg); Sys.time()
+Sys.time(); df_annual_ndvi_agg <- df_prep_function(annual_ndvi_agg ); Sys.time()
+
+vegformation_palette<- c("#117733", "#44AA99", "#CC9933" )
+boxplot_function <- function (df){
+  y_boxplot <- ggplot(df, aes(y = value, x = Vegformation)) +
+  geom_boxplot(aes(fill = Vegformation)) + 
+  facet_wrap(.~TrajType) +
+  theme_classic() +
+  theme(legend.title=element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())+ 
+  scale_fill_manual(values = vegformation_palette) +
+  xlab("Vegetation Formation") + ylab("Proportion of 1km pixel")
+  y_boxplot
+
+}
+
+monthly_ndvi_agg <- boxplot_function(df_monthly_ndvi_agg)
+ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_monthly.png"),
+      monthly_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
+annual_ndvi_agg <- boxplot_function(df_annual_ndvi_agg)
+ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_annual.png"),
+      annual_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
+monthly_ndvi_seperate <- boxplot_function(df_monthly_ndvi_seperate)
+ggsave(here("Outputs", "TrendsResults", "boxplot_separate_ndvi_monthly.png"),
+      monthly_ndvi_seperate ,dpi = 700, height = 20, width = 20, units = "cm")
+annual_ndvi_seperate <- boxplot_function(df_annual_ndvi_seperate)
+ggsave(here("Outputs", "TrendsResults", "boxplot_separate_ndvi_annual.png"),
+      annual_ndvi_seperate ,dpi = 700, height = 20, width = 20, units = "cm")
+
+#aggregated, cross timesteps and indices
+Sys.time(); df_monthly_aniso_agg <- df_monthly_aniso_agg %>% mutate(TimeStep ="monthly", Index = "anisotropic EVI"); Sys.time()
+Sys.time(); df_monthly_evi_agg <- df_monthly_evi_agg %>% mutate(TimeStep ="monthly", Index = "EVI"); Sys.time()
+Sys.time(); df_monthly_ndvi_agg <- df_monthly_ndvi_agg %>% mutate(TimeStep ="monthly", Index = "NDVI") ; Sys.time()
+
+Sys.time(); df_annual_aniso_agg <- df_annual_aniso_agg %>% mutate(TimeStep ="annual", Index = "anisotropic EVI"); Sys.time()
+Sys.time(); df_annual_evi_agg <- df_annual_evi_agg %>% mutate(TimeStep ="annual", Index = "EVI"); Sys.time()
+Sys.time(); df_annual_ndvi_agg <- df_annual_ndvi_agg %>% mutate(TimeStep ="annual", Index = "NDVI") ; Sys.time()
+
+df_agg <- bind_rows(df_monthly_aniso_agg, df_monthly_evi_agg, df_monthly_ndvi_agg, df_annual_aniso_agg, df_annual_evi_agg, df_annual_ndvi_agg)
+agg_boxplot <- ggplot(df_agg, aes(y = value, x = Vegformation)) +
+  geom_boxplot(aes(fill = Vegformation, alpha = factor(Index))) + 
+  scale_alpha_discrete(range = c(0.3, 0.6, 0.9), guide = guide_legend(override.aes = list(fill = "black"))) +
+  facet_grid(TimeStep~TrajType) +
+  theme_classic() +
+  theme(legend.title=element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())+ 
+  scale_fill_manual(values = vegformation_palette) +
+  xlab("Vegetation Formation") + ylab("Proportion of 1km pixel")
+ggsave(here("Outputs", "TrendsResults", "boxplot_agg_indices_timestep.png"),
+      agg_boxplot  ,dpi = 700, height = 20, width = 20, units = "cm")
+
+
+#y_hist <- ggplot(df_trial, aes(x = value)) + 
+#   geom_histogram(position = "identity", bins = 10) + 
+#  theme_classic(base_size = 14) + scale_x_continuous(c(0,1)) +
+#  facet_grid(name ~ TrajType) + 
+#  geom_vline(aes(xintercept = mean, colour = 'mean')) +
+#  geom_text(data = dplyr::distinct(df_trial, mean), 
+#            aes(x = (mean + 0.2), y = 200000, label = round(mean,2), angle =90), position = position_dodge(0.5)) +
+#    geom_vline(aes(xintercept = median, colour = 'median')) +
+#  geom_text(data = dplyr::distinct(df_trial, median), 
+#            aes(x = (median - 0.2), y = 200000, label = round(median,2), angle =90), position = position_dodge(0.5)) +
+#    scale_color_manual(name = "statistics", values = c(median = "blue", mean = "red")) +
+#  theme(axis.title.x = element_blank(),
+#    axis.ticks.x = element_blank(),
+#    axis.title.y = element_blank(),
+#    axis.text.y = element_blank(),
+#    axis.ticks.y = element_blank()) 
+#ggsave(here("Outputs", "TrendsResults", "hist_veg_composition_NDVItrajectories.png"),
+#       y_hist,dpi = 700, height = 50, width = 50, units = "cm")
+
+
 
 ```
-
-#Step 5- proportion of each trajectory with more than the average and the 75th percentile ie upper quartile of the three veg formations
-```{r}
-df_trial
-
-x_mean <- df_trial %>% 
-  dplyr::select(-c(median)) %>%
-  count(value > mean) %>%
-  group_by(TrajType) %>% #total is the number of all pixels of each trajectory type
-  mutate(pct= prop.table(n) * 100) %>%
-  filter(`value > mean` == TRUE) %>%
-  dplyr::select(-c(`value > mean`)) %>%
-  ggplot() + aes(TrajType, pct, fill = name) +
-  scale_fill_manual(values = c("#336600", "#CCFFFF", "#993300"))+
-  geom_bar(stat="identity") +
-  ylab("Proportion of pixels covered by more than average of a veg formation") +
-  geom_text(aes(label=paste0(sprintf("%1.1f", pct),"%")),
-            position=position_stack(vjust=0.5)) +
-  coord_flip() +
-  theme_bw(base_size = 14)
-ggsave(here("Outputs", "TrendsResults", "more_than_average_veg_composition_NDVItrajectories.png"),
-      x_mean,dpi = 700, height = 50, width = 50, units = "cm")
-
-```
-
