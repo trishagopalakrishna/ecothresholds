@@ -185,7 +185,7 @@ Sys.time(); annual_agg_evi_area <- annual_agg_evi_area %>% mutate(TimeStep ="ann
 Sys.time(); annual_agg_ndvi_area <- annual_agg_ndvi_area %>% mutate(TimeStep ="annual", Index = "NDVI") ; Sys.time()
 
 df_agg <- bind_rows(monthly_agg_aniso_area, monthly_agg_evi_area, monthly_agg_ndvi_area, 
-                    annual_agg_evi_area, annual_agg_evi_area, annual_agg_ndvi_area)
+                    annual_agg_aniso_area, annual_agg_evi_area, annual_agg_ndvi_area)
 agg_barplot <- ggplot(df_agg, aes(y = Percentage, x = Region, fill =Region)) +
   geom_bar(position ="dodge", stat = "identity", aes(alpha = factor(Index))) + 
   scale_alpha_discrete(range = c(0.3, 0.6, 1), guide = guide_legend(override.aes = list(fill = "black"))) +
