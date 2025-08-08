@@ -378,8 +378,6 @@ remove(monthly_ndvi_aggregate_studyarea, monthly_evi_aggregate_studyarea, monthl
 
 ```
 
-
-
 #Step 4- stable area estimation for all three indices
 (1) consider trajectory results 1km results such that no trend trajectory and remainder 
 trajectories are two different pixel values, say 1 & 2 (before applying anthropogenic mask)
