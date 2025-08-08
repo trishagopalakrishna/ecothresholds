@@ -284,7 +284,7 @@ agg_boxplot <- ggplot(df_agg, aes(y = value, x = Vegformation)) +
         axis.ticks.x = element_blank())+ 
   scale_fill_manual(values = vegformation_palette) +
   xlab("Vegetation Formation") + ylab("Proportion of 1km pixel")
-ggsave(here("Outputs", "TrendsResults", "boxplot_agg_indices_timestep.png"),
+ggsave(here("Outputs", "TrendsResults", "boxplot_agg_formations_indices_timestep.png"),
       agg_boxplot  ,dpi = 700, height = 20, width = 20, units = "cm")
 
 
