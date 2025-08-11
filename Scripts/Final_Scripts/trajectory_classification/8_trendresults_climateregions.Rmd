@@ -22,7 +22,7 @@ library(viridis)
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 #Introduction
-In this script, I evaluate the floristic regions that the different trajectories fall into. 
+In this script, I evaluate the climate regions that the different trajectories fall into. 
 The climate regions are from Catellan et al 2024 
 (1) Read final trajectory type results for all indices, aggregated trajectories for all indices and climate regions GIS files
 (2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices in each of the climate zones 
