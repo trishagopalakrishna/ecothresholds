@@ -61,22 +61,16 @@ Above variables has not unit because its all slope. All trend varibales were cal
 ##Preprocessing of all data- making appropriate data structure ie makign a dataframe (df) from 
 geospatial data format
 ```{r}
-drivers<- c(anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
-drivers
-names(drivers)<- c("anthropic_dist", "burnedarea", "hand", "re", "at", "heatwave", "spei", "savannapercentage")
+decrease <- ndvi_count_5km[[1]] +ndvi_count_5km[[4]] + ndvi_count_5km[[6]] + ndvi_count_5km[[7]]
+increase <- ndvi_count_5km[[2]] +ndvi_count_5km[[5]] + ndvi_count_5km[[8]] +ndvi_count_5km[[9]]
 
-ndvi_step_inc <- ndvi_count_5km[[5]]
-names(ndvi_step_inc)<- "positive_abrupt"
-ndvi_step_dec <- ndvi_count_5km[[4]]
-names(ndvi_step_dec)<- "negative_abrupt"
+all_data <- c(decrease,increase, anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
+names(all_data)<- c("increase", "decrease", "anthropic_dist", "burnedarea", "hand", "re", "at", "heatwave", "spei", "savannapercentage")
 
-inc_df <- c(ndvi_step_inc, drivers)
-inc_df <- terra::as.data.frame(inc_df)
-dec_df <- c(ndvi_step_dec, drivers)
-dec_df <- terra::as.data.frame(dec_df)
+df1 <- terra::as.data.frame(all_data, na.rm= T)
 
 remove(anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
-remove(drivers, ndvi_step_inc, ndvi_step_dec)
+remove(ndvi_count_5km, decrease, increase)
 ```
 
 #Exploratory data analyses
@@ -88,8 +82,9 @@ data to check if the different variables follow a Guassian distribution.
 I also scale the dataframe because all the units and magnitudes of variables int he df are 
 very different.
 ```{r}
-inc_df_noNA <- inc_df %>% drop_na()
-dec_df_noNA <- dec_df %>% drop_na() #Removing rows with NA values i.e. applying anthropic mask
+summary(df1)
+inc_df_noNA <- df1 %>% dplyr::select(-c(decrease))
+dec_df_noNA <- df1 %>% dplyr::select(-c(increase))
 
 ### Sampling 30% of the data resulting in 6306 rows of data
 set.seed(1000)
@@ -155,7 +150,7 @@ stepinc1 <- '
   BACKGROUND_CLIMATE <~ re+at
   PULSE_STRESSORS <~ heatwave + spei
   
-  STEPINC =~ positive_abrupt
+  STEPINC =~ increase
   WATER_ACCESS =~ hand
   VEGETATION =~ savannapercentage
   FIRE =~ burnedarea
@@ -185,7 +180,7 @@ stepdec1 <- '
   BACKGROUND_CLIMATE <~ re+at
   PULSE_STRESSORS <~ heatwave + spei
   
-  STEPDEC =~ negative_abrupt
+  STEPDEC =~ decrease
   WATER_ACCESS =~ hand
   VEGETATION =~ savannapercentage
   FIRE =~ burnedarea
