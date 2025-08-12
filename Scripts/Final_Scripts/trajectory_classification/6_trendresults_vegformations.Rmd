@@ -203,7 +203,7 @@ Sys.time(); annual_ndvi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[3]])
 
 ```
 
-#Step 4- visualization of results - violin plots
+#Step 4- visualization of results - boxplots
 ```{r}
 df_prep_function <- function (df_veg_trajectory){
   prepped_df_list <- list()
