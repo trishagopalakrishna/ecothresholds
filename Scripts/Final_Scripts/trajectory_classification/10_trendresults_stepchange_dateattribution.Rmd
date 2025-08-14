@@ -1,0 +1,302 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I complete analyses to understand the year & month (when possible) of the step changes (both increase and decrease)
+across all three indices. 
+(1) Data input of disaggregated trajectory results for all indices and annual and monthly timesteps at 1km spatial resolution (only for swin=11)
+(2) Processing above data- filtering to step change pixels only and processing date
+(3) Fruther processing to exclude anthropic mask
+(4) Results compilation in the form of barplot of area of total step pixels (increase/decrease) in each date of step change
+
+#Step 1- data input
+```{r}
+threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
+
+input_file_path <- here("Outputs", "ModelSelection")
+read_files_function <- function (index_name, annual_or_monthly_folder, file_name_with_rds){
+  rds_file<- read_rds(paste0(input_file_path,"/", index_name,"/", annual_or_monthly_folder, "/", file_name_with_rds))
+}
+
+#NDVI
+Sys.time(); annual_ndvi <- read_files_function ("NDVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_ndvi <- read_files_function ("NDVI","monthly", "modelselection_swindow_11.rds"); Sys.time()
+
+#EVI
+Sys.time(); annual_evi <- read_files_function ("EVI", "annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_evi <- read_files_function ("EVI", "monthly", "modelselection_swindow_11.rds"); Sys.time()
+
+#anisoEVI
+Sys.time(); annual_aniso <- read_files_function ("anisoEVI", "annual", "modelselection_swindow_11.rds"); Sys.time()
+Sys.time(); monthly_aniso <- read_files_function ("anisoEVI", "monthly", "modelselection_swindow_11.rds"); Sys.time()
+month_aniso <- monthly_aniso %>% select(c(x, y))
+annual_aniso <- annual_aniso %>% bind_cols(month_aniso %>% dplyr::select(-c(cell)))
+remove(month_aniso)
+annual_aniso <- annual_aniso %>% dplyr::select(-c("cell...29"))
+names(annual_aniso)[1] <- "cell"
+
+remove(input_file_path, read_files_function)
+
+```
+
+
+#Step 2- processing to extract step change pixels only across indices and date of step change
+```{r}
+results_df_function<- function (modelselection_df) {
+  results_df <- modelselection_df %>% ungroup() %>% 
+    dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone, loc_brk)) %>%
+    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
+                                model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
+                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
+                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~4,
+                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~5, 
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~6,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~7,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~8,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~9
+                                )) %>% 
+    dplyr::select(c(x,y,pixelvalue,loc_brk))
+}
+#annual
+Sys.time(); filtered_annual_ndvi <- results_df_function(annual_ndvi) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+Sys.time(); filtered_annual_evi <- results_df_function(annual_evi) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+Sys.time(); filtered_annual_aniso <- results_df_function(annual_aniso) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+
+#monthly
+Sys.time(); filtered_monthly_ndvi <- results_df_function(monthly_ndvi) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+Sys.time(); filtered_monthly_evi <- results_df_function(monthly_evi) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+Sys.time(); filtered_monthly_aniso <- results_df_function(monthly_aniso) %>%
+  filter((!is.na(loc_brk))); Sys.time()
+
+remove(results_df_function)
+remove(annual_ndvi, annual_evi, annual_aniso, monthly_evi, monthly_ndvi, monthly_aniso)
+
+insert_step_date_function1 <- function (filtered_df){
+  filtered_df <- filtered_df %>% mutate(stepyear = (loc_brk + 2001))
+  filtered_df
+}
+filtered_annual_ndvi_date <- insert_step_date_function1(filtered_annual_ndvi) 
+filtered_annual_evi_date <- insert_step_date_function1(filtered_annual_evi)
+filtered_annual_aniso_date <- insert_step_date_function1(filtered_annual_aniso)
+
+
+insert_step_date_function2 <- function (filtered_df){
+  filtered_df <- filtered_df %>% mutate(stepyear = (loc_brk %/% 12) + 2002,
+                                        stepmonth = (loc_brk %% 12))
+  filtered_df
+}
+filtered_monthly_ndvi_date <- insert_step_date_function2(filtered_monthly_ndvi) 
+filtered_monthly_evi_date <- insert_step_date_function2(filtered_monthly_evi) 
+filtered_monthly_aniso_date <- insert_step_date_function2(filtered_monthly_aniso)
+
+remove(insert_step_date_function1, insert_step_date_function2)
+
+```
+
+
+#Step 3- rasterizing above filtered step pixels to extract date of step change, cropping/masking to CVNP
+```{r}
+#Step increase- pixelvalue = 5, step decrease- pixelvalue = 4
+inc_annual_ndvi_date <- filtered_annual_ndvi_date %>% filter(pixelvalue ==5)
+dec_annual_ndvi_date <- filtered_annual_ndvi_date %>% filter(pixelvalue ==4)
+inc_annual_evi_date <- filtered_annual_evi_date %>% filter(pixelvalue ==5)
+dec_annual_evi_date <- filtered_annual_evi_date %>% filter(pixelvalue ==4)
+inc_annual_aniso_date <- filtered_annual_aniso_date %>% filter(pixelvalue ==5)
+dec_annual_aniso_date <- filtered_annual_aniso_date %>% filter(pixelvalue ==4)
+
+inc_monthly_ndvi_date <- filtered_monthly_ndvi_date %>% filter(pixelvalue ==5)
+dec_monthly_ndvi_date <- filtered_monthly_ndvi_date %>% filter(pixelvalue ==4)
+inc_monthly_evi_date <- filtered_monthly_evi_date %>% filter(pixelvalue ==5)
+dec_monthly_evi_date <- filtered_monthly_evi_date %>% filter(pixelvalue ==4)
+inc_monthly_aniso_date <- filtered_monthly_aniso_date %>% filter(pixelvalue ==5)
+dec_monthly_aniso_date <- filtered_monthly_aniso_date %>% filter(pixelvalue ==4)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
+Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
+Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
+
+rasterize_stepdf_function_year <- function (filered_date_df){
+  cellindex_vector<- terra::vect(filered_date_df, geom=c("x", "y"), crs="epsg:4326")
+  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "stepyear", fun="max")
+  masked_cellindex_raster<- terra::mask(cellindex_raster, threshold20_1km)
+  masked_cellindex_raster 
+}
+#increases
+Sys.time(); raster_inc_annual_ndvi_date <- rasterize_stepdf_function_year(inc_annual_ndvi_date); Sys.time()
+Sys.time(); raster_inc_annual_evi_date <- rasterize_stepdf_function_year(inc_annual_evi_date); Sys.time()
+Sys.time(); raster_inc_annual_aniso_date <- rasterize_stepdf_function_year(inc_annual_aniso_date); Sys.time()
+Sys.time(); raster_inc_monthly_ndvi_date  <- rasterize_stepdf_function_year(inc_monthly_ndvi_date); Sys.time()
+Sys.time(); raster_inc_monthly_evi_date  <- rasterize_stepdf_function_year(inc_monthly_evi_date); Sys.time()
+Sys.time(); raster_inc_monthly_aniso_date  <- rasterize_stepdf_function_year(inc_monthly_aniso_date); Sys.time()
+
+#decreases
+Sys.time(); raster_dec_annual_ndvi_date <- rasterize_stepdf_function_year(dec_annual_ndvi_date); Sys.time()
+Sys.time(); raster_dec_annual_evi_date <- rasterize_stepdf_function_year(dec_annual_evi_date); Sys.time()
+Sys.time(); raster_dec_annual_aniso_date <- rasterize_stepdf_function_year(dec_annual_aniso_date); Sys.time()
+Sys.time(); raster_dec_monthly_ndvi_date  <- rasterize_stepdf_function_year(dec_monthly_ndvi_date); Sys.time()
+Sys.time(); raster_dec_monthly_evi_date  <- rasterize_stepdf_function_year(dec_monthly_evi_date); Sys.time()
+Sys.time(); raster_dec_monthly_aniso_date  <- rasterize_stepdf_function_year(dec_monthly_aniso_date); Sys.time()
+
+rasterize_stepdf_function_month <- function (filered_date_df){
+  cellindex_vector<- terra::vect(filered_date_df, geom=c("x", "y"), crs="epsg:4326")
+  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "stepmonth", fun="max")
+  masked_cellindex_raster<- terra::mask(cellindex_raster, threshold20_1km)
+  masked_cellindex_raster 
+}
+Sys.time(); raster_inc_monthly_ndvi_date_month <- rasterize_stepdf_function_month(inc_monthly_ndvi_date); Sys.time()
+Sys.time(); raster_inc_monthly_evi_date_month <- rasterize_stepdf_function_month(inc_monthly_evi_date); Sys.time()
+Sys.time(); raster_inc_monthly_aniso_date_month <- rasterize_stepdf_function_month(inc_monthly_aniso_date); Sys.time()
+
+Sys.time(); raster_dec_monthly_ndvi_date_month  <- rasterize_stepdf_function_month(dec_monthly_ndvi_date); Sys.time()
+Sys.time(); raster_dec_monthly_evi_date_month <- rasterize_stepdf_function_month(dec_monthly_evi_date); Sys.time()
+Sys.time(); raster_dec_monthly_aniso_date_month <- rasterize_stepdf_function_month(dec_monthly_aniso_date); Sys.time()
+
+```
+
+#Step 4- compilation of results of step date- by year and by month
+```{r}
+year_inc<- c(raster_inc_annual_ndvi_date, raster_inc_annual_evi_date, raster_inc_annual_aniso_date,
+             raster_inc_monthly_ndvi_date, raster_inc_monthly_evi_date, raster_inc_monthly_aniso_date)
+year_dec<- c(raster_dec_annual_ndvi_date, raster_dec_annual_evi_date, raster_dec_annual_aniso_date,
+             raster_dec_monthly_ndvi_date, raster_dec_monthly_evi_date, raster_dec_monthly_aniso_date)
+
+remove(rasterize_stepdf_function_year,rasterize_stepdf_function_month, cvnp_crop_mask)
+
+df_year_inc <- terra::as.data.frame(year_inc, cells=TRUE, xy=TRUE)
+names(df_year_inc)[[4]] <- "NDVI(annual)" 
+names(df_year_inc)[[5]] <- "EVI(annual)" 
+names(df_year_inc)[[6]] <- "anisoEVI(annual)" 
+names(df_year_inc)[[7]] <- "NDVI(monthly)"
+names(df_year_inc)[[8]] <- "EVI(monthly)"
+names(df_year_inc)[[9]] <- "anisoEVI(monthly)"
+df_year_inc <- df_year_inc  %>% mutate(StepType="Increase")
+df_year_dec <- terra::as.data.frame(year_dec, cells=TRUE, xy=TRUE)
+names(df_year_dec)[[4]] <- "NDVI(annual)" 
+names(df_year_dec)[[5]] <- "EVI(annual)" 
+names(df_year_dec)[[6]] <- "anisoEVI(annual)" 
+names(df_year_dec)[[7]] <- "NDVI(monthly)"
+names(df_year_dec)[[8]] <- "EVI(monthly)"
+names(df_year_dec)[[9]] <- "anisoEVI(monthly)"
+df_year_dec <- df_year_dec %>% mutate(StepType="Decrease")
+df_step<- bind_rows(df_year_inc, df_year_dec)
+remove(df_year_dec, df_year_inc)
+pivot_step<- df_step %>% pivot_longer(4:9)
+
+barplot_df<- pivot_step %>% group_by(name, value, StepType) %>%
+  summarise (count=n())
+number_steppixels_df<- pivot_step %>% group_by(name) %>% #Total pixels that are Step in an index irrespective of year
+  summarise(total_step_pixels=sum(!is.na(value)))
+barplot_df<- barplot_df %>% left_join(number_steppixels_df)
+barplot_df<- barplot_df %>% mutate(percentage_totalstep=(count/total_step_pixels)*100)
+summary(barplot_df) #there are many Years missing because these pixels were
+#classified as inc/dec in various other indices and not the specific one which is NA
+barplot_df<- barplot_df %>% filter(!is.na(value))
+
+cvnp_step_year_barplot<- barplot_df %>% 
+  ggplot(aes(x=percentage_totalstep, y=as.factor(value), fill= StepType)) +
+  geom_bar(position="dodge", stat="identity") +
+  theme_classic() +
+  facet_grid(~name, switch = "x") +
+  scale_fill_manual(values = c("#994F00", "#88CCEE"))+
+  xlab("% of step pixels")+ ylab ("Year of step change")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))
+ggsave(here("Outputs", "TrendsResults","stepchange_year_allindices.png"),
+       cvnp_step_year_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+remove(year_dec, year_inc, df_step, pivot_step, barplot_df, cvnp_step_year_barplot, df_step)
+
+
+month_inc<- c(raster_inc_monthly_ndvi_date_month, raster_inc_monthly_evi_date_month, raster_inc_monthly_aniso_date_month)
+month_dec<- c(raster_dec_monthly_ndvi_date_month, raster_dec_monthly_evi_date_month, raster_dec_monthly_aniso_date_month)
+df_month_inc <- terra::as.data.frame(month_inc, cells=TRUE, xy=TRUE)
+names(df_month_inc)[[4]] <- "NDVI(monthly)" 
+names(df_month_inc)[[5]] <- "EVI(monthly)"
+names(df_month_inc)[[6]] <- "anisoEVI(monthly)"
+df_month_inc <- df_month_inc  %>% mutate(StepType="Increase")
+df_month_dec <- terra::as.data.frame(month_dec, cells=TRUE, xy=TRUE)
+names(df_month_dec)[[4]] <- "NDVI(monthly)" 
+names(df_month_dec)[[5]] <- "EVI(monthly)" 
+names(df_month_dec)[[6]] <- "anisoEVI(monthly)"
+df_month_dec <- df_month_dec %>% mutate(StepType="Decrease")
+df_step<- bind_rows(df_month_inc, df_month_dec)
+remove(df_month_dec, df_month_inc)
+pivot_step<- df_step %>% pivot_longer(4:6)
+
+
+barplot_df<- pivot_step %>% group_by(name, value, StepType) %>%
+  summarise (count=n())
+number_steppixels_df<- pivot_step %>% group_by(name) %>% #Total pixels that are Step in an index irrespective of month
+  summarise(total_step_pixels=sum(!is.na(value)))
+barplot_df<- barplot_df %>% left_join(number_steppixels_df)
+barplot_df<- barplot_df %>% mutate(percentage_totalstep=(count/total_step_pixels)*100)
+summary(barplot_df) #there are many Years missing because these pixels were
+#classified as inc/dec in various other indices and not the specific one which is NA
+barplot_df<- barplot_df %>% filter(!is.na(value))
+barplot_df<- barplot_df %>% mutate(month = case_when(value==0 ~"Jan",
+                                                     value==1~"Feb",
+                                                     value==2~"Mar",
+                                                     value==3~"Apr",
+                                                     value==4~"May",
+                                                     value==5~"Jun",
+                                                     value==6~"Jul",
+                                                     value==7~"Aug",
+                                                     value==8~"Sep",
+                                                     value==9~"Oct",
+                                                     value==10~"Nov",
+                                                     value==11~"Dec"))
+barplot_df$month <- as.character(barplot_df$month) 
+barplot_df$month <- factor(barplot_df$month, levels= unique(barplot_df$month))
+
+cvnp_step_month_barplot<- barplot_df %>% 
+  ggplot(aes(x=percentage_totalstep, y=as.factor(month), fill= StepType)) +
+  geom_bar(position="dodge", stat="identity") +
+  theme_classic() +
+  facet_grid(~name, switch = "x") +
+  scale_fill_manual(values = c("#994F00", "#88CCEE"))+
+  xlab("% of step pixels")+ ylab ("Year of step change")+
+  theme(strip.placement  = "outside",
+        panel.spacing    = unit(0, "points"),
+        strip.background = element_blank(),
+        strip.text       = element_text(size = 12, angle = 90),
+        axis.text.x = element_text(size = 12, angle = 90))
+ggsave(here("Outputs", "TrendsResults","stepchange_month_allindices.png"),
+       cvnp_step_month_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+```
