@@ -24,15 +24,14 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 #Introduction
 In this script, I compile final trend results for each index only for swindow = 11 for monthly timestep, aggregate trajectories and also 
 process the results to obtain count of aggregated trajectories at 5km spatial resolution
-(1) Read in only swin11 monthly rasters for the three indices ie results with separate trajectories
-(2) Map maps of results of separate trajectories across indices for annual and monthly
-(3) Make barplot of results of separate trajectories across the three indices
-(4) Aggregate trajectories to increase, decrease and no trend and make map results for annual and monthly across all indices
-(5) Barplot of aggregate trajectories for annual and monthly indices
-(5) At 5km resolution, make binary rasters where pixel value is count of smaller 1km pixels of the aggregate trajectory types
+(1) Read in only swin11 rasters for the three indices ie results with separate trajectories and time steps
+(2) Results maps of above
+(3) Comparison barplot of above results
+(4) Read in swin11 aggregated trajectories results for all three indices and timesteps, make maps and barplots like for seperate trajectory results above
+(5) Count of 1km aggregated trajectory pixels within 5km pixel for further analyses
 
 
-#Step 1- reading in only swin11 trend results (monthly and annual) in native savannas ie seperate trajectories
+#Step 1- reading in only swin11 trend results (monthly and annual) of seperate trajectories
 ```{r}
 monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
 monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
@@ -63,11 +62,13 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
+Set1palette_trajectoryalphabet<- c("#332288", "#117733", "lightgrey", "#994F00", "#88CCEE", "#AA4499", "#882255", "#44AA99", "#CC6677")
+
 mapping_function <- function (trendresults_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (trendresults_raster) + 
-    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )), col.legend = tm_legend_hide()) +
-    tm_add_legend( fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
+    tm_raster(col.scale = tm_scale_categorical(n=9, values = Set1palette_trajectoryalphabet), col.legend = tm_legend_hide()) +
+    tm_add_legend( fill = Set1palette_trajectoryalphabet,
       labels = c("Linear decrease", 
                            "Linear increase",
                            "No trend",
@@ -76,7 +77,7 @@ mapping_function <- function (trendresults_raster, title){
                            "Quad decrease (accelerated)",
                            "Quad decrease (decelerated)",
                            "Quad increase (accelerated)",
-                           "Quad incrase (decelerated)")) + 
+                           "Quad incrase (decelerated)"), type ="polygons") + 
     tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
   x_map
 }
@@ -84,33 +85,23 @@ mapping_function <- function (trendresults_raster, title){
 output_file_path <- here("Outputs", "TrendsResults")
 
 Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
-#tmap_save(monthly_ndvi_results_map, paste0(output_file_path, "/", "ndvi_monthly_map1km_trendresults_swin11_2.jpeg"),
-#        height = 80, width = 80, units = "cm", dpi=700)
 Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
-Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
-#tmap_save(annual_ndvi_results_map, paste0(output_file_path, "/", "ndvi_annual_map1km_trendresults_swin11_2.jpeg"),
-#        height = 80, width = 80, units = "cm", dpi=700)
-Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
 Sys.time();monthly_aniso_results_map <- mapping_function (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
+
+Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
 Sys.time();annual_aniso_results_map <- mapping_function (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
 
 trendresult_map<- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
                                annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
 
-tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual_4.png"),
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual.png"),
         height = 80, width = 80, units = "cm", dpi=700)
 
 remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map, monthly_aniso_results_map, annual_aniso_results_map)
-
-
-
-
-
-
-
 ```
 
-#Step 3- barplot of seperate trajectory results across three indices
+#Step 3- barplot of seperate trajectory results across three indices and timesteps
 ```{r}
 df_prep_function<- function (trendresults_raster, index_name){
   x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
@@ -120,12 +111,12 @@ df_prep_function<- function (trendresults_raster, index_name){
   percentage_df
 }
 
-Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
-Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI(monthly)"); Sys.time()
-Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI(monthly)"); Sys.time()
-Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
-Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI(annual)"); Sys.time()
-Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI(annual)"); Sys.time()
+Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
 
 plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
                      annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
@@ -140,324 +131,124 @@ plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==9~"Quadratic increase (decelerated)",
                                                 TRUE~"No trend"))
 
-Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
-
+plot_df <- plot_df  %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
+  
+Set1palette<- c("#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677",  "#994F00",   "#88CCEE" ) 
 trendresults_barplot<- plot_df %>% 
-  ggplot(aes(value, percentage, fill = value, group=index, alpha=as.factor(index))) +
-  geom_col(position = position_dodge(), color = "black") +
+  ggplot(aes(value, percentage, fill = value)) +
+  geom_col(position = position_dodge(), color = "black") + facet_grid(TimeStep~Index) +
   theme_classic() +
-  xlab("Trajectory Shape")+ ylab ("% of native savannas")+
-  theme(strip.placement  = "outside",
-        panel.spacing    = unit(0, "points"),
-        strip.background = element_blank(),
-        strip.text       = element_text(size = 12, angle = 90),
-        axis.text.x = element_text(size = 12, angle = 90)) +
+  xlab("Trajectory Shape")+ ylab ("Percentage of study area")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+
   scale_fill_manual(values = Set1palette) + theme(legend.title=element_blank()) +
   xlab("Model Type")
-ggsave(here(output_file_path, paste0("barplot_monthlyswin11_trendresults.png")),
+ggsave(here(output_file_path, paste0("barplot_swin11_seperate_trajectories.png")),
        trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
 remove(plot_df, trendresults_barplot)
 remove(monthly_ndvi_trend_results, monthly_evi_trend_results, annual_ndvi_trend_results, annual_evi_trend_results, monthly_aniso_trend_results, annual_aniso_trend_results)
 ```
 
-#Step 4 - aggregating trajectory types to increase, decrease and no trend
+#Step 4 - reading in only swin11 trend results (monthly and annual) of aggregate trajectories, making maps and barplot similar to previous chunks
 ```{r}
-overall_file_path <- here("Outputs", "ModelSelection")
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-read_files_function <- function (index_name,annual_or_monthly_folder, file_name_with_rds){
-  rds_file<- read_rds(paste0(overall_file_path,"/", index_name,"/", annual_or_monthly_folder,"/", file_name_with_rds))
-}
-Sys.time(); annual_ndvi_swin11 <- read_files_function ("NDVI","annual", "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "modelselection_swindow_11.rds"); Sys.time()
+monthly_rds_list<- lapply(monthly_file_list, rast)
+names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
-Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
 
-Sys.time(); monthly_aniso_swin11 <- read_files_function ("anisoEVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); annual_aniso_swin11 <- read_files_function ("anisoEVI","annual", "modelselection_swindow_11.rds"); Sys.time()
+annual_rds_list<- lapply(annual_file_list, rast)
+names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[2]])<- "evi_swin11_annual"
+names(annual_rds_list[[1]])<- "aniso_swin11_annual"
 
-month_swin11 <- monthly_aniso_swin11 %>% select(c(x, y))
-annual_aniso_swin11 <- annual_aniso_swin11 %>% bind_cols(month_swin11 %>% dplyr::select(-c(cell)))
-remove(month_swin11)
-annual_aniso_swin11 <- annual_aniso_swin11 %>% dplyr::select(-c("cell...29"))
-names(annual_aniso_swin11)[1] <- "cell"
-
-results_df_function<- function (modelselection_df) {
-  results_df <- modelselection_df %>% ungroup() %>% 
-    dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
-    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
-                                model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
-                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
-                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
-                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
-                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
-                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~1, #note - changed
-                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~2, #note - changed
-                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~1, #note - changed 
-                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~1, #note - changed
-                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~2, #note - changed
-                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~2 #note - changed
-                                )) %>% 
-    dplyr::select(c(x,y,pixelvalue))
-}
-
-Sys.time(); annual_ndvi_swin11 <- results_df_function(annual_ndvi_swin11); Sys.time()
-Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys.time()
-
-Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
-Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
-
-Sys.time(); annual_aniso_swin11 <- results_df_function(annual_aniso_swin11); Sys.time()
-Sys.time(); monthly_aniso_swin11 <- results_df_function(monthly_aniso_swin11); Sys.time()
-
-#raster preparation
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
-cerrado<- d_trans %>% st_union()
-
-mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
-Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
-Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
-
-results_raster_function<- function (results_df) {
-  cellindex_vector<- terra::vect(results_df, geom=c("x", "y"), crs="epsg:4326")
-  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "pixelvalue", fun="max")
-  cellindex_raster
-}
-
-Sys.time(); annual_ndvi1km_aggregated_trajectories <- results_raster_function(annual_ndvi_swin11); Sys.time()
-Sys.time(); monthly_ndvi1km_aggregated_trajectories<- results_raster_function(monthly_ndvi_swin11); Sys.time()
-
-Sys.time(); annual_evi1km_aggregated_trajectories <- results_raster_function(annual_evi_swin11); Sys.time()
-Sys.time(); monthly_evi1km_aggregated_trajectories <- results_raster_function(monthly_evi_swin11); Sys.time()
-
-Sys.time(); annual_aniso1km_aggregated_trajectories <- results_raster_function(annual_aniso_swin11); Sys.time()
-Sys.time(); monthly_aniso1km_aggregated_trajectories <- results_raster_function(monthly_aniso_swin11); Sys.time()
-
-threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
-
-applying_studyarea_mask <- function (aggregated_trajectories_raster){
-  x_mask <- terra::mask(aggregated_trajectories_raster, threshold20_1km)
-  x_mask
-}
-
-studyarea_annual_ndvi1km_aggregated_trajectories <- applying_studyarea_mask(annual_ndvi1km_aggregated_trajectories)
-writeRaster(studyarea_annual_ndvi1km_aggregated_trajectories, here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual_ndvi1km_aggregated.tif"))
-studyarea_monthly_ndvi1km_aggregated_trajectories <- applying_studyarea_mask(monthly_ndvi1km_aggregated_trajectories)
-writeRaster(studyarea_monthly_ndvi1km_aggregated_trajectories, here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly_ndvi1km_aggregated.tif"))
-
-studyarea_annual_evi1km_aggregated_trajectories <- applying_studyarea_mask(annual_evi1km_aggregated_trajectories)
-writeRaster(studyarea_annual_evi1km_aggregated_trajectories, here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual_evi1km_aggregated.tif"))
-studyarea_monthly_evi1km_aggregated_trajectories <- applying_studyarea_mask(monthly_evi1km_aggregated_trajectories)
-writeRaster(studyarea_monthly_evi1km_aggregated_trajectories, here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly_evi1km_aggregated.tif"))
-
-studyarea_annual_aniso1km_aggregated_trajectories <- applying_studyarea_mask(annual_aniso1km_aggregated_trajectories)
-writeRaster(studyarea_annual_aniso1km_aggregated_trajectories, here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual_aniso1km_aggregated.tif"))
-studyarea_monthly_aniso1km_aggregated_trajectories <- applying_studyarea_mask(monthly_aniso1km_aggregated_trajectories)
-writeRaster(studyarea_monthly_aniso1km_aggregated_trajectories , here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly_aniso1km_aggregated.tif"))
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
 
 aggregate_trajectory_palette <- c("#F7BF2A", "#61A36A", "#7C7083")
 
-
-mapping_function <- function (trendresults_raster){
+aggregate_mapping_function <- function (trendresults_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (trendresults_raster) + 
-    tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
+     tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
               col.legend = tm_legend_hide()) +
     tm_add_legend(labels = c("Decrease", "Increase", "No trend"),
       fill = aggregate_trajectory_palette,
-      type = "polygons")
+      type = "polygons") +
+     tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
   x_map
 }
 
-monthly_ndvi_aggregate_map <- mapping_function(studyarea_monthly_ndvi1km_aggregated_trajectories)
-tmap_save(monthly_ndvi_aggregate_map, filename = here("Outputs", "TrendsResults","aggregate_trajectory_results", "map_monthly_ndvi_aggregate.png"),
-                width = 900, height = 900, dpi = 150)
-annual_ndvi_aggregate_map <- mapping_function(studyarea_annual_ndvi1km_aggregated_trajectories)
-tmap_save(annual_ndvi_aggregate_map, filename = here("Outputs", "TrendsResults","aggregate_trajectory_results", "map_annual_ndvi_aggregate.png"),
-                width = 900, height = 900, dpi = 150)
+output_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
 
-mapping_function_with_title <- function (trendresults_raster, title){
-  x_map<- tm_shape(cerrado)+ tm_borders()+
-    tm_shape (trendresults_raster) + 
-    tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
-              col.legend = tm_legend_hide()) +
-    tm_add_legend(labels = c("Decrease", "Increase", "No trend"),
-      fill = aggregate_trajectory_palette,
-      type = "polygons") +tm_layout(legend.text.size = 3) +
-    tm_title(title, size = 3)
-  x_map
+Sys.time();monthly_ndvi_results_map <- aggregate_mapping_function  (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
+Sys.time();monthly_evi_results_map <- aggregate_mapping_function  (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
+Sys.time();monthly_aniso_results_map <- aggregate_mapping_function  (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
+
+Sys.time();annual_ndvi_results_map <- aggregate_mapping_function  (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- aggregate_mapping_function  (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
+Sys.time();annual_aniso_results_map <- aggregate_mapping_function  (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
+
+trendresult_map<- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
+                               annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
+
+tmap_save(trendresult_map, paste0(output_file_path, "/", "agg_map1km_trendresults_swin11_monthlyannual.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
+remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map, monthly_aniso_results_map, annual_aniso_results_map)
+
+df_prep_function<- function (trendresults_raster, index_name){
+  x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
+  x_df<- x_df %>% mutate(index = index_name)
+  names(x_df)[4]<- "value"
+  percentage_df <- x_df %>% group_by(value, index) %>% summarise(count= n()) %>% mutate(percentage= (count/nrow(x_df))*100) 
+  percentage_df
 }
-monthly_evi_aggregate_map <- mapping_function_with_title(studyarea_monthly_evi1km_aggregated_trajectories, "EVI (monthly)")
-monthly_aniso_aggregate_map <- mapping_function_with_title(studyarea_monthly_aniso1km_aggregated_trajectories, "anisotropic EVI (monthly)")
-annual_evi_aggregate_map <- mapping_function_with_title(studyarea_annual_evi1km_aggregated_trajectories, "EVI (annual)")
-annual_aniso_aggregate_map <- mapping_function_with_title(studyarea_annual_aniso1km_aggregated_trajectories, "anisotropic EVI (annual)")
 
-aggregate_evi_aniso_map<- tmap_arrange(monthly_evi_aggregate_map , monthly_aniso_aggregate_map,
-                               annual_evi_aggregate_map, annual_aniso_aggregate_map, ncol =2, nrow= 2)
-tmap_save(aggregate_evi_aniso_map, here("Outputs", "TrendsResults","aggregate_trajectory_results", "evi_aniso_aggregate_maps.png"),
-        height = 100, width = 100, units= "cm", dpi=700)
+Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
 
-remove(monthly_ndvi, annual_evi_aggregate_map, monthly_evi_aggregate_map, monthly_aniso_aggregate_map, annual_evi_aggregate_map, annual_aniso_aggregate_map, aggregate_evi_aniso_map)
-remove (mapping_function, mapping_function_with_title)
-remove(annual_ndvi1km_aggregated_trajectories, monthly_ndvi1km_aggregated_trajectories, annual_evi1km_aggregated_trajectories, monthly_evi1km_aggregated_trajectories, annual_aniso1km_aggregated_trajectories,monthly_aniso1km_aggregated_trajectories   )
-remove(annual_ndvi_swin11, monthly_ndvi_swin11,annual_evi_swin11, monthly_evi_swin11, annual_aniso_swin11,monthly_aniso_swin11)
-remove(monthly_ndvi_aggregate_map, annual_ndvi_aggregate_map)
+plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
+                     annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
 
-```
-
-
-#Step 5- barplot of aggregated trajectory results across three indices
-```{r}
-aggregate_results_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
-aggregate_file_list <- list.files(path = paste0(aggregate_results_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
-
-aggregate_rds_list <- lapply(aggregate_file_list, rast)
-names(aggregate_rds_list[[1]])<- "annual_aniso1km_agg"
-names(aggregate_rds_list[[2]])<- "annual_evi1km_agg"
-names(aggregate_rds_list[[3]])<- "annual_ndvi1km_agg"
-names(aggregate_rds_list[[4]])<- "monthly_aniso1km_agg"
-names(aggregate_rds_list[[5]])<- "monthly_evi1km_agg"
-names(aggregate_rds_list[[6]])<- "monthly_ndvi1km_agg"
-
-remove(aggregate_results_input_file_path , aggregate_file_list)
-
-Sys.time(); monthly_ndvi_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[6]], "NDVI"); Sys.time()
-Sys.time(); monthly_evi_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[5]], "EVI"); Sys.time()
-Sys.time(); monthly_aniso_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[4]], "anisotropic EVI"); Sys.time()
-Sys.time(); annual_ndvi_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[3]], "NDVI"); Sys.time()
-Sys.time(); annual_evi_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[2]], "EVI"); Sys.time()
-Sys.time(); annual_aniso_aggregate_studyarea <- df_prep_function(aggregate_rds_list[[1]], "anisotropic EVI"); Sys.time()
-
-monthly_plot_df <- bind_rows(monthly_ndvi_aggregate_studyarea, monthly_evi_aggregate_studyarea, monthly_aniso_aggregate_studyarea)
-
-monthly_plot_df <- monthly_plot_df %>% mutate(value = case_when(value== 1~ "Decrease",
+plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Decrease",
                                                 value==2~ "Increase",
                                                   TRUE~"No trend"))
+plot_df <- plot_df  %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
 
-index_palette <- c("#A18A6E", "#E0D7C6", "#84A198")
-aggregate_trajectories_indices_monthly_barplot <- monthly_plot_df %>% 
-  ggplot(aes(index, percentage, fill = index)) +
-  geom_col(position = position_dodge(), color = "black") + facet_wrap(~value)+
+agg_trendresults_barplot <- plot_df %>% 
+  ggplot(aes(value, percentage, fill = value)) +
+  geom_col(position = position_dodge(), color = "black") + facet_grid(TimeStep~Index) +
   theme_classic() +
-  xlab("Greenness index type") + ylab ("Percentage of study area") +
-  scale_fill_manual(values = index_palette) + 
-  theme(legend.title=element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank()) 
-ggsave(here("Outputs", "TrendsResults", "aggregate_trajectory_results", "aggregate_trajectories_monthly_indices.png"),
-       aggregate_trajectories_indices_monthly_barplot,dpi = 700, height = 20, width=20, units = "cm")
+  xlab("Trajectory Shape")+ ylab ("Percentage of study area")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+
+  scale_fill_manual(values = aggregate_trajectory_palette) + theme(legend.title=element_blank()) +
+  xlab("Model Type")
+ggsave(here(output_file_path, paste0("barplot_swin11_agg_trajectories.png")),
+       agg_trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
-monthly_plot_df <- monthly_plot_df %>% mutate(timestep = "monthly")
-annual_plot_df <- bind_rows(annual_ndvi_aggregate_studyarea, annual_evi_aggregate_studyarea, annual_aniso_aggregate_studyarea)
-annual_plot_df <- annual_plot_df %>% mutate(timestep = "annual")
-annual_plot_df <- annual_plot_df %>% mutate(value = case_when(value== 1~ "Decrease",
-                                                value==2~ "Increase",
-                                                  TRUE~"No trend"))
-
-timestep_plot_df <- bind_rows(monthly_plot_df, annual_plot_df)
-monthly_annual_aggregate_trajectories_indices_barplot <- timestep_plot_df %>% 
-  ggplot(aes(index, percentage, fill = index)) +
-  geom_col(position = position_dodge(), color = "black") + facet_grid(timestep~value)+
-  theme_classic() +
-  xlab("Greenness index type") + ylab ("Percentage of study area") +
-  scale_fill_manual(values = index_palette) + 
-  theme(legend.title=element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank()) 
-ggsave(here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly_annual_comparison_aggregate_trajectories_indices.png"),
-       monthly_annual_aggregate_trajectories_indices_barplot,dpi = 700, height = 20, width=20, units = "cm")
-
-remove(monthly_plot_df, annual_plot_df, timestep_plot_df, aggregate_trajectories_indices_monthly_barplot, monthly_annual_aggregate_trajectories_indices_barplot)
-remove(monthly_ndvi_aggregate_studyarea, monthly_evi_aggregate_studyarea, monthly_aniso_aggregate_studyarea, 
-       annual_ndvi_aggregate_studyarea, annual_evi_aggregate_studyarea, annual_aniso_aggregate_studyarea)
-
+remove(plot_df, agg_trendresults_barplot, annual_aniso_trend_results, annual_evi_trend_results, annual_ndvi_trend_results,
+       monthly_aniso_trend_results, monthly_evi_trend_results, monthly_ndvi_results_map)
 ```
 
-#Step 6- estimation of number (yes number) of 1km pixels
+#Step 5- estimation of number (yes number) of 1km pixels
 within 5km pixel that are of a particular trajectory for further analyses
 ```{r}
-#Reading 1km resolution results (before anthropic mask is applied)
-overall_file_path <- here("Outputs", "ModelSelection")
-
-read_files_function <- function (index_name,annual_or_monthly_folder, file_name_with_rds){
-  rds_file<- read_rds(paste0(overall_file_path,"/", index_name,"/", annual_or_monthly_folder,"/", file_name_with_rds))
-}
-Sys.time(); annual_ndvi_swin11 <- read_files_function ("NDVI","annual", "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); monthly_ndvi_swin11 <- read_files_function ("NDVI","monthly", "modelselection_swindow_11.rds"); Sys.time()
-
-Sys.time(); annual_evi_swin11 <- read_files_function ("EVI","annual", "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); monthly_evi_swin11 <- read_files_function ("EVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
-
-Sys.time(); monthly_aniso_swin11 <- read_files_function ("anisoEVI", "monthly",  "modelselection_swindow_11.rds"); Sys.time()
-Sys.time(); annual_aniso_swin11 <- read_files_function ("anisoEVI","annual", "modelselection_swindow_11.rds"); Sys.time()
-month_swin11 <- monthly_aniso_swin11 %>% select(c(x, y))
-annual_aniso_swin11 <- annual_aniso_swin11 %>% bind_cols(month_swin11 %>% dplyr::select(-c(cell)))
-remove(month_swin11)
-annual_aniso_swin11 <- annual_aniso_swin11 %>% dplyr::select(-c("cell...29"))
-names(annual_aniso_swin11)[1] <- "cell"
-
-results_df_function<- function (modelselection_df) {
-  results_df <- modelselection_df %>% ungroup() %>% 
-    dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
-    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
-                                model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
-                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
-                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
-                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
-                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
-                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~1,
-                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~2, 
-                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~1,
-                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~1,
-                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~2,
-                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~2
-                                )) %>% 
-    dplyr::select(c(x,y,pixelvalue))
-}
-
-Sys.time(); annual_ndvi_swin11 <- results_df_function(annual_ndvi_swin11); Sys.time()
-Sys.time(); monthly_ndvi_swin11 <- results_df_function(monthly_ndvi_swin11); Sys.time()
-
-Sys.time(); annual_evi_swin11 <- results_df_function(annual_evi_swin11); Sys.time()
-Sys.time(); monthly_evi_swin11 <- results_df_function(monthly_evi_swin11); Sys.time()
-
-Sys.time(); annual_aniso_swin11 <- results_df_function(annual_aniso_swin11); Sys.time()
-Sys.time(); monthly_aniso_swin11 <- results_df_function(monthly_aniso_swin11); Sys.time()
-
-#raster preparation
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
-cerrado<- d_trans %>% st_union()
-
-mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
-Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
-Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
-
-results_raster_function<- function (results_df) {
-  cellindex_vector<- terra::vect(results_df, geom=c("x", "y"), crs="epsg:4326")
-  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "pixelvalue", fun="max")
-  cellindex_raster
-}
-
-Sys.time(); annual_ndvi1km_trajectories <- results_raster_function(annual_ndvi_swin11); Sys.time()
-Sys.time(); monthly_ndvi1km_trajectories <- results_raster_function(monthly_ndvi_swin11); Sys.time()
-
-Sys.time(); annual_evi1km_trajectories <- results_raster_function(annual_evi_swin11); Sys.time()
-Sys.time(); monthly_evi1km_trajectories <- results_raster_function(monthly_evi_swin11); Sys.time()
-
-Sys.time(); annual_aniso1km_trajectories <- results_raster_function(annual_aniso_swin11); Sys.time()
-Sys.time(); monthly_aniso1km_trajectories <- results_raster_function(monthly_aniso_swin11); Sys.time()
-
-#coarsen to 5km but apply anthropogenic mask at 1km at first before coarsening
 threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
 
 count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
   
-  x_1km_sameextent <- terra::resample(terra::segregate(trajectories_1km_raster), trajectories_1km_raster, method = "near")
+  x_1km_sameextent <- terra::segregate(trajectories_1km_raster)
  
   x_5km_count <- terra::aggregate (x_1km_sameextent, fact = 5, fun = "sum")
   x_5km_count_sameextent <- terra::resample(x_5km_count, threshold20_5km, method = "near")
@@ -467,19 +258,19 @@ count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
   x_5km_mask
 }
   
-Sys.time(); annual_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_ndvi1km_trajectories); Sys.time()
+Sys.time(); annual_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[3]]); Sys.time()
 writeRaster(annual_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" ,"annual_ndvi_agg_count_5km.tif"), overwrite =T)
-Sys.time(); monthly_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_ndvi1km_trajectories); Sys.time()
+Sys.time(); monthly_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[3]]); Sys.time()
 writeRaster(monthly_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" , "monthly_ndvi_agg_count_5km.tif"), overwrite =T)
 
-Sys.time(); annual_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_evi1km_trajectories); Sys.time()
+Sys.time(); annual_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[2]]); Sys.time()
 writeRaster(annual_evi_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual_evi_agg_count_5km.tif"), overwrite= T)
-Sys.time(); monthly_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_evi1km_trajectories); Sys.time()
+Sys.time(); monthly_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[2]]); Sys.time()
 writeRaster(monthly_evi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results",  "monthly_evi_agg_count_5km.tif"), overwrite = T)
 
-Sys.time(); annual_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_aniso1km_trajectories); Sys.time()
+Sys.time(); annual_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[1]]); Sys.time()
 writeRaster(annual_aniso_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "aggregate_trajectory_results","annual_aniso_agg_count_5km.tif"), overwrite = T)
-Sys.time(); monthly_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_aniso1km_trajectories); Sys.time()
+Sys.time(); monthly_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[1]]); Sys.time()
 writeRaster(monthly_aniso_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" , "monthly_aniso_agg_count_5km.tif"), overwrite = T)
 
 ```
