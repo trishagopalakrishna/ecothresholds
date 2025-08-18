@@ -251,10 +251,10 @@ Sys.time(); reclass_annual_ndvi_swin11 <- reclassify_writeraster_function(annual
 Sys.time(); reclass_annual_ndvi_swinperiodic <- reclassify_writeraster_function(annual_ndvi_swinperiodic, "annual", "reclass_annual_ndvi_swinperiodic.tif"); Sys.time()
 Sys.time(); reclass_annual_ndvi_swin_nostl <-reclassify_writeraster_function(annual_ndvi_swin_nostl, "annual", "reclass_annual_ndvi_swin_nostl.tif"); Sys.time()
 
-Sys.time(); reclass_monthly_ndvi_swin7 <- reclassify_writeraster_function(annual_ndvi_swin7, "monthly", "reclass_monthly_ndvi_swin7.tif"); Sys.time()
-Sys.time(); reclass_monthly_ndvi_swin11 <- reclassify_writeraster_function(annual_ndvi_swin11, "monthly", "reclass_monthly_ndvi_swin11.tif"); Sys.time()
-Sys.time(); reclass_monthly_ndvi_swinperiodic <- reclassify_writeraster_function(annual_ndvi_swinperiodic, "monthly", "reclass_monthly_ndvi_swinperiodic.tif"); Sys.time()
-Sys.time(); reclass_monthly_ndvi_swin_nostl <-reclassify_writeraster_function(annual_ndvi_swin_nostl, "monthly", "reclass_monthly_ndvi_swin_nostl.tif"); Sys.time()
+Sys.time(); reclass_monthly_ndvi_swin7 <- reclassify_writeraster_function(monthly_ndvi_swin7, "monthly", "reclass_monthly_ndvi_swin7.tif"); Sys.time()
+Sys.time(); reclass_monthly_ndvi_swin11 <- reclassify_writeraster_function(monthly_ndvi_swin11, "monthly", "reclass_monthly_ndvi_swin11.tif"); Sys.time()
+Sys.time(); reclass_monthly_ndvi_swinperiodic <- reclassify_writeraster_function(monthly_ndvi_swinperiodic, "monthly", "reclass_monthly_ndvi_swinperiodic.tif"); Sys.time()
+Sys.time(); reclass_monthly_ndvi_swin_nostl <-reclassify_writeraster_function(monthly_ndvi_swin_nostl, "monthly", "reclass_monthly_ndvi_swin_nostl.tif"); Sys.time()
 
 #EVI
 Sys.time(); reclass_annual_evi_swin7 <- reclassify_writeraster_function(annual_evi_swin7, "annual", "reclass_annual_evi_swin7.tif"); Sys.time()
@@ -262,10 +262,10 @@ Sys.time(); reclass_annual_evi_swin11 <- reclassify_writeraster_function(annual_
 Sys.time(); reclass_annual_evi_swinperiodic <- reclassify_writeraster_function(annual_evi_swinperiodic, "annual", "reclass_annual_evi_swinperiodic.tif"); Sys.time()
 Sys.time(); reclass_annual_evi_swin_nostl <-reclassify_writeraster_function(annual_evi_swin_nostl, "annual", "reclass_annual_evi_swin_nostl.tif"); Sys.time()
 
-Sys.time(); reclass_monthly_evi_swin7 <- reclassify_writeraster_function(annual_evi_swin7, "monthly", "reclass_monthly_evi_swin7.tif"); Sys.time()
-Sys.time(); reclass_monthly_evi_swin11 <- reclassify_writeraster_function(annual_evi_swin11, "monthly", "reclass_monthly_evi_swin11.tif"); Sys.time()
-Sys.time(); reclass_monthly_evi_swinperiodic <- reclassify_writeraster_function(annual_evi_swinperiodic, "monthly", "reclass_monthly_evi_swinperiodic.tif"); Sys.time()
-Sys.time(); reclass_monthly_evi_swin_nostl <-reclassify_writeraster_function(annual_evi_swin_nostl, "monthly", "reclass_monthly_evi_swin_nostl.tif"); Sys.time()
+Sys.time(); reclass_monthly_evi_swin7 <- reclassify_writeraster_function(monthly_evi_swin7, "monthly", "reclass_monthly_evi_swin7.tif"); Sys.time()
+Sys.time(); reclass_monthly_evi_swin11 <- reclassify_writeraster_function(monthly_evi_swin11, "monthly", "reclass_monthly_evi_swin11.tif"); Sys.time()
+Sys.time(); reclass_monthly_evi_swinperiodic <- reclassify_writeraster_function(monthly_evi_swinperiodic, "monthly", "reclass_monthly_evi_swinperiodic.tif"); Sys.time()
+Sys.time(); reclass_monthly_evi_swin_nostl <-reclassify_writeraster_function(monthly_evi_swin_nostl, "monthly", "reclass_monthly_evi_swin_nostl.tif"); Sys.time()
 
 #anisoEVI
 Sys.time(); reclass_annual_anisoevi_swin7 <- reclassify_writeraster_function(annual_anisoevi_swin7, "annual", "reclass_annual_anisoevi_swin7.tif"); Sys.time()
@@ -273,9 +273,9 @@ Sys.time(); reclass_annual_anisoevi_swin11 <- reclassify_writeraster_function(an
 Sys.time(); reclass_annual_anisoevi_swinperiodic <- reclassify_writeraster_function(annual_anisoevi_swinperiodic, "annual", "reclass_annual_anisoevi_swinperiodic.tif"); Sys.time()
 Sys.time(); reclass_annual_anisoevi_swin_nostl <-reclassify_writeraster_function(annual_anisoevi_swin_nostl, "annual", "reclass_annual_anisoevi_swin_nostl.tif"); Sys.time()
 
-Sys.time(); reclass_monthly_anisoevi_swin7 <- reclassify_writeraster_function(annual_anisoevi_swin7, "monthly", "reclass_monthly_anisoevi_swin7.tif"); Sys.time()
-Sys.time(); reclass_monthly_anisoevi_swin11 <- reclassify_writeraster_function(annual_anisoevi_swin11, "monthly", "reclass_monthly_anisoevi_swin11.tif"); Sys.time()
-Sys.time(); reclass_monthly_anisoevi_swinperiodic <- reclassify_writeraster_function(annual_anisoevi_swinperiodic, "monthly", "reclass_monthly_anisoevi_swinperiodic.tif"); Sys.time()
-Sys.time(); reclass_monthly_anisoevi_swin_nostl <-reclassify_writeraster_function(annual_anisoevi_swin_nostl, "monthly", "reclass_monthly_anisoevi_swin_nostl.tif"); Sys.time()
+Sys.time(); reclass_monthly_anisoevi_swin7 <- reclassify_writeraster_function(monthly_anisoevi_swin7, "monthly", "reclass_monthly_anisoevi_swin7.tif"); Sys.time()
+Sys.time(); reclass_monthly_anisoevi_swin11 <- reclassify_writeraster_function(monthly_anisoevi_swin11, "monthly", "reclass_monthly_anisoevi_swin11.tif"); Sys.time()
+Sys.time(); reclass_monthly_anisoevi_swinperiodic <- reclassify_writeraster_function(monthly_anisoevi_swinperiodic, "monthly", "reclass_monthly_anisoevi_swinperiodic.tif"); Sys.time()
+Sys.time(); reclass_monthly_anisoevi_swin_nostl <-reclassify_writeraster_function(monthly_anisoevi_swin_nostl, "monthly", "reclass_monthly_anisoevi_swin_nostl.tif"); Sys.time()
 
 ```
