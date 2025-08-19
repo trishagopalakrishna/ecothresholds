@@ -24,10 +24,11 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 #Introduction
 In this script, I complete analyses to understand the year & month (when possible) of the step changes (both increase and decrease)
 across all three indices. 
-(1) Data input of disaggregated trajectory results for all indices and annual and monthly timesteps at 1km spatial resolution (only for swin=11)
+(1) Data input of disaggregated trajectory results for all indices at annual and monthly timesteps at 1km spatial resolution (only for swin=11)
 (2) Processing above data- filtering to step change pixels only and processing date
-(3) Fruther processing to exclude anthropic mask
+(3) Further processing to exclude anthropic mask
 (4) Results compilation in the form of barplot of area of total step pixels (increase/decrease) in each date of step change
+(5) Map of "year" and "month" (only for the month time step results) of step change across all three indices.
 
 #Step 1- data input
 ```{r}
@@ -145,44 +146,45 @@ d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
 mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
-Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
-Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
+Sys.time(); ndvi<- terra::mask(mosaic_ndvi[[1]], vect(cerrado)); Sys.time() #selecting random layer
 
-rasterize_stepdf_function_year <- function (filered_date_df){
+rasterize_stepdf_function_year <- function (filered_date_df, annual_or_monthly_folder, filename_with_extension){
   cellindex_vector<- terra::vect(filered_date_df, geom=c("x", "y"), crs="epsg:4326")
   cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "stepyear", fun="max")
-  masked_cellindex_raster<- terra::mask(cellindex_raster, threshold20_1km)
-  masked_cellindex_raster 
+  crop_cellindex_raster<- terra::crop(cellindex_raster, threshold20_1km)
+  masked_cellindex_raster<- terra::mask(crop_cellindex_raster, threshold20_1km)
+  writeRaster(masked_cellindex_raster, here("Outputs", "TrendsResults", "stepchange_date_rasters", annual_or_monthly_folder, filename_with_extension))
 }
 #increases
-Sys.time(); raster_inc_annual_ndvi_date <- rasterize_stepdf_function_year(inc_annual_ndvi_date); Sys.time()
-Sys.time(); raster_inc_annual_evi_date <- rasterize_stepdf_function_year(inc_annual_evi_date); Sys.time()
-Sys.time(); raster_inc_annual_aniso_date <- rasterize_stepdf_function_year(inc_annual_aniso_date); Sys.time()
-Sys.time(); raster_inc_monthly_ndvi_date  <- rasterize_stepdf_function_year(inc_monthly_ndvi_date); Sys.time()
-Sys.time(); raster_inc_monthly_evi_date  <- rasterize_stepdf_function_year(inc_monthly_evi_date); Sys.time()
-Sys.time(); raster_inc_monthly_aniso_date  <- rasterize_stepdf_function_year(inc_monthly_aniso_date); Sys.time()
+Sys.time(); raster_inc_annual_ndvi_date <- rasterize_stepdf_function_year(inc_annual_ndvi_date, "annual", "inc_annual_ndvi_date.tif"); Sys.time()
+Sys.time(); raster_inc_annual_evi_date <- rasterize_stepdf_function_year(inc_annual_evi_date, "annual", "inc_annual_evi_date.tif"); Sys.time()
+Sys.time(); raster_inc_annual_aniso_date <- rasterize_stepdf_function_year(inc_annual_aniso_date, "annual", "inc_annual_aniso_date.tif"); Sys.time()
+Sys.time(); raster_inc_monthly_ndvi_date  <- rasterize_stepdf_function_year(inc_monthly_ndvi_date, "monthly", "inc_monthly_ndvi_date.tif"); Sys.time()
+Sys.time(); raster_inc_monthly_evi_date  <- rasterize_stepdf_function_year(inc_monthly_evi_date, "monthly", "inc_monthly_evi_date.tif"); Sys.time()
+Sys.time(); raster_inc_monthly_aniso_date  <- rasterize_stepdf_function_year(inc_monthly_aniso_date, "monthly", "inc_monthly_aniso_date.tif"); Sys.time()
 
 #decreases
-Sys.time(); raster_dec_annual_ndvi_date <- rasterize_stepdf_function_year(dec_annual_ndvi_date); Sys.time()
-Sys.time(); raster_dec_annual_evi_date <- rasterize_stepdf_function_year(dec_annual_evi_date); Sys.time()
-Sys.time(); raster_dec_annual_aniso_date <- rasterize_stepdf_function_year(dec_annual_aniso_date); Sys.time()
-Sys.time(); raster_dec_monthly_ndvi_date  <- rasterize_stepdf_function_year(dec_monthly_ndvi_date); Sys.time()
-Sys.time(); raster_dec_monthly_evi_date  <- rasterize_stepdf_function_year(dec_monthly_evi_date); Sys.time()
-Sys.time(); raster_dec_monthly_aniso_date  <- rasterize_stepdf_function_year(dec_monthly_aniso_date); Sys.time()
+Sys.time(); raster_dec_annual_ndvi_date <- rasterize_stepdf_function_year(dec_annual_ndvi_date, "annual", "dec_annual_ndvi_date.tif"); Sys.time()
+Sys.time(); raster_dec_annual_evi_date <- rasterize_stepdf_function_year(dec_annual_evi_date, "annual", "dec_annual_evi_date.tif"); Sys.time()
+Sys.time(); raster_dec_annual_aniso_date <- rasterize_stepdf_function_year(dec_annual_aniso_date, "annual", "dec_annual_aniso_date.tif"); Sys.time()
+Sys.time(); raster_dec_monthly_ndvi_date  <- rasterize_stepdf_function_year(dec_monthly_ndvi_date, "monthly", "dec_monthly_ndvi_date.tif"); Sys.time()
+Sys.time(); raster_dec_monthly_evi_date  <- rasterize_stepdf_function_year(dec_monthly_evi_date, "monthly", "dec_monthly_evi_date.tif"); Sys.time()
+Sys.time(); raster_dec_monthly_aniso_date  <- rasterize_stepdf_function_year(dec_monthly_aniso_date, "monthly", "dec_monthly_aniso_date.tif"); Sys.time()
 
-rasterize_stepdf_function_month <- function (filered_date_df){
+rasterize_stepdf_function_month <- function (filered_date_df, filename_with_extension){
   cellindex_vector<- terra::vect(filered_date_df, geom=c("x", "y"), crs="epsg:4326")
   cellindex_raster<- terra::rasterize(cellindex_vector, ndvi , "stepmonth", fun="max")
-  masked_cellindex_raster<- terra::mask(cellindex_raster, threshold20_1km)
-  masked_cellindex_raster 
+  crop_cellindex_raster<- terra::crop(cellindex_raster, threshold20_1km)
+  masked_cellindex_raster<- terra::mask(crop_cellindex_raster, threshold20_1km)
+   writeRaster(masked_cellindex_raster, here("Outputs", "TrendsResults", "stepchange_date_rasters", "monthly", filename_with_extension)) 
 }
-Sys.time(); raster_inc_monthly_ndvi_date_month <- rasterize_stepdf_function_month(inc_monthly_ndvi_date); Sys.time()
-Sys.time(); raster_inc_monthly_evi_date_month <- rasterize_stepdf_function_month(inc_monthly_evi_date); Sys.time()
-Sys.time(); raster_inc_monthly_aniso_date_month <- rasterize_stepdf_function_month(inc_monthly_aniso_date); Sys.time()
+Sys.time(); raster_inc_monthly_ndvi_date_month <- rasterize_stepdf_function_month(inc_monthly_ndvi_date, "inc_monthly_ndvi_month.tif"); Sys.time()
+Sys.time(); raster_inc_monthly_evi_date_month <- rasterize_stepdf_function_month(inc_monthly_evi_date, "inc_monthly_evi_month.tif"); Sys.time()
+Sys.time(); raster_inc_monthly_aniso_date_month <- rasterize_stepdf_function_month(inc_monthly_aniso_date, "inc_monthly_aniso_month.tif"); Sys.time()
 
-Sys.time(); raster_dec_monthly_ndvi_date_month  <- rasterize_stepdf_function_month(dec_monthly_ndvi_date); Sys.time()
-Sys.time(); raster_dec_monthly_evi_date_month <- rasterize_stepdf_function_month(dec_monthly_evi_date); Sys.time()
-Sys.time(); raster_dec_monthly_aniso_date_month <- rasterize_stepdf_function_month(dec_monthly_aniso_date); Sys.time()
+Sys.time(); raster_dec_monthly_ndvi_date_month  <- rasterize_stepdf_function_month(dec_monthly_ndvi_date, "dec_monthly_ndvi_month.tif"); Sys.time()
+Sys.time(); raster_dec_monthly_evi_date_month <- rasterize_stepdf_function_month(dec_monthly_evi_date, "dec_monthly_evi_month.tif"); Sys.time()
+Sys.time(); raster_dec_monthly_aniso_date_month <- rasterize_stepdf_function_month(dec_monthly_aniso_date, "dec_monthly_aniso_month.tif"); Sys.time()
 
 ```
 
