@@ -275,3 +275,79 @@ writeRaster(monthly_aniso_5km_counttrajectorytypes, here("Outputs", "TrendsResul
 
 ```
 
+#Step 6a (for results section) - calculating proportions of seperate indices within the increase and decrease aggregated trajectories
+```{r}
+#Read first chunk completely
+
+proportion_df_calc <- function (trendresults_raster, index_name){
+  x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
+  x_df<- x_df %>% mutate(index = index_name)
+  names(x_df)[4]<- "value"
+  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~ "Linear decrease",
+                                                value==2~ "Linear increase",
+                                                value==4~ "Step decrease",
+                                                value==5~"Step increase",
+                                                value==6~"Quadratic decrease (accelerated)",
+                                                value==7~"Quadratic decrease (decelerated)",
+                                                value==8~"Quadratic increase (accelerated)",
+                                                value==9~"Quadratic increase (decelerated)",
+                                                TRUE~"No trend"))
+  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Decrease",
+                                                value==2~ "Increase",
+                                                value==4~ "Decrease",
+                                                value==5~"Increase",
+                                                value==6~"Decrease",
+                                                value==7~"Decrease",
+                                                value==8~"Increase",
+                                                value==9~"Increase",
+                                                TRUE~"No trend"))
+  agg_traj_count_df <- x_df %>% group_by(agg_traj) %>% summarise(total_count = n())
+  seperate_traj_count_df <- x_df %>% group_by(seperate_traj, index, agg_traj) %>% summarise(count= n())
+  seperate_traj_count_df <- seperate_traj_count_df %>% left_join(agg_traj_count_df)
+  seperate_traj_count_df <- seperate_traj_count_df %>% mutate(percentage = (count/total_count)*100)
+  seperate_traj_count_df
+}
+
+Sys.time(); monthly_ndvi <- proportion_df_calc(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+Sys.time(); monthly_evi <- proportion_df_calc(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso <- proportion_df_calc(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+
+Sys.time(); annual_ndvi <- proportion_df_calc(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi <- proportion_df_calc(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso <- proportion_df_calc(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
+
+```
+
+#Step 6b (for results section) - calculating average difference in results (aggregated trajectories) between monthly and annual timesteps across all indices
+```{r}
+#Read fourth chunk without the mapping component
+difference_function <- function (trajectory_type, index){
+  dec_diff <- plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"] - 
+    plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"]
+  dec_diff_percentage <- (dec_diff/ plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"])*100
+  dec_diff_percentage
+}
+
+dec_ndvi <- difference_function("Decrease","NDVI")
+dec_evi <- difference_function("Decrease","EVI")
+dec_aniso <- difference_function("Decrease","anisoEVI")
+mean_dec_all_indices <- mean(c(dec_ndvi, dec_evi, dec_aniso))
+
+inc_ndvi <- difference_function("Increase","NDVI")
+inc_evi <- difference_function("Increase","EVI")
+inc_aniso <- difference_function("Increase","anisoEVI")
+mean_inc_all_indices <- mean(c(inc_ndvi, inc_evi, inc_aniso))
+
+difference_function2 <- function (trajectory_type, index){
+  dec_diff <- plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"] - 
+    plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"]
+  dec_diff_percentage <- (dec_diff/ plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"])*100
+  dec_diff_percentage
+}
+
+notrend_ndvi <- difference_function2("No trend","NDVI")
+notrend_evi <- difference_function2("No trend","EVI")
+notrend_aniso <- difference_function2("No trend","anisoEVI")
+mean_notrend_all_indices <- mean(c(notrend_ndvi, notrend_evi, notrend_aniso))
+
+```
