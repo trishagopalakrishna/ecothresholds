@@ -27,6 +27,7 @@ In this script, I compile results for the stl decomposition (sensitivity) for an
 (2) Convert to df and compile
 (3) Make barplot of results across all indices, stl settings and timesteps
 (4) Repeat above for aggregated trajectories
+(5) Additional results extraction for manuscript preparation
 
 #Step 1- read in all seperate trajectories results (monthly and annual timestep results) rasters
 ```{r}
