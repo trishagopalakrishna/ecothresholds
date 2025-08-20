@@ -23,38 +23,65 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
 #Introduction
 In this script, I compile results for the stl decomposition (sensitivity) for annual and monthly time step results. 
-(1) Read in all results rasters for each index (4 tif each) for annual 
+(1) Read in all results rasters for seperate trajectories for each index (4 tif each)
 (2) Convert to df and compile
-(3) Make barplot of results for stl parameters within annual or monthly category
-(4) Make barplot of results for each stl parameter but comparing annual and monthly 
-(5) Make map of results for each stl parameter comparing annual and monthly
+(3) Make barplot of results across all indices, stl settings and timesteps
+(4) Repeat above for aggregated trajectories
 
-#Step 1- read in all results (monthly and annual timestep results) rasters
+#Step 1- read in all seperate trajectories results (monthly and annual timestep results) rasters
 ```{r}
-input_file_path <- here("Outputs", "TrendsResults", "results_rasters")
+monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-read_results_rasters_function <- function (annual_or_monthly_folder, index_name){
-   file_list<- list.files(path = paste0(input_file_path, "/",annual_or_monthly_folder, "/"), 
-                          pattern = paste0("*",index_name,"*"), all.files = T, full.names = T)
-   file_list <- gtools::mixedsort(file_list)
-   
-   results_raster<- lapply(file_list, rast)
-   for (i in 1:length(results_raster)){
-     names(results_raster[[i]])<- str_split(str_split(str_split(file_list[i], "/")[[1]][11], ".tif")[[1]][1], "_")[[1]][3]
-   }
-   results_raster
-}
+monthly_rds_list<- lapply(monthly_file_list, rast)
+monthly_ndvi_list<- list(monthly_rds_list[[9]], monthly_rds_list[[10]], monthly_rds_list[[11]], monthly_rds_list[[12]])
+names(monthly_ndvi_list[[1]])<-"swin7"
+names(monthly_ndvi_list[[2]])<-"swin11"
+names(monthly_ndvi_list[[3]])<-"nostl"
+names(monthly_ndvi_list[[4]])<-"swinperiodic"
 
-Sys.time(); annual_ndvi_results<- read_results_rasters_function ("annual","ndvi"); Sys.time()
-Sys.time(); monthly_ndvi_results<- read_results_rasters_function ("monthly","ndvi"); Sys.time()
-Sys.time(); annual_evi_results<- read_results_rasters_function ("annual","evi"); Sys.time()
-Sys.time(); monthly_evi_results<- read_results_rasters_function ("monthly","evi"); Sys.time()
-Sys.time(); annual_anisoevi_results<- read_results_rasters_function ("annual","aniso"); Sys.time()
-Sys.time(); monthly_anisoevi_results<- read_results_rasters_function ("monthly","aniso"); Sys.time()
+monthly_evi_list<- list(monthly_rds_list[[5]], monthly_rds_list[[6]], monthly_rds_list[[7]], monthly_rds_list[[8]])
+names(monthly_evi_list[[1]])<-"swin7"
+names(monthly_evi_list[[2]])<-"swin11"
+names(monthly_evi_list[[3]])<-"nostl"
+names(monthly_evi_list[[4]])<-"swinperiodic"
+
+monthly_aniso_list<- list(monthly_rds_list[[1]], monthly_rds_list[[2]], monthly_rds_list[[3]], monthly_rds_list[[4]])
+names(monthly_aniso_list[[1]])<-"swin7"
+names(monthly_aniso_list[[2]])<-"swin11"
+names(monthly_aniso_list[[3]])<-"nostl"
+names(monthly_aniso_list[[4]])<-"swinperiodic"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+annual_rds_list<- lapply(annual_file_list, rast)
+annual_ndvi_list<- list(annual_rds_list[[9]], annual_rds_list[[10]], annual_rds_list[[11]], annual_rds_list[[12]])
+names(annual_ndvi_list[[1]])<-"swin7"
+names(annual_ndvi_list[[2]])<-"swin11"
+names(annual_ndvi_list[[3]])<-"nostl"
+names(annual_ndvi_list[[4]])<-"swinperiodic"
+
+annual_evi_list<- list(annual_rds_list[[5]], annual_rds_list[[6]], annual_rds_list[[7]], annual_rds_list[[8]])
+names(annual_evi_list[[1]])<-"swin7"
+names(annual_evi_list[[2]])<-"swin11"
+names(annual_evi_list[[3]])<-"nostl"
+names(annual_evi_list[[4]])<-"swinperiodic"
+
+annual_aniso_list<- list(annual_rds_list[[1]], annual_rds_list[[2]], annual_rds_list[[3]], annual_rds_list[[4]])
+names(annual_aniso_list[[1]])<-"swin7"
+names(annual_aniso_list[[2]])<-"swin11"
+names(annual_aniso_list[[3]])<-"nostl"
+names(annual_aniso_list[[4]])<-"swinperiodic"
+
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
+remove(monthly_rds_list, annual_rds_list)
 
 ```
 
-#Step 2- convert to df and compile 
+#Step 2- convert above to df and compile 
 ```{r}
 df_prep_function<- function (results_raster){
   x_df<- terra::as.data.frame(results_raster, cell = TRUE, xy= TRUE)
@@ -83,189 +110,202 @@ plot_df_prep_function <- function (results_raster_list){
 }  
 
 
-Sys.time(); annual_ndvi_percentage_results_df <- plot_df_prep_function (annual_ndvi_results); Sys.time()
-Sys.time(); monthly_ndvi_percentage_results_df <- plot_df_prep_function (monthly_ndvi_results); Sys.time()
-Sys.time(); annual_evi_percentage_results_df <- plot_df_prep_function (annual_evi_results); Sys.time()
-Sys.time(); monthly_evi_percentage_results_df <- plot_df_prep_function (monthly_evi_results); Sys.time()
-Sys.time(); annual_anisoevi_percentage_results_df <- plot_df_prep_function (annual_anisoevi_results); Sys.time()
-Sys.time(); monthly_anisoevi_percentage_results_df <- plot_df_prep_function (monthly_anisoevi_results); Sys.time()
+Sys.time(); monthly_ndvi_percentage_results_df <- plot_df_prep_function(monthly_ndvi_list); Sys.time()
+monthly_ndvi_percentage_results_df <- monthly_ndvi_percentage_results_df %>% mutate(Index ="NDVI", TimeStep ="monthly")
+Sys.time(); monthly_evi_percentage_results_df <- plot_df_prep_function(monthly_evi_list); Sys.time()
+monthly_evi_percentage_results_df <- monthly_evi_percentage_results_df %>% mutate(Index ="EVI", TimeStep ="monthly")
+Sys.time(); monthly_aniso_percentage_results_df <- plot_df_prep_function(monthly_aniso_list); Sys.time()
+monthly_aniso_percentage_results_df <- monthly_aniso_percentage_results_df %>% mutate(Index ="anisoEVI", TimeStep ="monthly")
+
+Sys.time(); annual_ndvi_percentage_results_df <- plot_df_prep_function(annual_ndvi_list); Sys.time()
+annual_ndvi_percentage_results_df  <- annual_ndvi_percentage_results_df  %>% mutate(Index ="NDVI", TimeStep ="annual")
+Sys.time(); annual_evi_percentage_results_df <- plot_df_prep_function(annual_evi_list); Sys.time()
+annual_evi_percentage_results_df  <- annual_evi_percentage_results_df  %>% mutate(Index ="EVI", TimeStep ="annual")
+Sys.time(); annual_aniso_percentage_results_df <- plot_df_prep_function(annual_aniso_list); Sys.time()
+annual_aniso_percentage_results_df  <- annual_aniso_percentage_results_df  %>% mutate(Index ="anisoEVI", TimeStep ="annual")
+
+main_df<- bind_rows(monthly_ndvi_percentage_results_df, monthly_evi_percentage_results_df, monthly_aniso_percentage_results_df,
+                   annual_ndvi_percentage_results_df, annual_evi_percentage_results_df, annual_aniso_percentage_results_df)
 
 ```
-
-#Step 3- barplot comparing results of all parameters within annual and monthly
+#Step 3- barplot comparing results of annual and monthly timestep within each stl parameter 
 ```{r}
-Set1palette<- c("#44AA99", "#117733", "lightgrey", "#CC6677", "#AA4499", "#332288", "#DDCC77" , "#882255",  "#88CCEE")
- 
-output_file_path <- here("Outputs", "TrendsResults")
-               
-barplot_function <- function (compiled_df, file_name){
-  x_plot<- compiled_df %>% 
-  ggplot(aes(value, percentage, fill = value, group=stl_setting, alpha=as.factor(stl_setting))) +
-  geom_col(position = position_dodge(), color = "black") +
-  theme_classic() +
-  xlab("Trajectory Shape")+ ylab ("% of native savannas")+
-  theme(strip.placement  = "outside",
-        panel.spacing    = unit(0, "points"),
-        strip.background = element_blank(),
-        strip.text       = element_text(size = 12, angle = 90),
-        axis.text.x = element_text(size = 12, angle = 90))+
-  xlab("Model Type")
-  x_plot<- x_plot + scale_fill_manual(values=Set1palette) + theme(legend.title=element_blank())
-  ggsave(here(output_file_path , paste0(file_name,".png")),
-       x_plot,dpi = 700, height = 20, width=20, units = "cm")
-}
-
-Sys.time(); barplot_function(annual_ndvi_percentage_results_df, "ndvi_annual_stl_sensitivity"); Sys.time()
-Sys.time(); barplot_function(monthly_ndvi_percentage_results_df, "ndvi_monthly_stl_sensitivity"); Sys.time()
-
-Sys.time(); barplot_function(annual_evi_percentage_results_df, "evi_annual_stl_sensitivity"); Sys.time()
-Sys.time(); barplot_function(monthly_evi_percentage_results_df, "evi_monthly_stl_sensitivity"); Sys.time()
-
-Sys.time(); barplot_function(annual_anisoevi_percentage_results_df, "anisoevi_annual_stl_sensitivity"); Sys.time()
-Sys.time(); barplot_function(monthly_anisoevi_percentage_results_df, "anisoevi_monthly_stl_sensitivity"); Sys.time()
-
-
-```
-
-#Step 4- barplot comparing results of annual and monthly timestep within each stl parameter 
-```{r}
-mutate_annual_or_monthly_col <- function (results_df, annual_or_monthly){
-  results_df %>% mutate(timestep = annual_or_monthly)
-}
-
-annual_ndvi_percentage_results_df <- mutate_annual_or_monthly_col(annual_ndvi_percentage_results_df, "annual")
-monthly_ndvi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_ndvi_percentage_results_df, "monthly")
-
-annual_evi_percentage_results_df <- mutate_annual_or_monthly_col(annual_evi_percentage_results_df, "annual")
-monthly_evi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_evi_percentage_results_df, "monthly")
-
-annual_anisoevi_percentage_results_df <- mutate_annual_or_monthly_col(annual_anisoevi_percentage_results_df, "annual")
-monthly_anisoevi_percentage_results_df <- mutate_annual_or_monthly_col(monthly_anisoevi_percentage_results_df, "monthly")
-
-ndvi_percentage_results_df<- rbind(annual_ndvi_percentage_results_df, monthly_ndvi_percentage_results_df)
-evi_percentage_results_df<- rbind(annual_evi_percentage_results_df, monthly_evi_percentage_results_df)
-aniso_percentage_results_df<- rbind(annual_anisoevi_percentage_results_df, monthly_anisoevi_percentage_results_df)
-
-stl_settings <- c("swin7", "swin11", "swinnostl", "swinperiodic")
-
-barplot_function <- function (results_df, output_file_name){
+Set1palette<- c("#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677",  "#994F00",   "#88CCEE" ) 
+barplot_function <- function (results_df, title){
    x_plot <- results_df %>% 
-    ggplot(aes(value, percentage, fill = value, group= timestep, alpha=as.factor(timestep))) +
+    ggplot(aes(value, percentage, fill = value, alpha=as.factor(TimeStep))) +
     geom_col(position = position_dodge(), color = "black") + 
-     theme_linedraw(base_size = 18) +
-    theme(axis.text.x=element_blank()) + 
-    xlab("Trajectory Shape")+ ylab ("% of native savannas") +
+     theme_classic(base_size = 18) +
+    theme(axis.text.x=element_blank(), axis.ticks.x = element_blank()) + 
+    xlab("Trajectory Shape")+ ylab ("Percentage of study area") +
     scale_fill_manual(values=Set1palette) + 
     theme(legend.title=element_blank()) +
-    facet_grid(.~stl_setting, scales='free')
-   
-   ggsave(here(output_file_path, "annual_monthly_comparison", paste0(output_file_name,".png")),
-       x_plot,dpi = 700, height = 40, width=80, units = "cm")
+    facet_grid(.~stl_setting, scales='free') +ggtitle(title)
 }
  
-Sys.time(); barplot_function(ndvi_percentage_results_df, "ndvi_monthly_annual_comparison_trendresults"); Sys.time()
-Sys.time(); barplot_function(evi_percentage_results_df, "evi_monthly_annual_comparison_trendresults"); Sys.time()
-Sys.time(); barplot_function(aniso_percentage_results_df, "aniso_monthly_annual_comparison_trendresults"); Sys.time()
+Sys.time(); ndvi<-barplot_function(main_df %>% filter(Index =="NDVI"), "NDVI"); Sys.time()
+Sys.time(); evi<-barplot_function(main_df %>% filter(Index =="EVI"), "EVI"); Sys.time()
+Sys.time(); anisoevi<-barplot_function(main_df %>% filter(Index =="anisoEVI"), "anisoEVI"); Sys.time()
+
+x<- ggpubr::ggarrange(ndvi, evi, anisoevi, nrow = 3, ncol = 1, common.legend = TRUE )
+ggsave(here("Outputs","TrendsResults","annual_monthly_comparison","sep_trajectories_barplot_timstep_stlsetting_indicex.png"),
+       x,dpi = 700, height = 50, width=100, units = "cm")
 
 ```
 
-#Step 5- maps comparing trajectory results of annual and monthly for each stl parameter
+Clear workspace before running next chunk. Note that df_prep_function() is from Step 2
+#Step 4- above for aggregated trajectories
 ```{r}
-annual_ndvi_results
-monthly_ndvi_results
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-annual_evi_results
-monthly_evi_results
+monthly_rds_list<- lapply(monthly_file_list, rast)
+monthly_ndvi_list<- list(monthly_rds_list[[9]], monthly_rds_list[[10]], monthly_rds_list[[11]], monthly_rds_list[[12]])
+names(monthly_ndvi_list[[1]])<-"swin7"
+names(monthly_ndvi_list[[2]])<-"swin11"
+names(monthly_ndvi_list[[3]])<-"nostl"
+names(monthly_ndvi_list[[4]])<-"swinperiodic"
 
-annual_anisoevi_results
-monthly_anisoevi_results
+monthly_evi_list<- list(monthly_rds_list[[5]], monthly_rds_list[[6]], monthly_rds_list[[7]], monthly_rds_list[[8]])
+names(monthly_evi_list[[1]])<-"swin7"
+names(monthly_evi_list[[2]])<-"swin11"
+names(monthly_evi_list[[3]])<-"nostl"
+names(monthly_evi_list[[4]])<-"swinperiodic"
 
+monthly_aniso_list<- list(monthly_rds_list[[1]], monthly_rds_list[[2]], monthly_rds_list[[3]], monthly_rds_list[[4]])
+names(monthly_aniso_list[[1]])<-"swin7"
+names(monthly_aniso_list[[2]])<-"swin11"
+names(monthly_aniso_list[[3]])<-"nostl"
+names(monthly_aniso_list[[4]])<-"swinperiodic"
 
-d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
-d_trans<- st_transform(d_trans, crs = 4326)
-cerrado<- d_trans %>% st_union()
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
 
-swin7_rasters_function <- function(annual_results_list, monthly_results_list){
-  swin7_raster <- c(annual_results_list[[1]], monthly_results_list[[1]])
-  names(swin7_raster)<- c("annual-swin7", "monthly-swin7")
-  swin7_raster
+annual_rds_list<- lapply(annual_file_list, rast)
+annual_ndvi_list<- list(annual_rds_list[[9]], annual_rds_list[[10]], annual_rds_list[[11]], annual_rds_list[[12]])
+names(annual_ndvi_list[[1]])<-"swin7"
+names(annual_ndvi_list[[2]])<-"swin11"
+names(annual_ndvi_list[[3]])<-"nostl"
+names(annual_ndvi_list[[4]])<-"swinperiodic"
+
+annual_evi_list<- list(annual_rds_list[[5]], annual_rds_list[[6]], annual_rds_list[[7]], annual_rds_list[[8]])
+names(annual_evi_list[[1]])<-"swin7"
+names(annual_evi_list[[2]])<-"swin11"
+names(annual_evi_list[[3]])<-"nostl"
+names(annual_evi_list[[4]])<-"swinperiodic"
+
+annual_aniso_list<- list(annual_rds_list[[1]], annual_rds_list[[2]], annual_rds_list[[3]], annual_rds_list[[4]])
+names(annual_aniso_list[[1]])<-"swin7"
+names(annual_aniso_list[[2]])<-"swin11"
+names(annual_aniso_list[[3]])<-"nostl"
+names(annual_aniso_list[[4]])<-"swinperiodic"
+
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
+remove(monthly_rds_list, annual_rds_list)
+
+plot_df_prep_function2 <- function (results_raster_list){
+  percentage_results_df_list<- list()
+  for ( i in 1:length(results_raster_list)){
+    percentage_results_df_list[[i]]<- df_prep_function(results_raster_list[[i]])
+  }
+  all_percentage_results <- bind_rows(percentage_results_df_list)
+  all_percentage_results <- all_percentage_results %>% mutate(value = case_when(value== 1~ "Decrease",
+                                                                                value== 2~ "Increase",
+                                                                                value== 3~ "No trend"))
+  all_percentage_results
+}  
+
+Sys.time(); monthly_ndvi_percentage_results_df <- plot_df_prep_function2(monthly_ndvi_list); Sys.time()
+monthly_ndvi_percentage_results_df <- monthly_ndvi_percentage_results_df %>% mutate(Index ="NDVI", TimeStep ="monthly")
+Sys.time(); monthly_evi_percentage_results_df <- plot_df_prep_function2(monthly_evi_list); Sys.time()
+monthly_evi_percentage_results_df <- monthly_evi_percentage_results_df %>% mutate(Index ="EVI", TimeStep ="monthly")
+Sys.time(); monthly_aniso_percentage_results_df <- plot_df_prep_function2(monthly_aniso_list); Sys.time()
+monthly_aniso_percentage_results_df <- monthly_aniso_percentage_results_df %>% mutate(Index ="anisoEVI", TimeStep ="monthly")
+
+Sys.time(); annual_ndvi_percentage_results_df <- plot_df_prep_function2(annual_ndvi_list); Sys.time()
+annual_ndvi_percentage_results_df  <- annual_ndvi_percentage_results_df  %>% mutate(Index ="NDVI", TimeStep ="annual")
+Sys.time(); annual_evi_percentage_results_df <- plot_df_prep_function2(annual_evi_list); Sys.time()
+annual_evi_percentage_results_df  <- annual_evi_percentage_results_df  %>% mutate(Index ="EVI", TimeStep ="annual")
+Sys.time(); annual_aniso_percentage_results_df <- plot_df_prep_function2(annual_aniso_list); Sys.time()
+annual_aniso_percentage_results_df  <- annual_aniso_percentage_results_df  %>% mutate(Index ="anisoEVI", TimeStep ="annual")
+
+main_df<- bind_rows(monthly_ndvi_percentage_results_df, monthly_evi_percentage_results_df, monthly_aniso_percentage_results_df,
+                   annual_ndvi_percentage_results_df, annual_evi_percentage_results_df, annual_aniso_percentage_results_df)
+
+aggregate_trajectory_palette <- c("#F7BF2A", "#61A36A", "#7C7083")
+
+barplot_function2 <- function (results_df, title){
+   x_plot <- results_df %>% 
+    ggplot(aes(value, percentage, fill = value, alpha=as.factor(TimeStep))) +
+    geom_col(position = position_dodge(), color = "black") + 
+     theme_classic(base_size = 18) +
+    theme(axis.text.x=element_blank(), axis.ticks.x = element_blank()) + 
+    xlab("Trajectory Shape")+ ylab ("Percentage of study area") +
+    scale_fill_manual(values=aggregate_trajectory_palette) + 
+    theme(legend.title=element_blank()) +
+    facet_grid(.~stl_setting, scales='free') +ggtitle(title)
 }
-swin11_rasters_function <- function(annual_results_list, monthly_results_list){
-  swin11_raster <- c(annual_results_list[[2]], monthly_results_list[[2]])
-  names(swin11_raster)<- c("annual-swin11", "monthly-swin11")
-  swin11_raster
-}
-swinnostl_rasters_function <- function(annual_results_list, monthly_results_list){
-  swinnostl_raster <- c(annual_results_list[[3]], monthly_results_list[[3]])
-  names(swinnostl_raster)<- c("annual-nostl", "monthly-nostl")
-  swinnostl_raster
-}
-swinperiodic_rasters_function <- function(annual_results_list, monthly_results_list){
-  swinperiodic_raster <- c(annual_results_list[[4]], monthly_results_list[[4]])
-  names(swinperiodic_raster)<- c("annual-swinperiodic", "monthly-swinperiodic")
-  swinperiodic_raster
-}
+ 
+Sys.time(); ndvi<-barplot_function2(main_df %>% filter(Index =="NDVI"), "NDVI"); Sys.time()
+Sys.time(); evi<-barplot_function2(main_df %>% filter(Index =="EVI"), "EVI"); Sys.time()
+Sys.time(); anisoevi<-barplot_function2(main_df %>% filter(Index =="anisoEVI"), "anisoEVI"); Sys.time()
 
-#NDVI
-ndvi_swin7<- swin7_rasters_function(annual_ndvi_results, monthly_ndvi_results)
-ndvi_swin11<- swin11_rasters_function(annual_ndvi_results, monthly_ndvi_results)
-ndvi_swinnostl<- swinnostl_rasters_function(annual_ndvi_results, monthly_ndvi_results)
-ndvi_swinperiodic<- swinperiodic_rasters_function(annual_ndvi_results, monthly_ndvi_results)
+x<- ggpubr::ggarrange(ndvi, evi, anisoevi, nrow = 3, ncol = 1, common.legend = TRUE )
+ggsave(here("Outputs","TrendsResults","annual_monthly_comparison","aggtrajectories_barplot_timstep_stlsetting_indicex.png"),
+       x,dpi = 700, height = 50, width=100, units = "cm")
 
-#EVI
-evi_swin7<- swin7_rasters_function(annual_evi_results, monthly_evi_results)
-evi_swin11<- swin11_rasters_function(annual_evi_results, monthly_evi_results)
-evi_swinnostl<- swinnostl_rasters_function(annual_evi_results, monthly_evi_results)
-evi_swinperiodic<- swinperiodic_rasters_function(annual_evi_results, monthly_evi_results)
+```
 
-#anisoEVI
-aniso_swin7<- swin7_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
-aniso_swin11<- swin11_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
-aniso_swinnostl<- swinnostl_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
-aniso_swinperiodic<- swinperiodic_rasters_function(annual_anisoevi_results, monthly_anisoevi_results)
-
-
-animation_function<- function (raster,index_name, stlparameter_string){
-  animation_map<-
-    tm_shape(cerrado)+ tm_borders()+
-    tm_shape (raster)+
-    tm_raster(col.scale = tm_scale_categorical(n=9, values = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" )),
-              col.legend = tm_legend_hide())+
-    tm_add_legend(fill = c("#44AA99", "#117733", "lightgrey", "#882255", "#88CCEE", "#CC6677", "#AA4499", "#332288", "#DDCC77" ),
-      labels = c("Linear decrease", 
-                  "Linear increase",
-                  "No trend",
-                  "Step decrease",
-                  "Step increase",
-                  "Quad decrease (accelerated)",
-                  "Quad decrease (decelerated)",
-                  "Quad increase (accelerated)",
-                  "Quad incrase (decelerated)"))+
-    tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+#Step 5- (for results section) - calculating average difference in results (aggregated trajectories) between nostl and swin11 for monthly and annual timesteps across all indices.
+```{r}
+#Read fourth chunk without the mapping component
+difference_function <- function (timestep, trajectory_type, index){
+  numerator <- main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="swin11"] -
+                main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="nostl"]
   
-  tmap_animation(animation_map, filename = here("Outputs", "Trendsresults", "annual_monthly_comparison",
-                                                  paste0(index_name,"_", "animation_annual_monthly","_", stlparameter_string, ".gif")),
-                delay = 50, loop = TRUE, restart.delay = 500,
-                width = 900, height = 900, dpi = 150)
+  dec_diff_percentage <- (numerator/ main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="swin11"])*100
+  dec_diff_percentage
 }
 
-#NDVI
-animation_function(ndvi_swin7,"ndvi", "swin7")
-animation_function(ndvi_swin11,"ndvi", "swin11")
-animation_function(ndvi_swinnostl,"ndvi", "swinnostl")
-animation_function(ndvi_swinperiodic,"ndvi", "swinperiodic")
+monthly_dec_ndvi <- difference_function("monthly","Decrease","NDVI")
+monthly_dec_evi <- difference_function("monthly","Decrease","EVI")
+monthly_dec_aniso <- difference_function("monthly","Decrease","anisoEVI")
+mean_monthly_dec_all_indices <- mean(c(monthly_dec_ndvi , monthly_dec_evi, monthly_dec_aniso))
 
-#EVI
-animation_function(evi_swin7,"evi", "swin7")
-animation_function(evi_swin11,"evi", "swin11")
-animation_function(evi_swinnostl,"evi", "swinnostl")
-animation_function(evi_swinperiodic,"evi", "swinperiodic")
+annual_dec_ndvi <- difference_function("annual","Decrease","NDVI")
+annual_dec_evi <- difference_function("annual","Decrease","EVI")
+annual_dec_aniso <- difference_function("annual","Decrease","anisoEVI")
+mean_annual_dec_all_indices <- mean(c(annual_dec_ndvi , annual_dec_evi, annual_dec_aniso))
 
-#anisoEVI
-animation_function(aniso_swin7,"anisoevi", "swin7")
-animation_function(aniso_swin11,"anisoevi", "swin11")
-animation_function(aniso_swinnostl,"anisoevi", "swinnostl")
-animation_function(aniso_swinperiodic,"anisoevi", "swinperiodic")
+monthly_inc_ndvi <- difference_function("monthly","Increase","NDVI")
+monthly_inc_evi <- difference_function("monthly","Increase","EVI")
+monthly_inc_aniso <- difference_function("monthly","Increase","anisoEVI")
+mean_monthly_inc_all_indices <- mean(c(monthly_inc_ndvi , monthly_inc_evi, monthly_inc_aniso))
 
+annual_inc_ndvi <- difference_function("annual","Increase","NDVI")
+annual_inc_evi <- difference_function("annual","Increase","EVI")
+annual_inc_aniso <- difference_function("annual","Increase","anisoEVI")
+mean_annual_inc_all_indices <- mean(c(annual_inc_ndvi , annual_inc_evi, annual_inc_aniso))
+
+difference_function2 <- function (timestep, trajectory_type, index){
+  numerator <- main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="nostl"] -
+                main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="swin11"]
+  
+  dec_diff_percentage <- (numerator/ main_df$percentage[main_df$TimeStep ==timestep & main_df$value==trajectory_type & main_df$Index==index & main_df$stl_setting=="nostl"])*100
+  dec_diff_percentage
+}
+
+
+notrend_ndvi <- difference_function2("monthly","No trend","NDVI")
+notrend_evi <- difference_function2("monthly","No trend","EVI")
+notrend_aniso <- difference_function2("monthly","No trend","anisoEVI")
+mean_notrend_all_indices <- mean(c(notrend_ndvi, notrend_evi, notrend_aniso))
+
+notrend_ndvi2 <- difference_function2("annual","No trend","NDVI")
+notrend_evi2 <- difference_function2("annual","No trend","EVI")
+notrend_aniso2 <- difference_function2("annual","No trend","anisoEVI")
+mean_notrend_all_indices2 <- mean(c(notrend_ndvi2, notrend_evi2, notrend_aniso2))
 
 ```
