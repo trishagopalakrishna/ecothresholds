@@ -28,8 +28,8 @@ at 1km resolution and across aggregated trajectories across all indices
 Note mapbiomas 1km %formation product was processed on GEE
 (2) Process mapbiomass annual product by cropping/masking, aligning projection, resolution against trajectory result rasters and average composition across years
 (3) Preliminary data analyses of the distribution of mean veg formation (#2) across seperate trajectories and aggregated trajectories across all indices
-(4) Visualization of above results
-(5) Proportion of each trajectory covered by more than half of a veg composition & visualization
+(4) Visualization of results using boxplots only for aggregated trajectories
+
 
 #Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}
@@ -38,35 +38,42 @@ monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "
 monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
 monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-monthly_rds_list<- lapply(monthly_file_list, rast)
-names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
-names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
-names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+seperate_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(seperate_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(seperate_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(seperate_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
 annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
 annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
 annual_file_list <- gtools::mixedsort(annual_file_list)
 
-annual_rds_list<- lapply(annual_file_list, rast)
-names(annual_rds_list[[2]])<- "evi_swin11_annual"
-names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
-names(annual_rds_list[[1]])<- "aniso_swin11_annual"
+seperate_annual_rds_list<- lapply(annual_file_list, rast)
+names(seperate_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(seperate_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(seperate_annual_rds_list[[1]])<- "aniso_swin11_annual"
 
 remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
 
 #aggregate trajectories
-aggregate_results_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
-aggregate_file_list <- list.files(path = paste0(aggregate_results_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-aggregate_rds_list <- lapply(aggregate_file_list, rast)
-names(aggregate_rds_list[[1]])<- "annual_aniso1km_agg"
-names(aggregate_rds_list[[2]])<- "annual_evi1km_agg"
-names(aggregate_rds_list[[3]])<- "annual_ndvi1km_agg"
-names(aggregate_rds_list[[4]])<- "monthly_aniso1km_agg"
-names(aggregate_rds_list[[5]])<- "monthly_evi1km_agg"
-names(aggregate_rds_list[[6]])<- "monthly_ndvi1km_agg"
+agg_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(agg_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(agg_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(agg_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
-remove(aggregate_results_input_file_path , aggregate_file_list)
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+agg_annual_rds_list<- lapply(annual_file_list, rast)
+names(agg_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(agg_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(agg_annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
 
 #mapbiomas %area of 1km of savanna, forest and grassland
 mapbiomas_input_file_path <- here("Data", "Mapbiomas_formations")
@@ -139,7 +146,7 @@ mean_savanna <- mean_formation(savanna_percentage)
 
 #Reprojection to align veg formation rasters with trajectory results rasters
 resample_mean_vegformation <- function (veg_formation){
-  x_resample <- terra::resample(veg_formation, monthly_rds_list[[3]], method = "bilinear")
+  x_resample <- terra::resample(veg_formation, seperate_monthly_rds_list[[3]], method = "bilinear")
   x_resample
 }
 resample_mean_forest <- resample_mean_vegformation(mean_forest)
@@ -152,7 +159,7 @@ remove(mapbiomas_rds_list)
 resample_veg_formation <- c( resample_mean_grass, resample_mean_savanna, resample_mean_forest)
 names(resample_veg_formation)<- c( "average_grass_percentage", "average_savanna_percentage", "average_forest_percentage")
 
-studyarea_veg_formation <- terra::mask (resample_veg_formation, monthly_rds_list[[3]]) #crop and mask to trajectory result rasters
+studyarea_veg_formation <- terra::mask (resample_veg_formation, seperate_monthly_rds_list[[3]]) #crop and mask to trajectory result rasters
 ```
 
 #Step 3- analyses of veg composition in each seperate trajectory at 1km(annual and monthly) and for aggregate trajectories at 1km (annual and monthly)
@@ -172,13 +179,13 @@ seperate_trajectory_veg <- function(trajectory_results_raster) {
   df_for_histogram
 }
 
-Sys.time(); monthly_aniso_seperate <- seperate_trajectory_veg(monthly_rds_list[[1]]); Sys.time()
-Sys.time(); monthly_evi_seperate <- seperate_trajectory_veg(monthly_rds_list[[2]]); Sys.time()
-Sys.time(); monthly_ndvi_seperate <- seperate_trajectory_veg(monthly_rds_list[[3]]); Sys.time()
+Sys.time(); monthly_aniso_seperate <- seperate_trajectory_veg(seperate_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_evi_seperate <- seperate_trajectory_veg(seperate_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_ndvi_seperate <- seperate_trajectory_veg(seperate_monthly_rds_list[[3]]); Sys.time()
 
-Sys.time(); annual_aniso_seperate <- seperate_trajectory_veg(annual_rds_list[[1]]); Sys.time()
-Sys.time(); annual_evi_seperate <- seperate_trajectory_veg(annual_rds_list[[2]]); Sys.time()
-Sys.time(); annual_ndvi_seperate <- seperate_trajectory_veg(annual_rds_list[[3]]); Sys.time()
+Sys.time(); annual_aniso_seperate <- seperate_trajectory_veg(seperate_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_evi_seperate <- seperate_trajectory_veg(seperate_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_ndvi_seperate <- seperate_trajectory_veg(seperate_annual_rds_list[[3]]); Sys.time()
 
 aggregate_trajectory_veg <- function(agg_trajectory_results_raster) {
   split_trajectory <- terra::segregate(agg_trajectory_results_raster, other = NA)
@@ -193,17 +200,17 @@ aggregate_trajectory_veg <- function(agg_trajectory_results_raster) {
   df_for_histogram
 }
 
-Sys.time(); monthly_aniso_agg <- aggregate_trajectory_veg(aggregate_rds_list[[4]]); Sys.time()
-Sys.time(); monthly_evi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[5]]); Sys.time()
-Sys.time(); monthly_ndvi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[6]]); Sys.time()
+Sys.time(); monthly_aniso_agg <- aggregate_trajectory_veg(agg_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_evi_agg <- aggregate_trajectory_veg(agg_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_ndvi_agg <- aggregate_trajectory_veg(agg_monthly_rds_list[[3]]); Sys.time()
 
-Sys.time(); annual_aniso_agg <- aggregate_trajectory_veg(aggregate_rds_list[[1]]); Sys.time()
-Sys.time(); annual_evi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[2]]); Sys.time()
-Sys.time(); annual_ndvi_agg <- aggregate_trajectory_veg(aggregate_rds_list[[3]]); Sys.time()
+Sys.time(); annual_aniso_agg <- aggregate_trajectory_veg(agg_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_evi_agg <- aggregate_trajectory_veg(agg_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_ndvi_agg <- aggregate_trajectory_veg(agg_annual_rds_list[[3]]); Sys.time()
 
 ```
 
-#Step 4- visualization of results - boxplots
+#Step 4- visualization of results - boxplots for aggregated trajectories only
 ```{r}
 df_prep_function <- function (df_veg_trajectory){
   prepped_df_list <- list()
@@ -220,14 +227,6 @@ df_prep_function <- function (df_veg_trajectory){
   prepped_data
 }
 
-Sys.time(); df_monthly_aniso_seperate <- df_prep_function(monthly_aniso_seperate); Sys.time()
-Sys.time(); df_monthly_evi_seperate <- df_prep_function(monthly_evi_seperate); Sys.time()
-Sys.time(); df_monthly_ndvi_seperate <- df_prep_function(monthly_ndvi_seperate); Sys.time()
-
-Sys.time(); df_annual_aniso_seperate <- df_prep_function(annual_aniso_seperate); Sys.time()
-Sys.time(); df_annual_evi_seperate <- df_prep_function(annual_evi_seperate); Sys.time()
-Sys.time(); df_annual_ndvi_seperate <- df_prep_function(annual_ndvi_seperate); Sys.time()
-
 Sys.time(); df_monthly_aniso_agg <- df_prep_function(monthly_aniso_agg); Sys.time()
 Sys.time(); df_monthly_evi_agg <- df_prep_function(monthly_evi_agg ); Sys.time()
 Sys.time(); df_monthly_ndvi_agg <- df_prep_function(monthly_ndvi_agg); Sys.time()
@@ -236,7 +235,7 @@ Sys.time(); df_annual_aniso_agg <- df_prep_function(annual_aniso_agg); Sys.time(
 Sys.time(); df_annual_evi_agg <- df_prep_function(annual_evi_agg); Sys.time()
 Sys.time(); df_annual_ndvi_agg <- df_prep_function(annual_ndvi_agg ); Sys.time()
 
-vegformation_palette<- c("#117733", "#44AA99", "#CC9933" )
+vegformation_palette<- c("#117733", "#CC6699", "#CC9933" )
 boxplot_function <- function (df){
   y_boxplot <- ggplot(df, aes(y = value, x = Vegformation)) +
   geom_boxplot(aes(fill = Vegformation)) + 
@@ -252,17 +251,9 @@ boxplot_function <- function (df){
 }
 
 monthly_ndvi_agg <- boxplot_function(df_monthly_ndvi_agg)
+write_(monthly_ndvi_agg, here("Outputs", "TrendsResults", "Figures", "agg_trajectories_vegformations_boxplot.rdata"))
 ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_monthly.png"),
       monthly_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
-annual_ndvi_agg <- boxplot_function(df_annual_ndvi_agg)
-ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_annual.png"),
-      annual_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
-monthly_ndvi_seperate <- boxplot_function(df_monthly_ndvi_seperate)
-ggsave(here("Outputs", "TrendsResults", "boxplot_separate_ndvi_monthly.png"),
-      monthly_ndvi_seperate ,dpi = 700, height = 20, width = 20, units = "cm")
-annual_ndvi_seperate <- boxplot_function(df_annual_ndvi_seperate)
-ggsave(here("Outputs", "TrendsResults", "boxplot_separate_ndvi_annual.png"),
-      annual_ndvi_seperate ,dpi = 700, height = 20, width = 20, units = "cm")
 
 #aggregated, cross timesteps and indices
 Sys.time(); df_monthly_aniso_agg <- df_monthly_aniso_agg %>% mutate(TimeStep ="monthly", Index = "anisotropic EVI"); Sys.time()
@@ -287,6 +278,14 @@ agg_boxplot <- ggplot(df_agg, aes(y = value, x = Vegformation)) +
 ggsave(here("Outputs", "TrendsResults", "boxplot_agg_formations_indices_timestep.png"),
       agg_boxplot  ,dpi = 700, height = 20, width = 20, units = "cm")
 
+
+#Sys.time(); df_monthly_aniso_seperate <- df_prep_function(monthly_aniso_seperate); Sys.time()
+#Sys.time(); df_monthly_evi_seperate <- df_prep_function(monthly_evi_seperate); Sys.time()
+#Sys.time(); df_monthly_ndvi_seperate <- df_prep_function(monthly_ndvi_seperate); Sys.time()
+
+#Sys.time(); df_annual_aniso_seperate <- df_prep_function(annual_aniso_seperate); Sys.time()
+#Sys.time(); df_annual_evi_seperate <- df_prep_function(annual_evi_seperate); Sys.time()
+#Sys.time(); df_annual_ndvi_seperate <- df_prep_function(annual_ndvi_seperate); Sys.time()
 
 #y_hist <- ggplot(df_trial, aes(x = value)) + 
 #   geom_histogram(position = "identity", bins = 10) + 
