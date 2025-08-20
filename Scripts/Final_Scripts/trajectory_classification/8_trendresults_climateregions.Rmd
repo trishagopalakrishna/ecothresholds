@@ -36,35 +36,42 @@ monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "
 monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
 monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-monthly_rds_list<- lapply(monthly_file_list, rast)
-names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
-names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
-names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+seperate_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(seperate_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(seperate_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(seperate_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
 annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
 annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
 annual_file_list <- gtools::mixedsort(annual_file_list)
 
-annual_rds_list<- lapply(annual_file_list, rast)
-names(annual_rds_list[[2]])<- "evi_swin11_annual"
-names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
-names(annual_rds_list[[1]])<- "aniso_swin11_annual"
+seperate_annual_rds_list<- lapply(annual_file_list, rast)
+names(seperate_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(seperate_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(seperate_annual_rds_list[[1]])<- "aniso_swin11_annual"
 
 remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
 
 #aggregate trajectories
-aggregate_results_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
-aggregate_file_list <- list.files(path = paste0(aggregate_results_input_file_path, "/"), pattern = ".tif", all.files = T, full.names = T)
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
 
-aggregate_rds_list <- lapply(aggregate_file_list, rast)
-names(aggregate_rds_list[[1]])<- "annual_aniso1km_agg"
-names(aggregate_rds_list[[2]])<- "annual_evi1km_agg"
-names(aggregate_rds_list[[3]])<- "annual_ndvi1km_agg"
-names(aggregate_rds_list[[4]])<- "monthly_aniso1km_agg"
-names(aggregate_rds_list[[5]])<- "monthly_evi1km_agg"
-names(aggregate_rds_list[[6]])<- "monthly_ndvi1km_agg"
+agg_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(agg_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(agg_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(agg_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
 
-remove(aggregate_results_input_file_path , aggregate_file_list)
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+agg_annual_rds_list<- lapply(annual_file_list, rast)
+names(agg_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(agg_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(agg_annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
 
 #climate regions
 climate_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
@@ -104,13 +111,13 @@ area_separate_trajectory_calculation <- function (trajectory_results_raster){
     total_df
 }
 
-Sys.time(); monthly_seperate_aniso_area <- area_separate_trajectory_calculation(monthly_rds_list[[1]]); Sys.time()
-Sys.time(); monthly_seperate_evi_area <- area_separate_trajectory_calculation(monthly_rds_list[[2]]); Sys.time()
-Sys.time(); monthly_seperate_ndvi_area <- area_separate_trajectory_calculation(monthly_rds_list[[3]]); Sys.time()
+Sys.time(); monthly_seperate_aniso_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_seperate_evi_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_seperate_ndvi_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[3]]); Sys.time()
 
-Sys.time(); annual_seperate_aniso_area <- area_separate_trajectory_calculation(annual_rds_list[[1]]); Sys.time()
-Sys.time(); annual_seperate_evi_area <- area_separate_trajectory_calculation(annual_rds_list[[2]]); Sys.time()
-Sys.time(); annual_seperate_ndvi_area <- area_separate_trajectory_calculation(annual_rds_list[[3]]); Sys.time()
+Sys.time(); annual_seperate_aniso_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_seperate_evi_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_seperate_ndvi_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[3]]); Sys.time()
 
 area_agg_trajectory_calculation <- function (trajectory_results_raster){
    totalarea_raster <- cellSize(trajectory_results_raster, unit ="km", mask= T)
@@ -138,23 +145,26 @@ area_agg_trajectory_calculation <- function (trajectory_results_raster){
   total_df
 }
 
-Sys.time(); annual_agg_aniso_area <- area_agg_trajectory_calculation(aggregate_rds_list[[1]]); Sys.time()
-Sys.time(); annual_agg_evi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[2]]); Sys.time()
-Sys.time(); annual_agg_ndvi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[3]]); Sys.time()
-Sys.time(); monthly_agg_aniso_area <- area_agg_trajectory_calculation(aggregate_rds_list[[4]]); Sys.time()
-Sys.time(); monthly_agg_evi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[5]]); Sys.time()
-Sys.time(); monthly_agg_ndvi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[6]]); Sys.time()
+Sys.time(); monthly_agg_aniso_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_agg_evi_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_agg_ndvi_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[3]]); Sys.time()
+
+Sys.time(); annual_agg_aniso_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_agg_evi_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_agg_ndvi_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[3]]); Sys.time()
 
 ```
 
 
-#Step 4- visualization of results - violin plots
+#Step 4- visualization of results - bar plots
 ```{r}
+climate_color_palette <- c("#6699ff", "#33ccff", "#000066")
+
 plotting_function <- function (df){
   
   ggplot(df, aes(x = Region, y= Percentage, fill =Region)) + 
    geom_bar(stat = "identity") + theme_classic() +
-    scale_fill_brewer(palette=rev("Set3"))+
+    scale_fill_manual(values =climate_color_palette)+
   facet_grid( .~ TrajectoryType) + 
   theme(axis.title.x = element_blank(),
     axis.ticks.x = element_blank(), 
@@ -164,11 +174,9 @@ plotting_function <- function (df){
 }  
 
 Sys.time(); plot_monthly_ndvi_agg <- plotting_function(monthly_agg_ndvi_area) 
+write_rds(plot_monthly_ndvi_agg , here("Outputs", "TrendsResults", "Figures", "agg_trajectories_climatezones.rdata"))
 ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_monthly_climateregions.png"),
       plot_monthly_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
-Sys.time(); plot_annual_ndvi_agg <- plotting_function(annual_agg_ndvi_area)
-ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_annual_climateregions.png"),
-      plot_annual_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
 
 #aggregated, cross timesteps and indices
 Sys.time(); monthly_agg_aniso_area <- monthly_agg_aniso_area %>% mutate(TimeStep ="monthly", Index = "anisotropic EVI"); Sys.time()
@@ -189,7 +197,7 @@ agg_barplot <- ggplot(df_agg, aes(y = Percentage, x = Region, fill =Region)) +
   theme(legend.title=element_blank(),
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank())+ 
-  scale_fill_brewer(palette=rev("Set3")) +
+ scale_fill_manual(values =climate_color_palette) +
   xlab("Floristic Region") + ylab("Percentage of Study Area")
 ggsave(here("Outputs", "TrendsResults", "barplot_agg_climateregions_indices_timestep.png"),
       agg_barplot  ,dpi = 700, height = 20, width = 20, units = "cm")
