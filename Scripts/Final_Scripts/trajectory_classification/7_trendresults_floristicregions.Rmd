@@ -82,7 +82,7 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
-proj_floristic_regions <- proj_floristic_regions %>% mutate(Region = c("Central-East", "Central-West", "North-East", "North-West", "South","South-East", "South-West", "external_North" ))
+proj_floristic_regions <- proj_floristic_regions %>% mutate(Region = c("Central-East", "Central-West", "North-East", "North-West", "South","South-East", "South-West", "external North" ))
 remove(floristic_regions)
 
 ```
@@ -194,78 +194,6 @@ Sys.time(); monthly_agg_ndvi_area <- agg_df_prep_function (agg_monthly_rds_list[
 Sys.time(); annual_agg_aniso_area <- agg_df_prep_function (agg_annual_rds_list[[1]]); Sys.time()
 Sys.time(); annual_agg_evi_area <- agg_df_prep_function (agg_annual_rds_list[[2]]); Sys.time()
 Sys.time(); annual_agg_ndvi_area <- agg_df_prep_function (agg_annual_rds_list[[3]]); Sys.time()
-
-
-
-
-
-area_separate_trajectory_calculation <- function (trajectory_results_raster){
-    totalarea_raster <- cellSize(trajectory_results_raster, unit ="km", mask= T)
-  total_area <- sum(values(totalarea_raster), na.rm= T)
-  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
-  trajectory_names <- c("Lin_dec", "Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_dec_acc", "Quad_dec_dec", "Quad_inc_acc", "Quad_inc_dec")
-
-  df_for_histogram<- list()
-   for (i in 1:9){
-     list_area <- list()
-     for (j in 1:length(proj_floristic_regions$Region)){
-       x_region_raster <- terra::crop(split_trajectory[[i]], vect(proj_floristic_regions$geometry[[j]]))
-       x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[j]]))
-       area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
-       x_area <- sum(values(area_raster), na.rm = T)
-       x_area <- as.data.frame(x_area)
-       names(x_area) <- "area_sqkm"
-       x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[i], Region = proj_floristic_regions$Region[j])
-       x_area <- x_area %>% mutate(Percentage = (area_sqkm/total_area)*100)
-       list_area[[j]]<- x_area
-     }
-    particular_region <- bind_rows(list_area)
-    df_for_histogram[[i]]<- particular_region
-  }
-   total_df <- bind_rows(df_for_histogram)
-    total_df
-}
-
-Sys.time(); monthly_seperate_aniso_area <- area_separate_trajectory_calculation(monthly_rds_list[[1]]); Sys.time()
-Sys.time(); monthly_seperate_evi_area <- area_separate_trajectory_calculation(monthly_rds_list[[2]]); Sys.time()
-Sys.time(); monthly_seperate_ndvi_area <- area_separate_trajectory_calculation(monthly_rds_list[[3]]); Sys.time()
-
-Sys.time(); annual_seperate_aniso_area <- area_separate_trajectory_calculation(annual_rds_list[[1]]); Sys.time()
-Sys.time(); annual_seperate_evi_area <- area_separate_trajectory_calculation(annual_rds_list[[2]]); Sys.time()
-Sys.time(); annual_seperate_ndvi_area <- area_separate_trajectory_calculation(annual_rds_list[[3]]); Sys.time()
-
-area_agg_trajectory_calculation <- function (trajectory_results_raster){
-   totalarea_raster <- cellSize(trajectory_results_raster, unit ="km", mask= T)
-  total_area <- sum(values(totalarea_raster), na.rm= T)
-  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
-  trajectory_names <- c("Decrease", "Increase", "No_trend")
-  df_for_histogram<- list()
-   for (i in 1:3){
-     list_area <- list()
-     for (j in 1:length(proj_floristic_regions$Region)){
-       x_region_raster <- terra::crop(split_trajectory[[i]], vect(proj_floristic_regions$geometry[[j]]))
-       x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[j]]))
-       area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
-       x_area <- sum(values(area_raster), na.rm = T)
-       x_area <- as.data.frame(x_area)
-       names(x_area) <- "area_sqkm"
-       x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[i], Region = proj_floristic_regions$Region[j])
-       x_area <- x_area %>% mutate(Percentage = (area_sqkm/total_area)*100)
-       list_area[[j]]<- x_area
-     }
-    particular_region <- bind_rows(list_area)
-    df_for_histogram[[i]]<- particular_region
-  }
-  total_df <- bind_rows(df_for_histogram)
-  total_df
-}
-
-Sys.time(); annual_agg_aniso_area <- area_agg_trajectory_calculation(aggregate_rds_list[[1]]); Sys.time()
-Sys.time(); annual_agg_evi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[2]]); Sys.time()
-Sys.time(); annual_agg_ndvi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[3]]); Sys.time()
-Sys.time(); monthly_agg_aniso_area <- area_agg_trajectory_calculation(aggregate_rds_list[[4]]); Sys.time()
-Sys.time(); monthly_agg_evi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[5]]); Sys.time()
-Sys.time(); monthly_agg_ndvi_area <- area_agg_trajectory_calculation(aggregate_rds_list[[6]]); Sys.time()
 
 ```
 
