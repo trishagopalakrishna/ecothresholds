@@ -189,7 +189,7 @@ Sys.time(); annual_ndvi_seperate <- seperate_trajectory_veg(seperate_annual_rds_
 
 aggregate_trajectory_veg <- function(agg_trajectory_results_raster) {
   split_trajectory <- terra::segregate(agg_trajectory_results_raster, other = NA)
-  trajectory_names <- c("Decrease", "Increase", "No_trend")
+  trajectory_names <- c("Browning", "Greening", "No trend")
   df_for_histogram<- list()
   for (i in 1:3){
     stack_raster <- c(split_trajectory[[i]], resample_veg_formation)
@@ -251,7 +251,7 @@ boxplot_function <- function (df){
 }
 
 monthly_ndvi_agg <- boxplot_function(df_monthly_ndvi_agg)
-write_(monthly_ndvi_agg, here("Outputs", "TrendsResults", "Figures", "agg_trajectories_vegformations_boxplot.rdata"))
+write_rds(monthly_ndvi_agg, here("Outputs", "TrendsResults", "Figures", "agg_trajectories_vegformations_boxplot.rdata"))
 ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_monthly.png"),
       monthly_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
 
