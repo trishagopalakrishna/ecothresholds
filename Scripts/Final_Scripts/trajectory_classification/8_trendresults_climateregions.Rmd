@@ -25,9 +25,8 @@ terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 In this script, I evaluate the climate regions that the different trajectories fall into. 
 The climate regions are from Catellan et al 2024 
 (1) Read final trajectory type results for all indices, aggregated trajectories for all indices and climate regions GIS files
-(2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices in each of the climate zones 
+(2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices in the study area that is present in each of the climate zones 
 (3) Visualization of above results
-
 
 #Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}
@@ -84,93 +83,132 @@ cerrado<- climate_trans %>% st_union()
 
 #Step 2- data analyses
 ```{r}
-area_separate_trajectory_calculation <- function (trajectory_results_raster){
-    totalarea_raster <- cellSize(trajectory_results_raster, unit ="km", mask= T)
+sep_df_prep_function <- function (sep_traj_raster){
+  totalarea_raster <- cellSize(sep_traj_raster, unit ="km", mask= T)
   total_area <- sum(values(totalarea_raster), na.rm= T)
-  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
+  
+  #study area estimation in each zone
+  m <- rbind(c(1,999), c(2, 999), c(3,999), c(4,999), c(5,999), c(6,999), c(7,999), c(8,999), c(9,999))
+  reclass_trajectory_results_raster <- terra::classify(sep_traj_raster,m, others=NA)
+  list_studyarea_zones <- list()
+  for (i in 1:length(climate_trans$region)){
+        x_region_raster <- terra::crop(reclass_trajectory_results_raster , vect(climate_trans$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "studyarea_zone_sqkm"
+        x_area <- x_area %>% mutate( Region = climate_trans$region[i])
+        list_studyarea_zones[[i]] <- x_area
+  }
+  studyarea_zones <- bind_rows(list_studyarea_zones)
+  
+  #trajectory types in the studyarea present in each zone
   trajectory_names <- c("Lin_dec", "Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_dec_acc", "Quad_dec_dec", "Quad_inc_acc", "Quad_inc_dec")
+  split_trajectory <- terra::segregate(sep_traj_raster, other = NA)
 
-  df_for_histogram<- list()
-   for (i in 1:9){
-     list_area <- list()
-     for (j in 1:length(climate_trans$region)){
-       x_region_raster <- terra::crop(split_trajectory[[i]], vect(climate_trans$geometry[[j]]))
-       x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[j]]))
-       area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
-       x_area <- sum(values(area_raster), na.rm = T)
-       x_area <- as.data.frame(x_area)
-       names(x_area) <- "area_sqkm"
-       x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[i], Region = climate_trans$Region[j])
-       x_area <- x_area %>% mutate(Percentage = (area_sqkm/total_area)*100)
-       list_area[[j]]<- x_area
+  df_for_histogram <- list()
+  for (i in 1:length(climate_trans$region)){
+      list_area <- list()
+      for (j in 1:length(trajectory_names)){
+        x_region_raster <- terra::crop(split_trajectory[[j]], vect(climate_trans$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "area_sqkm"
+        x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[j], Region = climate_trans$region[i])
+        list_area[[j]]<- x_area
      }
     particular_region <- bind_rows(list_area)
     df_for_histogram[[i]]<- particular_region
   }
-   total_df <- bind_rows(df_for_histogram)
-    total_df
+  traj_zones <- bind_rows(df_for_histogram)
+  traj_zones <- traj_zones %>% left_join(studyarea_zones)
+  traj_zones
 }
 
-Sys.time(); monthly_seperate_aniso_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[1]]); Sys.time()
-Sys.time(); monthly_seperate_evi_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[2]]); Sys.time()
-Sys.time(); monthly_seperate_ndvi_area <- area_separate_trajectory_calculation(seperate_monthly_rds_list[[3]]); Sys.time()
+Sys.time(); monthly_seperate_aniso_area <- sep_df_prep_function(seperate_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_seperate_evi_area <- sep_df_prep_function(seperate_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_seperate_ndvi_area <- sep_df_prep_function(seperate_monthly_rds_list[[3]]); Sys.time()
 
-Sys.time(); annual_seperate_aniso_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[1]]); Sys.time()
-Sys.time(); annual_seperate_evi_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[2]]); Sys.time()
-Sys.time(); annual_seperate_ndvi_area <- area_separate_trajectory_calculation(seperate_annual_rds_list[[3]]); Sys.time()
+Sys.time(); annual_seperate_aniso_area <- sep_df_prep_function(seperate_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_seperate_evi_area <- sep_df_prep_function(seperate_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_seperate_ndvi_area <- sep_df_prep_function(seperate_annual_rds_list[[3]]); Sys.time()
 
-area_agg_trajectory_calculation <- function (trajectory_results_raster){
-   totalarea_raster <- cellSize(trajectory_results_raster, unit ="km", mask= T)
+
+agg_df_prep_function <- function (sep_traj_raster){
+  totalarea_raster <- cellSize(sep_traj_raster, unit ="km", mask= T)
   total_area <- sum(values(totalarea_raster), na.rm= T)
-  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
-  trajectory_names <- c("Decrease", "Increase", "No_trend")
-  df_for_histogram<- list()
-   for (i in 1:3){
-     list_area <- list()
-     for (j in 1:length(climate_trans$region)){
-       x_region_raster <- terra::crop(split_trajectory[[i]], vect(climate_trans$geometry[[j]]))
-       x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[j]]))
-       area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
-       x_area <- sum(values(area_raster), na.rm = T)
-       x_area <- as.data.frame(x_area)
-       names(x_area) <- "area_sqkm"
-       x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[i], Region = climate_trans$region[j])
-       x_area <- x_area %>% mutate(Percentage = (area_sqkm/total_area)*100)
-       list_area[[j]]<- x_area
+  
+  #study area estimation in each zone
+  m <- rbind(c(1,999), c(2, 999), c(3,999))
+  reclass_trajectory_results_raster <- terra::classify(sep_traj_raster,m, others=NA)
+  list_studyarea_zones <- list()
+  for (i in 1:length(climate_trans$region)){
+        x_region_raster <- terra::crop(reclass_trajectory_results_raster , vect(climate_trans$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "studyarea_zone_sqkm"
+        x_area <- x_area %>% mutate( Region = climate_trans$region[i])
+        list_studyarea_zones[[i]] <- x_area
+  }
+  studyarea_zones <- bind_rows(list_studyarea_zones)
+  
+  #trajectory types in the studyarea present in each zone
+  trajectory_names <- c("Browning", "Greening", "No trend")
+  split_trajectory <- terra::segregate(sep_traj_raster, other = NA)
+
+  df_for_histogram <- list()
+  for (i in 1:length(climate_trans$region)){
+      list_area <- list()
+      for (j in 1:length(trajectory_names)){
+        x_region_raster <- terra::crop(split_trajectory[[j]], vect(climate_trans$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(climate_trans$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "area_sqkm"
+        x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[j], Region = climate_trans$region[i])
+        list_area[[j]]<- x_area
      }
     particular_region <- bind_rows(list_area)
     df_for_histogram[[i]]<- particular_region
   }
-  total_df <- bind_rows(df_for_histogram)
-  total_df
+  traj_zones <- bind_rows(df_for_histogram)
+  traj_zones <- traj_zones %>% left_join(studyarea_zones)
+  traj_zones
 }
 
-Sys.time(); monthly_agg_aniso_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[1]]); Sys.time()
-Sys.time(); monthly_agg_evi_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[2]]); Sys.time()
-Sys.time(); monthly_agg_ndvi_area <- area_agg_trajectory_calculation(agg_monthly_rds_list[[3]]); Sys.time()
+Sys.time(); monthly_agg_aniso_area <- agg_df_prep_function (agg_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_agg_evi_area <- agg_df_prep_function (agg_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_agg_ndvi_area <- agg_df_prep_function (agg_monthly_rds_list[[3]]); Sys.time()
 
-Sys.time(); annual_agg_aniso_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[1]]); Sys.time()
-Sys.time(); annual_agg_evi_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[2]]); Sys.time()
-Sys.time(); annual_agg_ndvi_area <- area_agg_trajectory_calculation(agg_annual_rds_list[[3]]); Sys.time()
+Sys.time(); annual_agg_aniso_area <- agg_df_prep_function (agg_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_agg_evi_area <- agg_df_prep_function (agg_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_agg_ndvi_area <- agg_df_prep_function (agg_annual_rds_list[[3]]); Sys.time()
+
+
+
+x<- ggplot(monthly_agg_ndvi_area, aes(x=factor(Region), y= area_sqkm/1000, fill = factor(TrajectoryType)))+geom_bar(stat = "identity")
 
 ```
 
 
 #Step 4- visualization of results - bar plots
 ```{r}
-climate_color_palette <- c("#6699ff", "#33ccff", "#000066")
+aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 plotting_function <- function (df){
   
-  ggplot(df, aes(x = Region, y= Percentage, fill =Region)) + 
+  ggplot(df, aes(x = factor(Region), y= area_sqkm/1000, fill = factor(TrajectoryType))) + 
    geom_bar(stat = "identity") + theme_classic() +
-    scale_fill_manual(values =climate_color_palette)+
-  facet_grid( .~ TrajectoryType) + 
+    scale_fill_manual(values =aggregate_trajectory_palette)+
+    theme(legend.position="none")+
   theme(axis.title.x = element_blank(),
-    axis.ticks.x = element_blank(), 
-    axis.text.x = element_blank()) + ylab ("Percentage of Study Area") +
-    xlab ("Floristic Regions")
-  
+    axis.ticks.x = element_blank()) + ylab ("Proportion of study area") 
 }  
 
 Sys.time(); plot_monthly_ndvi_agg <- plotting_function(monthly_agg_ndvi_area) 
@@ -189,16 +227,16 @@ Sys.time(); annual_agg_ndvi_area <- annual_agg_ndvi_area %>% mutate(TimeStep ="a
 
 df_agg <- bind_rows(monthly_agg_aniso_area, monthly_agg_evi_area, monthly_agg_ndvi_area, 
                     annual_agg_aniso_area, annual_agg_evi_area, annual_agg_ndvi_area)
-agg_barplot <- ggplot(df_agg, aes(y = Percentage, x = Region, fill =Region)) +
-  geom_bar(position ="dodge", stat = "identity", aes(alpha = factor(Index))) + 
+
+agg_barplot <- ggplot(df_agg, aes(y = area_sqkm/1000, x = factor(Region), fill =factor(TrajectoryType))) +
+  geom_bar( stat = "identity") + 
   scale_alpha_discrete(range = c(0.3, 0.6, 1), guide = guide_legend(override.aes = list(fill = "black"))) +
-  facet_grid(TimeStep~TrajectoryType) +
+  facet_grid(TimeStep~Index) +
   theme_classic() +
-  theme(legend.title=element_blank(),
-        axis.text.x = element_blank(),
+  theme(axis.title.x = element_blank(),
+        legend.title=element_blank(),
         axis.ticks.x = element_blank())+ 
- scale_fill_manual(values =climate_color_palette) +
-  xlab("Floristic Region") + ylab("Percentage of Study Area")
+ scale_fill_manual(values =aggregate_trajectory_palette)  + ylab("Percentage of study area")
 ggsave(here("Outputs", "TrendsResults", "barplot_agg_climateregions_indices_timestep.png"),
       agg_barplot  ,dpi = 700, height = 20, width = 20, units = "cm")
 
