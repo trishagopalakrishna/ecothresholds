@@ -190,10 +190,6 @@ Sys.time(); annual_agg_aniso_area <- agg_df_prep_function (agg_annual_rds_list[[
 Sys.time(); annual_agg_evi_area <- agg_df_prep_function (agg_annual_rds_list[[2]]); Sys.time()
 Sys.time(); annual_agg_ndvi_area <- agg_df_prep_function (agg_annual_rds_list[[3]]); Sys.time()
 
-
-
-x<- ggplot(monthly_agg_ndvi_area, aes(x=factor(Region), y= area_sqkm/1000, fill = factor(TrajectoryType)))+geom_bar(stat = "identity")
-
 ```
 
 
