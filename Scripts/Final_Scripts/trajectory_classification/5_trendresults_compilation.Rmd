@@ -171,14 +171,14 @@ names(annual_rds_list[[1]])<- "aniso_swin11_annual"
 
 remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
 
-aggregate_trajectory_palette <- c("#F7BF2A", "#61A36A", "#7C7083")
+aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 aggregate_mapping_function <- function (trendresults_raster, title){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_shape (trendresults_raster) + 
      tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
               col.legend = tm_legend_hide()) +
-    tm_add_legend(labels = c("Decrease", "Increase", "No trend"),
+    tm_add_legend(labels = c("Browning", "Greening", "No trend"),
       fill = aggregate_trajectory_palette,
       type = "polygons") +
      tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
@@ -188,6 +188,10 @@ aggregate_mapping_function <- function (trendresults_raster, title){
 output_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
 
 Sys.time();monthly_ndvi_results_map <- aggregate_mapping_function  (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
+write_rds(monthly_ndvi_results_map , here("Outputs", "TrendsResults", "Figures", "map_ndvi_monthlyswin11_agg_trajectories.rdata"))
+tmap_save(monthly_ndvi_results_map, paste0(output_file_path, "/", "map1km_ndvi_aggtrajectories_monthly_swin11.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
 Sys.time();monthly_evi_results_map <- aggregate_mapping_function  (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
 Sys.time();monthly_aniso_results_map <- aggregate_mapping_function  (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
 
@@ -195,7 +199,7 @@ Sys.time();annual_ndvi_results_map <- aggregate_mapping_function  (annual_rds_li
 Sys.time();annual_evi_results_map <- aggregate_mapping_function  (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
 Sys.time();annual_aniso_results_map <- aggregate_mapping_function  (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
 
-trendresult_map<- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
+trendresult_map <- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
                                annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
 
 tmap_save(trendresult_map, paste0(output_file_path, "/", "agg_map1km_trendresults_swin11_monthlyannual.png"),
@@ -221,8 +225,8 @@ Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]],
 plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
                      annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
 
-plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Decrease",
-                                                value==2~ "Increase",
+plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Browning",
+                                                value==2~ "Greening",
                                                   TRUE~"No trend"))
 plot_df <- plot_df  %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
 
