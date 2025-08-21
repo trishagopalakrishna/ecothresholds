@@ -212,8 +212,8 @@ plot_df_prep_function2 <- function (results_raster_list){
     percentage_results_df_list[[i]]<- df_prep_function(results_raster_list[[i]])
   }
   all_percentage_results <- bind_rows(percentage_results_df_list)
-  all_percentage_results <- all_percentage_results %>% mutate(value = case_when(value== 1~ "Decrease",
-                                                                                value== 2~ "Increase",
+  all_percentage_results <- all_percentage_results %>% mutate(value = case_when(value== 1~ "Browning",
+                                                                                value== 2~ "Greening",
                                                                                 value== 3~ "No trend"))
   all_percentage_results
 }  
@@ -235,7 +235,7 @@ annual_aniso_percentage_results_df  <- annual_aniso_percentage_results_df  %>% m
 main_df<- bind_rows(monthly_ndvi_percentage_results_df, monthly_evi_percentage_results_df, monthly_aniso_percentage_results_df,
                    annual_ndvi_percentage_results_df, annual_evi_percentage_results_df, annual_aniso_percentage_results_df)
 
-aggregate_trajectory_palette <- c("#F7BF2A", "#61A36A", "#7C7083")
+aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 barplot_function2 <- function (results_df, title){
    x_plot <- results_df %>% 
