@@ -103,25 +103,11 @@ remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map
 
 #Step 3- barplot of seperate trajectory results across three indices and timesteps
 ```{r}
-df_prep_function<- function (trendresults_raster, index_name){
+proportion_df_calc <- function (trendresults_raster, index_name){
   x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
   x_df<- x_df %>% mutate(index = index_name)
   names(x_df)[4]<- "value"
-  percentage_df <- x_df %>% group_by(value, index) %>% summarise(count= n()) %>% mutate(percentage= (count/nrow(x_df))*100) 
-  percentage_df
-}
-
-Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
-Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
-Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
-Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
-Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI_annual"); Sys.time()
-Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
-
-plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
-                     annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
-
-plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
+  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~"Linear decrease",
                                                 value==2~ "Linear increase",
                                                 value==4~ "Step decrease",
                                                 value==5~"Step increase",
@@ -130,23 +116,51 @@ plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==8~"Quadratic increase (accelerated)",
                                                 value==9~"Quadratic increase (decelerated)",
                                                 TRUE~"No trend"))
+  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Decrease",
+                                                value==2~ "Increase",
+                                                value==4~ "Decrease",
+                                                value==5~"Increase",
+                                                value==6~"Decrease",
+                                                value==7~"Decrease",
+                                                value==8~"Increase",
+                                                value==9~"Increase",
+                                                TRUE~"No trend"))
+  agg_traj_count_df <- x_df %>% group_by(agg_traj) %>% summarise(total_count = n())
+  seperate_traj_count_df <- x_df %>% group_by(seperate_traj, index, agg_traj) %>% summarise(count= n())
+  seperate_traj_count_df <- seperate_traj_count_df %>% left_join(agg_traj_count_df)
+  seperate_traj_count_df
+}
 
-plot_df <- plot_df  %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
-  
+Sys.time(); monthly_ndvi <- proportion_df_calc(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+Sys.time(); monthly_evi <- proportion_df_calc(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso <- proportion_df_calc(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+
+Sys.time(); annual_ndvi <- proportion_df_calc(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi <- proportion_df_calc(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso <- proportion_df_calc(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
+
+df_agg <- bind_rows(monthly_ndvi, monthly_evi, monthly_aniso,
+                    annual_ndvi, annual_evi, annual_aniso)
+
+df_agg <- df_agg %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
 Set1palette<- c("#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677",  "#994F00",   "#88CCEE" ) 
-trendresults_barplot<- plot_df %>% 
-  ggplot(aes(value, percentage, fill = value)) +
-  geom_col(position = position_dodge(), color = "black") + facet_grid(TimeStep~Index) +
-  theme_classic() +
-  xlab("Trajectory Shape")+ ylab ("Percentage of study area")+
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+
-  scale_fill_manual(values = Set1palette) + theme(legend.title=element_blank()) +
-  xlab("Model Type")
-ggsave(here(output_file_path, paste0("barplot_swin11_seperate_trajectories.png")),
-       trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
 
-remove(plot_df, trendresults_barplot)
-remove(monthly_ndvi_trend_results, monthly_evi_trend_results, annual_ndvi_trend_results, annual_evi_trend_results, monthly_aniso_trend_results, annual_aniso_trend_results)
+
+trendsresults_barplot <- df_agg %>%
+  ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
+   geom_bar(stat = "identity") + facet_grid(TimeStep~Index) + 
+  theme_classic() +
+    scale_fill_manual(values =Set1palette)+
+     theme(legend.title=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust=0.7),
+    axis.title.x = element_blank(),
+        legend.title=element_blank(),
+        axis.ticks.x = element_blank()) + ylab ("Proportion of study area") 
+ggsave(here("Outputs", "TrendsResults", "barplot_swin11_seperate_trajectories.png"),
+      trendsresults_barplot ,dpi = 700, height = 20, width = 20, units = "cm")
+
+remove(df_agg, trendresults_barplot)
+remove(monthly_ndvi, monthly_evi, annual_ndvi, annual_evi, monthly_aniso, annual_aniso)
 ```
 
 #Step 4 - reading in only swin11 trend results (monthly and annual) of aggregate trajectories, making maps and barplot similar to previous chunks
@@ -279,50 +293,7 @@ writeRaster(monthly_aniso_5km_counttrajectorytypes, here("Outputs", "TrendsResul
 
 ```
 
-#Step 6a (for results section) - calculating proportions of seperate indices within the increase and decrease aggregated trajectories
-```{r}
-#Read first chunk completely
-
-proportion_df_calc <- function (trendresults_raster, index_name){
-  x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
-  x_df<- x_df %>% mutate(index = index_name)
-  names(x_df)[4]<- "value"
-  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~ "Linear decrease",
-                                                value==2~ "Linear increase",
-                                                value==4~ "Step decrease",
-                                                value==5~"Step increase",
-                                                value==6~"Quadratic decrease (accelerated)",
-                                                value==7~"Quadratic decrease (decelerated)",
-                                                value==8~"Quadratic increase (accelerated)",
-                                                value==9~"Quadratic increase (decelerated)",
-                                                TRUE~"No trend"))
-  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Decrease",
-                                                value==2~ "Increase",
-                                                value==4~ "Decrease",
-                                                value==5~"Increase",
-                                                value==6~"Decrease",
-                                                value==7~"Decrease",
-                                                value==8~"Increase",
-                                                value==9~"Increase",
-                                                TRUE~"No trend"))
-  agg_traj_count_df <- x_df %>% group_by(agg_traj) %>% summarise(total_count = n())
-  seperate_traj_count_df <- x_df %>% group_by(seperate_traj, index, agg_traj) %>% summarise(count= n())
-  seperate_traj_count_df <- seperate_traj_count_df %>% left_join(agg_traj_count_df)
-  seperate_traj_count_df <- seperate_traj_count_df %>% mutate(percentage = (count/total_count)*100)
-  seperate_traj_count_df
-}
-
-Sys.time(); monthly_ndvi <- proportion_df_calc(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
-Sys.time(); monthly_evi <- proportion_df_calc(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
-Sys.time(); monthly_aniso <- proportion_df_calc(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
-
-Sys.time(); annual_ndvi <- proportion_df_calc(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
-Sys.time(); annual_evi <- proportion_df_calc(annual_rds_list[[2]], "EVI_annual"); Sys.time()
-Sys.time(); annual_aniso <- proportion_df_calc(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
-
-```
-
-#Step 6b (for results section) - calculating average difference in results (aggregated trajectories) between monthly and annual timesteps across all indices
+#Step 6a (for results section) - calculating average difference in results (aggregated trajectories) between monthly and annual timesteps across all indices
 ```{r}
 #Read fourth chunk without the mapping component
 difference_function <- function (trajectory_type, index){
