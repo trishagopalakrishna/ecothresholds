@@ -204,7 +204,9 @@ aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 plotting_function <- function (df){
   
-  ggplot(df, aes(x = reorder(factor(Region),-(area_sqkm/1000)), y= area_sqkm/1000, fill =factor(TrajectoryType))) + 
+  ggplot(df, aes(x = factor(Region, 
+                            levels = c("Central-East", "Central-West", "North-East", "North-West", "South", "South-East", "South-West", "external North")), 
+         y= area_sqkm/1000, fill =factor(TrajectoryType))) + 
    geom_bar(stat = "identity") + theme_classic() +
     scale_fill_manual(values =aggregate_trajectory_palette)+
     theme(legend.position="none")+
@@ -229,7 +231,9 @@ Sys.time(); annual_agg_ndvi_area <- annual_agg_ndvi_area %>% mutate(TimeStep ="a
 
 df_agg <- bind_rows(monthly_agg_aniso_area, monthly_agg_evi_area, monthly_agg_ndvi_area, 
                     annual_agg_aniso_area, annual_agg_evi_area, annual_agg_ndvi_area)
-agg_barplot <- ggplot(df_agg, aes(y = area_sqkm/1000, x = reorder(factor(Region),-(area_sqkm/1000)), fill =factor(TrajectoryType))) +
+
+agg_barplot <- ggplot(df_agg, aes(y = area_sqkm/1000, x = factor(Region, 
+                            levels = c("Central-East", "Central-West", "North-East", "North-West", "South", "South-East", "South-West", "external North")), fill =factor(TrajectoryType))) +
   geom_bar( stat = "identity") + 
   scale_alpha_discrete(range = c(0.3, 0.6, 1), guide = guide_legend(override.aes = list(fill = "black"))) +
   facet_grid(TimeStep~Index) +
