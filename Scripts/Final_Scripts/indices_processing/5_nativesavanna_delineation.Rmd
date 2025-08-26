@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -18,7 +17,6 @@ library(tmap)
 library(tmaptools)
 library(RColorBrewer)
 library(viridis)
-library(gganimate)
 
 terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
 ```
@@ -342,5 +340,42 @@ filename = here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic
 
 remove(threshold_map_function, neighbors, map_extent, map_thresh10_1km, map_thresh20_1km, map_thresh30_1km,
        map_thresh10_5km, map_thresh20_5km, map_thresh30_5km, all_maps_1km, all_maps_5km)
+
+```
+
+#Step 3- study area figures (1 and 5km scale) for SI
+```{r}
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-63.63, xmax=-24.73,
+                       ymin= -0.81, ymax=-33.20), crs=4326) %>% st_as_sfc()
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
+threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+
+m <- c(0, 1, 1)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+reclass_threshold20_1km <- terra::classify(threshold20_1km, rclmat, include.lowest= TRUE)
+reclass_threshold20_5km <- terra::classify(threshold20_5km, rclmat, include.lowest= TRUE)
+
+mapping_function <- function (trendresults_raster, title){
+  #tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+    tm_shape(cerrado)+ tm_borders()+
+    tm_shape (trendresults_raster) + 
+    tm_raster(col.scale = tm_scale_categorical(n=1, values = "#9f8f12"), col.legend = tm_legend_hide()) +
+    tm_title_in(title, size = 5, position = tm_pos_in("left", "top"))
+}
+
+mask_1km <- mapping_function(reclass_threshold20_1km, "a)")
+mask_5km <- mapping_function(reclass_threshold20_5km, "b)")
+
+mask_maps <- tmap_arrange(mask_1km, mask_5km, ncol =2, nrow= 1)
+
+tmap_save(mask_maps, here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "SI_studyarea.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
 
 ```
