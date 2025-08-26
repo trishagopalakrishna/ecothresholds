@@ -241,7 +241,7 @@ barplot_function2 <- function (results_df, title){
    x_plot <- results_df %>% 
     ggplot(aes(value, percentage, fill = value, alpha=as.factor(TimeStep))) +
     geom_col(position = position_dodge(), color = "black") + 
-     theme_classic(base_size = 18) +
+     theme_classic(base_size = 34) +
     theme(axis.text.x=element_blank(), axis.ticks.x = element_blank()) + 
     xlab("Trajectory Shape")+ ylab ("Percentage of study area") +
     scale_fill_manual(values=aggregate_trajectory_palette) + 
@@ -255,7 +255,7 @@ Sys.time(); anisoevi<-barplot_function2(main_df %>% filter(Index =="anisoEVI"), 
 
 x<- ggpubr::ggarrange(ndvi, evi, anisoevi, nrow = 3, ncol = 1, common.legend = TRUE )
 ggsave(here("Outputs","TrendsResults","annual_monthly_comparison","aggtrajectories_barplot_timstep_stlsetting_indicex.png"),
-       x,dpi = 700, height = 50, width=100, units = "cm")
+       x,dpi = 700, height = 60, width=60, units = "cm")
 
 ```
 
