@@ -18,6 +18,7 @@ library(scales)
 library(patchwork)
 library(purrr)
 library(dplyr)
+library(ggpubr)
 
 ```
 
@@ -59,7 +60,6 @@ mean_grasspercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heter
 mean_forestpercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_forest_percentage_5km_2002_2021.tif"))
 
 ```
-
 
 #Step 2- data structuring, applying anthropic threshold mask to predictors
 ```{r}
@@ -122,10 +122,9 @@ remove(ndvi_agg_count)
 remove(crop_mask_function)
 ```
 
-
 #Step 3- eda - understanding the correlations and distributions of all the variables 
 ```{r}
-summary(analyses_df)
+summary(analyses_df) 
 
 remove_NA <- function (df_analyses){
   analyses_df_noNA <- df_analyses %>% drop_na() 
@@ -275,75 +274,6 @@ summary(step_inc_model)
 summary(step_dec_model)
 ```
 
-#Step 5a - Functions to visualize 2 way interactions
-```{r}
-inc_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses", "onemodel_inc.rds"))
-dec_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses" ,"onemodel_dec.rds"))
-
-
-grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes, 
-                                              line_variable_in_quotes, 
-                                              gam_model){
-  df_select <- df_analyses %>% dplyr::select(-c(notrend))
-  
-  var_x <- subset( df_select, select = xaxis_variable_in_quotes)
-  var_line <- subset( df_select, select = line_variable_in_quotes)
-  var_line <- as.vector(var_line) %>% unlist()
-  
-  xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
-  line_range <- c((mean(var_line) - sd(var_line)),0, (mean(var_line) + sd(var_line)))
-  
-  df_means<- df_select %>% dplyr::select(-c(x,y,xaxis_variable_in_quotes, line_variable_in_quotes)) %>%
-    summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
-  
-  newd <- data.frame(expand.grid(xaxis_range, line_range))
-  names(newd) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
-  newd <- newd %>% bind_cols(df_means) %>% mutate(x= x1, y=y1)
-  pred <- mgcv::predict.bam(gam_model, newdata = newd, type="terms") 
-  pred <- as.data.frame(pred)
-  pred
-}
-
-select_effects_function <- function (df_analyses, xaxis_variable_in_quotes, 
-                                     prediction_df, 
-                                     effects_cols_indices,
-                                     line_lower_plotting_in_quotes_name, 
-                                     line_middle_plotting_in_quotes_name, 
-                                     line_higher_plotting_in_quotes_name){
-  
-  df_select <- df_analyses %>% dplyr::select(-c(notrend))
-  
-  var_x <- subset( df_select, select = xaxis_variable_in_quotes)
-  xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
-  
-  ind <- 1:xaxis_range_len
-  ind2 <- (xaxis_range_len + 1):(xaxis_range_len*2)
-  ind3 <- ((xaxis_range_len*2)+1):(xaxis_range_len*3)
-  
-  xy_interaction_effects <- grep("x,y",names(prediction_df),fixed = T)
-  pred_without_xy_interaction_effects <- (subset(prediction_df, select = -xy_interaction_effects))
-  
-  x1Eff <- rowSums(pred_without_xy_interaction_effects [ind, effects_cols_indices] )
-  x2Eff <- rowSums(pred_without_xy_interaction_effects [ind2, effects_cols_indices] )
-  x3Eff <- rowSums(pred_without_xy_interaction_effects [ind3, effects_cols_indices] )
-  
-  plot_df <- data.frame(xaxis_colname = xaxis_range)
-  plot_df <- plot_df %>% mutate(x1Eff_colname = x1Eff,
-                              x2Eff_colname = x2Eff,
-                              x3Eff_colname = x3Eff)
-  
-  names(plot_df)<- c(xaxis_variable_in_quotes,
-                     line_lower_plotting_in_quotes_name,
-                     line_middle_plotting_in_quotes_name, 
-                     line_higher_plotting_in_quotes_name)
-  pivot_plot_df <- plot_df %>% pivot_longer(2:4)
-  pivot_plot_df
-  
-}
-
-
-```
-
 #Step 5a (i) Trends in annual temp and RE across veg formations ### DO NOT RUN 
 ```{r}
 # location
@@ -469,14 +399,23 @@ remove(plot_df, plot_inc_trend_anthropicdist_burnedarea , plot_dec_trend_anthrop
 
 #Step 5a (iv) Mean anthropic distance and mean veg formation
 ```{r}
+inc_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses", "onemodel_inc.rds"))
+dec_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses" ,"onemodel_dec.rds"))
+
+
 # location
 x1 <- -43.2781
 y1 <- -4.0213
 xaxis_range_len <- 200
 
-grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes, 
-                                              line_variable_in_quotes, 
-                                              gam_model){
+grid_creation_prediction <- function (df_analyses, 
+                                      xaxis_variable_in_quotes, 
+                                      line_variable_in_quotes, 
+                                      gam_model,
+                                      line_lower_plotting_in_quotes_name,
+                                      line_middle_plotting_in_quotes_name,
+                                      line_higher_plotting_in_quotes_name){
+  #Creating new data and running model
   df_select <- df_analyses %>% dplyr::select(-c(notrend))
   
   var_x <- subset( df_select, select = xaxis_variable_in_quotes)
@@ -494,184 +433,218 @@ grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes,
   newd <- newd %>% bind_cols(df_means) %>% mutate(x= x1, y=y1)
   pred <- mgcv::predict.bam(gam_model, newdata = newd, type="terms") 
   pred <- as.data.frame(pred)
-  pred
+  
+  #Selecting the coefficients
+  ind <- 1:xaxis_range_len
+  ind2 <- (xaxis_range_len + 1):(xaxis_range_len*2)
+  ind3 <- ((xaxis_range_len*2)+1):(xaxis_range_len*3)
+  
+  xy_interaction_effects <- grep("x,y",names(pred),fixed = T)
+  pred_without_xy_interaction_effects <- (subset(pred, select = -xy_interaction_effects))
+  
+  coef_index_trial1 <- grep(paste0("s(",xaxis_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial2 <- grep(paste0("s(",line_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial3 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", line_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T)
+  
+  effects_cols_indices <- c(coef_index_trial1, coef_index_trial2, coef_index_trial3)
+  
+  x1Eff <- rowSums(pred_without_xy_interaction_effects [ind, effects_cols_indices])
+  x2Eff <- rowSums(pred_without_xy_interaction_effects [ind2, effects_cols_indices])
+  x3Eff <- rowSums(pred_without_xy_interaction_effects [ind3, effects_cols_indices])
+  
+  #Estimating 95% CI uncertainty
+  X <- mgcv::predict.bam(gam_model, newdata = newd, type ="lpmatrix")
+  n.sims <- 1000
+  b_sims <- rmvn(n.sims,coef(gam_model), gam_model$Vp) #beta unceratinty
+  
+  smooth_index_trial1 <- grep(paste0("s(",xaxis_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T) #selecting smooths
+  smooth_index_trial2 <- grep(paste0("s(",line_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T )
+  smooth_index_trial3 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", line_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T )
+
+  smooth_index <- c(smooth_index_trial1, smooth_index_trial2, smooth_index_trial3)
+  
+  X1Eff_without_latlong <- tcrossprod( X[,smooth_index] , b_sims[,smooth_index] ) #spline computation
+  
+  lower_xEff_1<- as.data.frame(apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.025))
+  higher_xEff_1 <- as.data.frame(apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.975))
+  ci_xEff <- bind_cols(lower_xEff_1, higher_xEff_1, xaxis_range)
+  names(ci_xEff)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  lower_xEff_2 <- as.data.frame(apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.025))
+  higher_xEff_2 <- as.data.frame(apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.975))
+  ci_xEff_2 <- bind_cols(lower_xEff_2, higher_xEff_2, xaxis_range)
+  names(ci_xEff_2)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  lower_xEff_3 <- as.data.frame(apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.025))
+  higher_xEff_3 <- as.data.frame(apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.975))
+  ci_xEff_3 <- bind_cols(lower_xEff_3, higher_xEff_3, xaxis_range)
+  names(ci_xEff_3)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  plot_df <- data.frame(xaxis_colname = xaxis_range)
+  low_plot_df <- plot_df %>% mutate(x1Eff_colname = x1Eff, line_variable_type = line_lower_plotting_in_quotes_name)
+  names(low_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  low_plot_df <- left_join(low_plot_df, ci_xEff, by = xaxis_variable_in_quotes)
+  
+  average_plot_df <- plot_df %>% mutate(x1Eff_colname = x2Eff, line_variable_type = line_middle_plotting_in_quotes_name)
+  names(average_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  average_plot_df <- left_join(average_plot_df, ci_xEff_2, by = xaxis_variable_in_quotes)
+  
+  high_plot_df <- plot_df %>% mutate(x1Eff_colname = x3Eff, line_variable_type = line_higher_plotting_in_quotes_name)
+  names(high_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  high_plot_df <- left_join(high_plot_df, ci_xEff_3, by = xaxis_variable_in_quotes)
+  
+  
+  final_plot_df <- bind_rows(low_plot_df, average_plot_df, high_plot_df)
+  final_plot_df 
 }
 
-inc_pred_anthropicdist_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_savanna_percentage", 
-                                                         inc_gam)
-dec_pred_anthropicdist_savanna  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_savanna_percentage", 
-                                                         dec_gam)
-inc_pred_anthropicdist_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_forest_percentage", 
-                                                         inc_gam)
-dec_pred_anthropicdist_forest  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_forest_percentage", 
-                                                         dec_gam)
-inc_pred_anthropicdist_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_grass_percentage", 
-                                                         inc_gam)
-dec_pred_anthropicdist_grass  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "anthropic_dist", "mean_grass_percentage", 
-                                                         dec_gam)
+greening_anthropicdist_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_savanna_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_anthropicdist_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_savanna_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
 
+greening_anthropicdist_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_forest_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_anthropicdist_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_forest_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
+greening_anthropicdist_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_grass_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_anthropicdist_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "anthropic_dist", 
+                                                           "mean_grass_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
 
-plot_inc_savanna_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                        "anthropic_dist", 
-                                                        inc_pred_anthropicdist_savanna , 
-                                                        c(1, 13, 18),
-                                                        "low", "medium", "high")
-plot_dec_savanna_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                        "anthropic_dist", 
-                                                        dec_pred_anthropicdist_savanna,
-                                                        c(1, 13, 18),
-                                                        "low", "medium", "high")
-plot_inc_forest_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                       "anthropic_dist", inc_pred_anthropicdist_forest,
-                                                       c(1, 15, 20),
-                                                       "low", "medium", "high")
-plot_dec_forest_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                       "anthropic_dist", 
-                                                       dec_pred_anthropicdist_forest , 
-                                                      c(1, 15, 20),
-                                                       "low", "medium", "high")
-plot_inc_grass_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                      "anthropic_dist", 
-                                                      inc_pred_anthropicdist_grass, 
-                                                     c(1, 14, 19),
-                                                      "low", "medium", "high")
-plot_dec_grass_anthropicdist <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                      "anthropic_dist", 
-                                                      dec_pred_anthropicdist_grass, 
-                                                      c(1, 14, 19),
-                                                      "low", "medium", "high")
-combined_plot_df_prep <- function (inc_df, dec_df, veg_formation_in_quotes){
-  inc_df <- inc_df %>% mutate(TrajType = "Step_Inc")
-  dec_df <- dec_df %>% mutate(TrajType = "Step_Dec")
-  plot_df <- bind_rows (inc_df, dec_df)
+combined_plot_df_prep <- function (greening_results, browning_results, veg_formation_in_quotes){
+  greening_results <- greening_results %>% mutate(TrajType = "Greening")
+  browning_results <- browning_results %>% mutate(TrajType = "Browning")
+  plot_df <- bind_rows (greening_results, browning_results)
   plot_df <- plot_df %>% mutate(VegFormation = veg_formation_in_quotes)
   plot_df
 }
 
-savanna_plot_df <- combined_plot_df_prep(plot_inc_savanna_anthropicdist , plot_dec_savanna_anthropicdist, "Savanna")
-grass_plot_df <- combined_plot_df_prep(plot_inc_grass_anthropicdist , plot_dec_grass_anthropicdist, "Grass")
-forest_plot_df <- combined_plot_df_prep(plot_inc_forest_anthropicdist  , plot_dec_forest_anthropicdist , "Forest")
+savanna_plot_df <- combined_plot_df_prep(greening_anthropicdist_savanna , browning_anthropicdist_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_anthropicdist_forest , browning_anthropicdist_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_anthropicdist_grass , browning_anthropicdist_grass, "Grass")
 
-anthropicdist_vegformation_plot_df <- bind_rows(savanna_plot_df, grass_plot_df, forest_plot_df)
 
-plot_function <- function (plot_df, xaxis_var){
-  plot_interaction <- ggplot(plot_df, aes(x = .data[[xaxis_var]], y = value,
-                                          color = name, linetype = TrajType,
-                                          group = interaction(name, TrajType))) +
-    geom_line(aes(color = name), linewidth = 1) + facet_wrap(~VegFormation)+
+plot_interaction <- function (savanna_df, forest_df, grass_df, xaxis_variable, title){
+  savanna_plot<- ggplot(savanna_df, aes(x = .data[[xaxis_variable]], y = main_effect,
+                                          color = TrajType, fill =TrajType,
+                                          group = interaction(line_variable_type, TrajType))) +
+    geom_line(aes(color = TrajType), linewidth = 1) + 
+    geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.1) +
+    facet_wrap(~factor(line_variable_type, c("low", "average", "high")), ncol=1)+
     theme_classic() +
-    scale_color_manual(values=c("#E69F00", "#56B4E9", "#333333")) + 
-    ylab ("Partial Effect") + theme(legend.title=element_blank())
-  plot_interaction
+    scale_fill_manual(values = c("#996633", "#669900"))+
+    scale_color_manual(values=c("#663300", "#61A36A")) + 
+    ylab ("Partial Effect") + theme(legend.position="none")
+  
+  forest_plot<- ggplot(forest_df, aes(x = .data[[xaxis_variable]], y = main_effect,
+                                          color = TrajType, fill =TrajType,
+                                          group = interaction(line_variable_type, TrajType))) +
+    geom_line(aes(color = TrajType), linewidth = 1) + 
+    geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.1) +
+    facet_wrap(~factor(line_variable_type, c("low", "average", "high")), ncol=1)+
+    theme_classic() +
+    scale_fill_manual(values = c("#996633", "#669900"))+
+    scale_color_manual(values=c("#663300", "#61A36A")) + 
+    ylab ("Partial Effect") + theme(legend.position="none")
+  
+  grass_plot<- ggplot(grass_df, aes(x = .data[[xaxis_variable]], y = main_effect,
+                                          color = TrajType, fill =TrajType,
+                                          group = interaction(line_variable_type, TrajType))) +
+    geom_line(aes(color = TrajType), linewidth = 1) + 
+    geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.1) +
+    facet_wrap(~factor(line_variable_type, c("low", "average", "high")), ncol=1)+
+    theme_classic() +
+    scale_fill_manual(values = c("#996633", "#669900"))+
+    scale_color_manual(values=c("#663300", "#61A36A")) + 
+    ylab ("Partial Effect") + theme(legend.position="none")
+  
+    x <- ggpubr::ggarrange(forest_plot, grass_plot, savanna_plot, nrow = 1, ncol = 3, 
+                           labels = c("Forest", "Grass", "Savanna"))
+    x<- annotate_figure(x, top = text_grob(title, 
+               color = "red", face = "bold", size = 14))
+  x
 }
 
-
-anthropicdist_vegformation_vegformation <- plot_function(anthropicdist_vegformation_plot_df , "anthropic_dist")
-ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "anthropicdist_meanvegformation3.png"), anthropicdist_vegformation_vegformation,
+anthropicdist_vegformation<- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "anthropic_dist", "Anthropic Distance x Vegetation")
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "anthropicdist_vegformation4.png"), anthropicdist_vegformation,
         dpi = 700, height = 25, width=25, units = "cm")
 
 remove(savanna_plot_df, grass_plot_df, forest_plot_df, 
-       inc_pred_anthropicdist_savanna, dec_pred_anthropicdist_savanna, inc_pred_anthropicdist_forest,
-       dec_pred_anthropicdist_forest,inc_pred_anthropicdist_grass, dec_pred_anthropicdist_grass, 
-       plot_inc_savanna_anthropicdist, plot_dec_savanna_anthropicdist, plot_inc_forest_anthropicdist, 
-       plot_dec_forest_anthropicdist, plot_inc_grass_anthropicdist, plot_dec_grass_anthropicdist)     
+      greening_anthropicdist_forest, greening_anthropicdist_grass, greening_anthropicdist_savanna,
+      browning_anthropicdist_forest, browning_anthropicdist_grass, browning_anthropicdist_savanna)     
 ```
+
 
 #Step 5a (v) Trend in burnedarea and mean veg formation
 ```{r}
-grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes, 
-                                              line_variable_in_quotes, 
-                                              gam_model){
-  df_select <- df_analyses %>% dplyr::select(-c(notrend))
-  
-  var_x <- subset( df_select, select = xaxis_variable_in_quotes)
-  var_line <- subset( df_select, select = line_variable_in_quotes)
-  var_line <- as.vector(var_line) %>% unlist()
-  
-  xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
-  line_range <- c((mean(var_line) - sd(var_line)),mean(var_line), (mean(var_line) + sd(var_line))) #changed middle scenario to be mean of veg formation area
-  
-  df_means<- df_select %>% dplyr::select(-c(x,y,xaxis_variable_in_quotes, line_variable_in_quotes)) %>%
-    summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
-  
-  newd <- data.frame(expand.grid(xaxis_range, line_range))
-  names(newd) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
-  newd <- newd %>% bind_cols(df_means) %>% mutate(x= x1, y=y1)
-  pred <- mgcv::predict.bam(gam_model, newdata = newd, type="terms") 
-  pred <- as.data.frame(pred)
-  pred
-}
 
-inc_pred_trend_burnedarea_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_savanna_percentage", 
-                                                         inc_gam)
-dec_pred_trend_burnedarea_savanna  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_savanna_percentage", 
-                                                         dec_gam)
-inc_pred_trend_burnedarea_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_forest_percentage", 
-                                                         inc_gam)
-dec_pred_trend_burnedarea_forest  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_forest_percentage", 
-                                                         dec_gam)
-inc_pred_trend_burnedarea_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_grass_percentage", 
-                                                         inc_gam)
-dec_pred_trend_burnedarea_grass  <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_burnedarea", "mean_grass_percentage", 
-                                                         dec_gam)
+greening_trendburnedarea_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_savanna_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_trendburnedarea_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_savanna_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
 
-plot_inc_savanna_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                        "trend_burnedarea", 
-                                                        inc_pred_trend_burnedarea_savanna , 
-                                                        c(7, 13, 22),
-                                                        "low", "medium", "high")
-plot_dec_savanna_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                        "trend_burnedarea", 
-                                                        dec_pred_trend_burnedarea_savanna,
-                                                        c(7, 13, 22),
-                                                        "low", "medium", "high")
-plot_inc_forest_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                       "trend_burnedarea", inc_pred_trend_burnedarea_forest,
-                                                       c(7, 15, 24),
-                                                       "low", "medium", "high")
-plot_dec_forest_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                       "trend_burnedarea", 
-                                                       dec_pred_trend_burnedarea_forest , 
-                                                      c(7, 15, 24),
-                                                       "low", "medium", "high")
-plot_inc_grass_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                      "trend_burnedarea", 
-                                                      inc_pred_trend_burnedarea_grass, 
-                                                     c(7, 14, 23),
-                                                      "low", "medium", "high")
-plot_dec_grass_trend_burnedarea <- select_effects_function(analyses_df_noNA_nooutliers, 
-                                                      "trend_burnedarea", 
-                                                      dec_pred_trend_burnedarea_grass, 
-                                                      c(7, 14, 23),
-                                                      "low", "medium", "high")
+greening_trendburnedarea_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_forest_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_trendburnedarea_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_forest_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
 
-savanna_plot_df <- combined_plot_df_prep(plot_inc_savanna_trend_burnedarea , plot_dec_savanna_trend_burnedarea , "Savanna")
-grass_plot_df <- combined_plot_df_prep(plot_inc_grass_trend_burnedarea , plot_dec_grass_trend_burnedarea, "Grass")
-forest_plot_df <- combined_plot_df_prep(plot_inc_forest_trend_burnedarea  , plot_dec_forest_trend_burnedarea , "Forest")
+greening_trendburnedarea_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_grass_percentage",
+                                                           inc_gam,
+                                                           "low", "average", "high")
+browning_trendburnedarea_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_burnedarea", 
+                                                           "mean_grass_percentage",
+                                                           dec_gam,
+                                                           "low", "average", "high")
 
-trend_burnedarea_vegformation_plot_df <- bind_rows(savanna_plot_df, grass_plot_df, forest_plot_df)
+savanna_plot_df <- combined_plot_df_prep(greening_trendburnedarea_savanna , browning_trendburnedarea_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_trendburnedarea_forest , browning_trendburnedarea_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_trendburnedarea_grass , browning_trendburnedarea_grass, "Grass")
 
-trend_burnedarea_vegformation_vegformation <- plot_function(trend_burnedarea_vegformation_plot_df , "trend_burnedarea")
-ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "trend_burnedarea_meanvegformation2.png"), trend_burnedarea_vegformation_vegformation,
+trendburnedarea_vegformation<- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_burnedarea", "Trend in burned area x Vegetation")
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "trend_burnedarea_vegformation4.png"), trendburnedarea_vegformation,
         dpi = 700, height = 25, width=25, units = "cm")
 
 remove(savanna_plot_df, grass_plot_df, forest_plot_df, 
-       inc_pred_trend_burnedarea_savanna, dec_pred_trend_burnedarea_savanna, inc_pred_trend_burnedarea_forest, dec_pred_trend_burnedarea_forest,inc_pred_trend_burnedarea_grass,dec_pred_trend_burnedarea_grass, plot_inc_savanna_trend_burnedarea, plot_dec_savanna_trend_burnedarea, plot_inc_forest_trend_burnedarea, plot_dec_forest_trend_burnedarea, plot_inc_grass_trend_burnedarea, plot_dec_grass_trend_burnedarea) 
+      greening_trendburnedarea_forest, greening_trendburnedarea_grass, greening_trendburnedarea_savanna,
+      browning_trendburnedarea_forest, browning_trendburnedarea_grass, browning_trendburnedarea_savanna)
+
 ```
 
-#Step 5b - Functions to visualize 3 way interactions
+ #Step 5b (i) - Trends in heatwaves, SPEI across veg formations
 ```{r}
 # location
 x1 <- -43.2781
@@ -683,10 +656,16 @@ inc_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses", "onemodel_inc.r
 dec_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses" ,"onemodel_dec.rds"))
 
 
-grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes, 
-                                      line_variable_in_quotes, 
+grid_creation_prediction <- function (df_analyses, 
+                                      xaxis_variable_in_quotes, 
+                                      line_variable_in_quotes,
                                       panel_variable_in_quotes,
-                                      gam_model){
+                                      panel_variable_type_dec_nochange_inc_quotes,
+                                      gam_model,
+                                      line_lower_plotting_in_quotes_name,
+                                      line_middle_plotting_in_quotes_name,
+                                      line_higher_plotting_in_quotes_name){
+  #Creating new data and running model
   df_select <- df_analyses %>% dplyr::select(-c(notrend))
   
   var_x <- subset( df_select, select = xaxis_variable_in_quotes)
@@ -694,299 +673,459 @@ grid_creation_prediction <- function (df_analyses, xaxis_variable_in_quotes,
   var_line <- as.vector(var_line) %>% unlist()
   
   xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
-  line_range <- c((mean(var_line) - sd(var_line)), 0, (mean(var_line) + sd(var_line))) #0 trend indicating no change
+  line_range <- c((mean(var_line) - sd(var_line)),mean(var_line), (mean(var_line) + sd(var_line))) #changed middle scenario to be mean of veg formation area
   
-  panel_decreasing <- mean(df_select[[panel_variable_in_quotes]]) +sd(df_select[[panel_variable_in_quotes]])
-  panel_nochange <- mean(df_select[[panel_variable_in_quotes]]) #average in the middle panel of veg formation
-  panel_increasing <- mean(df_select[[panel_variable_in_quotes]]) - sd(df_select[[panel_variable_in_quotes]])
-  
-  df_means<- df_select %>% dplyr::select(-c(x,y,xaxis_variable_in_quotes, line_variable_in_quotes, panel_variable_in_quotes)) %>%
+  df_means<- df_select %>% dplyr::select(-c(x,y,increase, decrease, xaxis_variable_in_quotes, line_variable_in_quotes, panel_variable_in_quotes)) %>%
     summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
   
-  df_panel_dec <- data.frame(expand.grid(xaxis_range, line_range))
-  names(df_panel_dec) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
-  df_panel_dec <- df_panel_dec %>% bind_cols(df_means) %>% mutate(x= x1, y=y1, panel_variable_in_quotes = panel_decreasing)
-  names(df_panel_dec)[dim(df_panel_dec)[2]]<- panel_variable_in_quotes
+  var_panel <- subset( df_select, select = panel_variable_in_quotes)
+  var_panel <- as.vector(var_panel) %>% unlist()
+  panel_variable_value <- if(panel_variable_type_dec_nochange_inc_quotes=="dec"){
+    mean(var_panel) -sd(var_panel)
+  } else{
+    if(panel_variable_type_dec_nochange_inc_quotes=="nochange"){
+      0
+    } else {
+      mean(var_panel) + sd(var_panel)
+    }
+  }
   
-  df_panel_nochange <- data.frame(expand.grid(xaxis_range, line_range))
-  names(df_panel_nochange) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
-  df_panel_nochange <- df_panel_nochange %>% bind_cols(df_means) %>% mutate(x= x1, y=y1, panel_variable_in_quotes = panel_nochange)
-  names(df_panel_nochange)[dim(df_panel_nochange)[2]]<- panel_variable_in_quotes
+  newd <- data.frame(expand.grid(xaxis_range, line_range))
+  names(newd) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
+  newd <- newd %>% bind_cols(df_means) %>% mutate(x= x1, y=y1)
+  newd <- newd %>% mutate(panel_variable_in_quotes=panel_variable_value)
+  names(newd)[17]<- panel_variable_in_quotes
   
-  df_panel_inc <- data.frame(expand.grid(xaxis_range, line_range))
-  names(df_panel_inc) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
-  df_panel_inc <- df_panel_inc %>% bind_cols(df_means) %>% mutate(x= x1, y=y1, panel_variable_in_quotes = panel_increasing)
-  names(df_panel_inc)[dim(df_panel_inc)[2]]<- panel_variable_in_quotes
-
-  pred_dec <- mgcv::predict.bam(gam_model, newdata = df_panel_dec, type="terms")
-  pred_dec <- as.data.frame(pred_dec)
-  pred_nochange <- mgcv::predict.bam(gam_model, newdata = df_panel_nochange, type="terms")
-  pred_nochange <- as.data.frame(pred_nochange)
-  pred_inc <- mgcv::predict.bam(gam_model, newdata = df_panel_inc, type="terms")
-  pred_inc <- as.data.frame(pred_inc)
   
-  pred_list <- list(pred_dec, pred_nochange, pred_inc)
-  pred_list
-}
-
-
-select_effects_function <- function (df_analyses, xaxis_variable_in_quotes, 
-                                     prediction_inc_df, prediction_nochange_df, prediction_dec_df, 
-                                     effects_cols_indices,
-                     paneldec_line_lower_plotting_in_quotes_name,
-                     paneldec_line_middle_plotting_in_quotes_name, 
-                     paneldec_line_higher_plotting_in_quotes_name,
-                     panelnochange_line_lower_plotting_in_quotes_name,
-                     panelnochange_line_middle_plotting_in_quotes_name, 
-                     panelnochange_line_higher_plotting_in_quotes_name,
-                     panelinc_line_lower_plotting_in_quotes_name,
-                     panelinc_line_middle_plotting_in_quotes_name, 
-                     panelinc_line_higher_plotting_in_quotes_name){
+  pred <- mgcv::predict.bam(gam_model, newdata = newd, type="terms") 
+  pred <- as.data.frame(pred)
   
-  df_select <- df_analyses %>% dplyr::select(-c(notrend))
-  
-  var_x <- subset( df_select, select = xaxis_variable_in_quotes)
-  xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
-  
+  #Selecting the coefficients
   ind <- 1:xaxis_range_len
   ind2 <- (xaxis_range_len + 1):(xaxis_range_len*2)
   ind3 <- ((xaxis_range_len*2)+1):(xaxis_range_len*3)
   
-  xy_interaction_effects <- grep("x,y",names(prediction_inc_df),fixed = T)
-  inc_pred_without_xy_interaction_effects <- (subset(prediction_inc_df, select = -xy_interaction_effects))
-  nochange_pred_without_xy_interaction_effects <- (subset(prediction_nochange_df, select = -xy_interaction_effects))
-  dec_pred_without_xy_interaction_effects <- (subset(prediction_dec_df, select = -xy_interaction_effects))
+  xy_interaction_effects <- grep("x,y",names(pred),fixed = T)
+  pred_without_xy_interaction_effects <- (subset(pred, select = -xy_interaction_effects))
   
-  x1Eff <- rowSums(dec_pred_without_xy_interaction_effects [ind, effects_cols_indices] )
-  x2Eff <- rowSums(dec_pred_without_xy_interaction_effects [ind2, effects_cols_indices] )
-  x3Eff <- rowSums(dec_pred_without_xy_interaction_effects [ind3, effects_cols_indices] )
+  coef_index_trial1 <- grep(paste0("s(", xaxis_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial2 <- grep(paste0("s(", line_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial3 <- grep(paste0("s(", panel_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial4 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", panel_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T)
+  coef_index_trial5 <- grep(paste0("ti(", line_variable_in_quotes, "," , panel_variable_in_quotes, ",", xaxis_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T)
   
-  x4Eff <- rowSums(nochange_pred_without_xy_interaction_effects [ind, effects_cols_indices] )
-  x5Eff <- rowSums(nochange_pred_without_xy_interaction_effects [ind2, effects_cols_indices] )
-  x6Eff <- rowSums(nochange_pred_without_xy_interaction_effects [ind3, effects_cols_indices] )
+  effects_cols_indices <- c(coef_index_trial1, coef_index_trial2, coef_index_trial3, coef_index_trial4, coef_index_trial5)
   
-  x7Eff <- rowSums(inc_pred_without_xy_interaction_effects [ind, effects_cols_indices] )
-  x8Eff <- rowSums(inc_pred_without_xy_interaction_effects [ind2, effects_cols_indices] )
-  x9Eff <- rowSums(inc_pred_without_xy_interaction_effects [ind3, effects_cols_indices] )
+  x1Eff <- rowSums(pred_without_xy_interaction_effects [ind, effects_cols_indices])
+  x2Eff <- rowSums(pred_without_xy_interaction_effects [ind2, effects_cols_indices])
+  x3Eff <- rowSums(pred_without_xy_interaction_effects [ind3, effects_cols_indices])
+  
+  #Estimating 95% CI uncertainty
+  X <- mgcv::predict.bam(gam_model, newdata = newd, type ="lpmatrix")
+  n.sims <- 1000
+  b_sims <- rmvn(n.sims,coef(gam_model), gam_model$Vp) #beta unceratinty
+  
+  smooth_index_trial1 <- grep(paste0("s(", xaxis_variable_in_quotes, ")"), names(coef(gam_model)),fixed = T) #selecting smooths
+  smooth_index_trial2 <- grep(paste0("s(", line_variable_in_quotes, ")"), names(coef(gam_model)),fixed = T )
+  smooth_index_trial3 <- grep(paste0("s(", panel_variable_in_quotes, ")"), names(coef(gam_model)),fixed = T )
+  smooth_index_trial4 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", panel_variable_in_quotes, ")"), names(coef(gam_model)),fixed = T)
+  smooth_index_trial5 <- grep(paste0("ti(", line_variable_in_quotes, "," , panel_variable_in_quotes, ",", xaxis_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T)
+
+  smooth_index <- c(smooth_index_trial1, smooth_index_trial2, smooth_index_trial3, smooth_index_trial4, smooth_index_trial5)
+  
+  X1Eff_without_latlong <- tcrossprod( X[,smooth_index] , b_sims[,smooth_index] ) #spline computation
+  
+  lower_xEff_1<- as.data.frame(apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.025))
+  higher_xEff_1 <- as.data.frame(apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.975))
+  ci_xEff <- bind_cols(lower_xEff_1, higher_xEff_1, xaxis_range)
+  names(ci_xEff)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  lower_xEff_2 <- as.data.frame(apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.025))
+  higher_xEff_2 <- as.data.frame(apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.975))
+  ci_xEff_2 <- bind_cols(lower_xEff_2, higher_xEff_2, xaxis_range)
+  names(ci_xEff_2)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  lower_xEff_3 <- as.data.frame(apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.025))
+  higher_xEff_3 <- as.data.frame(apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.975))
+  ci_xEff_3 <- bind_cols(lower_xEff_3, higher_xEff_3, xaxis_range)
+  names(ci_xEff_3)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
   
   plot_df <- data.frame(xaxis_colname = xaxis_range)
-  plot_df <- plot_df %>% mutate(x1Eff_colname = x1Eff,
-                              x2Eff_colname = x2Eff,
-                              x3Eff_colname = x3Eff,
-                              x4Eff_colname = x4Eff,
-                              x5Eff_colname = x5Eff,
-                              x6Eff_colname = x6Eff,
-                              x7Eff_colname = x7Eff,
-                              x8Eff_colname = x8Eff,
-                              x9Eff_colname = x9Eff)
+  low_plot_df <- plot_df %>% mutate(x1Eff_colname = x1Eff, line_variable_type = line_lower_plotting_in_quotes_name)
+  names(low_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  low_plot_df <- left_join(low_plot_df, ci_xEff, by = xaxis_variable_in_quotes)
   
-  names(plot_df)<- c(xaxis_variable_in_quotes,
-                     paneldec_line_lower_plotting_in_quotes_name,
-                     paneldec_line_middle_plotting_in_quotes_name, 
-                     paneldec_line_higher_plotting_in_quotes_name,
-                     panelnochange_line_lower_plotting_in_quotes_name,
-                     panelnochange_line_middle_plotting_in_quotes_name, 
-                     panelnochange_line_higher_plotting_in_quotes_name,
-                     panelinc_line_lower_plotting_in_quotes_name,
-                     panelinc_line_middle_plotting_in_quotes_name, 
-                     panelinc_line_higher_plotting_in_quotes_name)
-  pivot_plot_df <- plot_df %>% pivot_longer(-1)
-  pivot_plot_df <- pivot_plot_df %>% separate(name, into =c("panel_var_type", "lines_var_type"), sep = "_" )
-  pivot_plot_df
+  average_plot_df <- plot_df %>% mutate(x1Eff_colname = x2Eff, line_variable_type = line_middle_plotting_in_quotes_name)
+  names(average_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  average_plot_df <- left_join(average_plot_df, ci_xEff_2, by = xaxis_variable_in_quotes)
+  
+  high_plot_df <- plot_df %>% mutate(x1Eff_colname = x3Eff, line_variable_type = line_higher_plotting_in_quotes_name)
+  names(high_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  high_plot_df <- left_join(high_plot_df, ci_xEff_3, by = xaxis_variable_in_quotes)
+  
+  
+  final_plot_df <- bind_rows(low_plot_df, average_plot_df, high_plot_df)
+  final_plot_df 
 }
 
-combined_plot_df_prep <- function (inc_df, dec_df){
-  inc_df <- inc_df %>% mutate(TrajType = "Step_Inc")
-  dec_df <- dec_df %>% mutate(TrajType = "Step_Dec")
-  plot_df <- bind_rows (inc_df, dec_df)
-  plot_df
-}
 
+greening_nochangespei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangespei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+greening_nochangespei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangespei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
+greening_nochangespei_heatwave_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangespei_heatwave_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+savanna_plot_df <- combined_plot_df_prep(greening_nochangespei_heatwave_savanna, browning_nochangespei_heatwave_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_nochangespei_heatwave_forest , browning_nochangespei_heatwave_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_nochangespei_heatwave_grass , browning_nochangespei_heatwave_grass, "Grass")
+
+nochangespei_heatwave_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_heatwave", "No trend in SPEI")
+
+remove(savanna_plot_df, forest_plot_df, grass_plot_df,
+       greening_nochangespei_heatwave_forest, greening_nochangespei_heatwave_grass, greening_nochangespei_heatwave_savanna,
+       browning_nochangespei_heatwave_forest, browning_nochangespei_heatwave_grass, browning_nochangespei_heatwave_savanna)
+
+greening_decspei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decspei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+greening_decspei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decspei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
+greening_decspei_heatwave_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decspei_heatwave_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+savanna_plot_df <- combined_plot_df_prep(greening_decspei_heatwave_savanna, browning_decspei_heatwave_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_decspei_heatwave_forest , browning_decspei_heatwave_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_decspei_heatwave_grass , browning_decspei_heatwave_grass, "Grass")
+
+
+decspei_heatwave_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_heatwave", "Decreasing trend in SPEI")
+
+remove(savanna_plot_df, forest_plot_df, grass_plot_df,
+       greening_decspei_heatwave_forest, greening_decspei_heatwave_grass, greening_decspei_heatwave_savanna,
+       browning_decspei_heatwave_forest, browning_decpei_heatwave_grass, browning_decspei_heatwave_savanna)
+
+greening_incspei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incspei_heatwave_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_savanna_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+greening_incspei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incspei_heatwave_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_forest_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+greening_incspei_heatwave_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incspei_heatwave_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_heatwave",
+                                 "mean_grass_percentage",
+                                 "trend_spei",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+savanna_plot_df <- combined_plot_df_prep(greening_incspei_heatwave_savanna, browning_incspei_heatwave_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_incspei_heatwave_forest , browning_incspei_heatwave_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_incspei_heatwave_grass , browning_incspei_heatwave_grass, "Grass")
+
+incspei_heatwave_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_heatwave", "Increasing trend in SPEI")
+
+remove(savanna_plot_df, forest_plot_df, grass_plot_df,
+       greening_incspei_heatwave_forest, greening_incspei_heatwave_grass, greening_incspei_heatwave_savanna,
+       browning_incspei_heatwave_forest, browning_incspei_heatwave_grass, browning_incspei_heatwave_savanna)
+
+nochangespei_heatwave_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "nochangespei_heatwave_vegetation.png"), nochangespei_heatwave_vegetation,
+        dpi = 700, height = 40, width=40, units = "cm")
+decspei_heatwave_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "decspei_heatwave_vegetation.png"), decspei_heatwave_vegetation,
+        dpi = 700, height = 40, width=40, units = "cm")
+incspei_heatwave_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "incspei_heatwave_vegetation.png"), incspei_heatwave_vegetation,
+        dpi = 700, height = 40, width= 40, units = "cm")
 
 ```
 
-#Step 5b (i) - Trends in annual temp, RE across veg formations
+#Step 5b (ii) - Trends in annual temp, RE across veg formations
 ```{r}
-inc_pred_savanna_trend_at_re <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_savanna_percentage",
-                                                         inc_gam)
-dec_pred_savanna_trend_at_re <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_savanna_percentage",
-                                                         dec_gam)
-inc_pred_forest_trend_at_re<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_forest_percentage",
-                                                         inc_gam)
-dec_pred_forest_trend_at_re <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_forest_percentage", 
-                                                         dec_gam)
-inc_pred_grass_trend_at_re<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_grass_percentage",  
-                                                         inc_gam)
-dec_pred_grass_trend_at_re <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_annualtemp", "trend_re", "mean_grass_percentage", 
-                                                         dec_gam)
+greening_nochangere_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangere_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
 
+greening_nochangere_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangere_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
+greening_nochangere_at_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_nochangere_at_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "nochange",
+                                 dec_gam,
+                                 "low", "average", "high")
 
-plot_inc_savanna_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 inc_pred_savanna_trend_at_re[[3]], inc_pred_savanna_trend_at_re[[2]], inc_pred_savanna_trend_at_re[[1]],
-                                 c(3, 4, 13, 16, 26),
-                                "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
-plot_dec_savanna_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 dec_pred_savanna_trend_at_re[[3]],dec_pred_savanna_trend_at_re[[2]], dec_pred_savanna_trend_at_re[[1]],
-                                 c(3, 4, 13, 16, 26),
-                                 "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
-plot_inc_forest_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 inc_pred_forest_trend_at_re[[3]], inc_pred_forest_trend_at_re[[2]], inc_pred_forest_trend_at_re[[1]],
-                                 c(3, 4, 15, 16, 30),
-                                 "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
-plot_dec_forest_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 dec_pred_forest_trend_at_re[[3]], dec_pred_forest_trend_at_re[[2]], dec_pred_forest_trend_at_re[[1]],
-                                 c(3, 4, 15, 16, 30),
-                                 "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
-plot_inc_grass_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 inc_pred_grass_trend_at_re[[3]], inc_pred_grass_trend_at_re[[2]], inc_pred_grass_trend_at_re[[1]],
-                                 c(3, 4, 14, 16, 28),
-                                 "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
-plot_dec_grass_trend_at_re <- select_effects_function(analyses_df_noNA_nooutliers, "trend_annualtemp", 
-                                 dec_pred_grass_trend_at_re[[3]], dec_pred_grass_trend_at_re[[2]], dec_pred_grass_trend_at_re[[1]],
-                                 c(3, 4, 14, 16, 28),
-                                 "low_more.uniform.rainfall", "low_no.trend.rainfall.seasonality", "low_more.seasonal.rainfall",
-                                "average_more.uniform.rainfall", "average_no.trend.rainfall.seasonality", "average_more.seasonal.rainfall",
-                                "high_more.uniform.rainfall", "high_no.trend.rainfall.seasonality", "high_more.seasonal.rainfall")
+savanna_plot_df <- combined_plot_df_prep(greening_nochangere_at_savanna, browning_nochangere_at_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_nochangere_at_forest , browning_nochangere_at_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_nochangere_at_grass , browning_nochangere_at_grass, "Grass")
 
-savanna_plot_df <- combined_plot_df_prep(plot_inc_savanna_trend_at_re , plot_dec_savanna_trend_at_re)
-grass_plot_df <- combined_plot_df_prep(plot_inc_forest_trend_at_re, plot_dec_forest_trend_at_re)
-forest_plot_df <- combined_plot_df_prep(plot_inc_grass_trend_at_re, plot_dec_grass_trend_at_re)
-
-plot_function <- function (savanna_plot, forest_plot, grass_plot, xaxis_var){
-  plot_savanna <- ggplot(savanna_plot, aes(x = .data[[xaxis_var]], y = value,
-                                          color = lines_var_type, linetype = TrajType,
-                                          group = interaction(lines_var_type, TrajType))) +
-    geom_line(aes(color = lines_var_type), linewidth = 1) + facet_wrap(~factor(panel_var_type, c("low", "average", "high")))+
-    theme_classic() +
-    scale_color_manual(values=c("#E69F00", "#56B4E9", "#333333")) + 
-    ylab ("Partial Effect") + theme(legend.title=element_blank())
-  
-  plot_forest <- ggplot(forest_plot, aes(x = .data[[xaxis_var]], y = value,
-                                          color = lines_var_type, linetype = TrajType,
-                                          group = interaction(lines_var_type, TrajType))) +
-    geom_line(aes(color = lines_var_type), linewidth = 1) + facet_wrap(~factor(panel_var_type, c("low", "average", "high")))+
-    theme_classic() +
-    scale_color_manual(values=c("#E69F00", "#56B4E9", "#333333")) + 
-    ylab ("Partial Effect") + theme(legend.title=element_blank()) 
-  
-    plot_grass <- ggplot(grass_plot, aes(x = .data[[xaxis_var]], y = value,
-                                          color = lines_var_type, linetype = TrajType,
-                                          group = interaction(lines_var_type, TrajType))) +
-    geom_line(aes(color = lines_var_type), linewidth = 1) + facet_wrap(~factor(panel_var_type, c("low", "average", "high")))+
-    theme_classic() +
-    scale_color_manual(values=c("#E69F00", "#56B4E9", "#333333")) + 
-    ylab ("Partial Effect") + theme(legend.title=element_blank())
-  
-    x <- ggpubr::ggarrange(plot_forest, plot_grass, plot_savanna, nrow = 3, ncol = 1, 
-                           labels = c("Forest", "Grass", "Savanna"))
-  
-  x
-}
-
-
-annualtemp_re_vegformation <- plot_function(savanna_plot_df, forest_plot_df, grass_plot_df , "trend_annualtemp")
-ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "trend_annualtemp_re_vegformation.png"), annualtemp_re_vegformation,
-        dpi = 700, height = 25, width=25, units = "cm")
+nochangere_annualtemp_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_annualtemp", "No trend in RE")
 
 remove(savanna_plot_df, grass_plot_df, forest_plot_df,
-       plot_dec_grass_trend_at_re, plot_inc_grass_trend_at_re, plot_dec_forest_trend_at_re, plot_inc_forest_trend_at_re, plot_dec_savanna_trend_at_re, plot_inc_savanna_trend_at_re,
-       dec_pred_grass_trend_at_re, inc_pred_grass_trend_at_re, dec_pred_forest_trend_at_re, inc_pred_forest_trend_at_re, dec_pred_savanna_trend_at_re, inc_pred_savanna_trend_at_re)
+       greening_nochangere_at_forest, greening_nochangere_at_grass, greening_nochangere_at_savanna,
+       browning_nochangere_at_forest, browning_nochangere_at_grass, browning_nochangere_at_savanna)
 
-```
+greening_decre_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decre_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
 
-#Step 5b (ii) - Trends in heatwaves, SPEI across veg formations
+greening_decre_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decre_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
 
-```{r}
-inc_pred_savanna_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_savanna_percentage",
-                                                         inc_gam)
-dec_pred_savanna_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_savanna_percentage",
-                                                         dec_gam)
-inc_pred_forest_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_forest_percentage",
-                                                         inc_gam)
-dec_pred_forest_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_forest_percentage", 
-                                                         dec_gam)
-inc_pred_grass_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_grass_percentage",  
-                                                         inc_gam)
-dec_pred_grass_trend_heatwave_spei <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                         "trend_heatwave", "trend_spei", "mean_grass_percentage", 
-                                                         dec_gam)
+greening_decre_at_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_decre_at_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "dec",
+                                 dec_gam,
+                                 "low", "average", "high")
 
-plot_inc_savanna_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 inc_pred_savanna_trend_heatwave_spei[[3]], inc_pred_savanna_trend_heatwave_spei[[2]], inc_pred_savanna_trend_heatwave_spei[[1]],
-                                 c(5, 6, 13, 17, 25),
-                                "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
-plot_dec_savanna_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 dec_pred_savanna_trend_heatwave_spei[[3]], dec_pred_savanna_trend_heatwave_spei[[2]], dec_pred_savanna_trend_heatwave_spei[[1]],
-                                 c(5, 6, 13, 17, 25),
-                               "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
-plot_inc_forest_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 inc_pred_forest_trend_heatwave_spei[[3]], inc_pred_forest_trend_heatwave_spei[[2]], inc_pred_forest_trend_heatwave_spei[[1]],
-                                 c(5, 6, 15, 17, 29),
-                              "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
-plot_dec_forest_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 dec_pred_forest_trend_heatwave_spei[[3]], dec_pred_forest_trend_heatwave_spei[[2]], dec_pred_forest_trend_heatwave_spei[[1]],
-                                 c(5, 6, 15, 17, 29),
-                                  "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
-plot_inc_grass_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 inc_pred_grass_trend_heatwave_spei[[3]], inc_pred_grass_trend_heatwave_spei[[2]], inc_pred_grass_trend_heatwave_spei[[1]],
-                                 c(5, 6, 14, 17, 27),
-                                  "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
-plot_dec_grass_trend_heatwave_spei <- select_effects_function(analyses_df_noNA_nooutliers, "trend_heatwave", 
-                                 dec_pred_grass_trend_heatwave_spei[[3]], dec_pred_grass_trend_heatwave_spei[[2]], dec_pred_grass_trend_heatwave_spei[[1]],
-                                 c(5, 6, 14, 17, 27),
-                                 "low_dec.droughts", "low_no.trend.droughts", "low_inc.droughts",
-                                "average_dec.droughts", "average_no.trend.droughts", "average_inc.droughts",
-                                "high_dec.droughts", "high_no.trend.droughts", "high_inc.droughts")
+savanna_plot_df <- combined_plot_df_prep(greening_decre_at_savanna, browning_decre_at_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_decre_at_forest , browning_decre_at_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_decre_at_grass , browning_decre_at_grass, "Grass")
 
-
-savanna_plot_df <- combined_plot_df_prep(plot_inc_savanna_trend_heatwave_spei , plot_dec_savanna_trend_heatwave_spei)
-grass_plot_df <- combined_plot_df_prep(plot_inc_forest_trend_heatwave_spei, plot_dec_forest_trend_heatwave_spei)
-forest_plot_df <- combined_plot_df_prep(plot_inc_grass_trend_heatwave_spei, plot_dec_grass_trend_heatwave_spei)
-
-
-heatwave_spei_vegformation <- plot_function(savanna_plot_df, forest_plot_df, grass_plot_df , "trend_heatwave")
-ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "trend_heatwave_spei_vegformation.png"), heatwave_spei_vegformation,
-        dpi = 700, height = 25, width=25, units = "cm")
+decre_annualtemp_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_annualtemp", "Decreasing trend in RE")
 
 remove(savanna_plot_df, grass_plot_df, forest_plot_df,
-       plot_dec_grass_trend_heatwave_spei, plot_inc_grass_trend_heatwave_spei, plot_dec_forest_trend_heatwave_spei, plot_inc_forest_trend_heatwave_spei, plot_dec_savanna_trend_heatwave_spei, plot_inc_savanna_trend_heatwave_spei,
-       dec_pred_grass_trend_heatwave_spei, inc_pred_grass_trend_heatwave_spei, dec_pred_forest_trend_heatwave_spei, inc_pred_forest_trend_heatwave_spei, dec_pred_savanna_trend_heatwave_spei, inc_pred_savanna_trend_heatwave_spei)
+       greening_decre_at_forest, greening_decre_at_grass, greening_decre_at_savanna,
+       browning_decre_at_forest, browning_decre_at_grass, browning_decre_at_savanna)
+
+greening_incre_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incre_at_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_savanna_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+greening_incre_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incre_at_forest <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_forest_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+greening_incre_at_grass<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 inc_gam,
+                                 "low", "average", "high")
+browning_incre_at_grass <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                 "trend_annualtemp",
+                                 "mean_grass_percentage",
+                                 "trend_re",
+                                 "inc",
+                                 dec_gam,
+                                 "low", "average", "high")
+
+savanna_plot_df <- combined_plot_df_prep(greening_incre_at_savanna, browning_incre_at_savanna, "Savanna")
+forest_plot_df <- combined_plot_df_prep(greening_incre_at_forest , browning_incre_at_forest, "Forest")
+grass_plot_df <- combined_plot_df_prep(greening_incre_at_grass , browning_incre_at_grass, "Grass")
+
+incre_annualtemp_vegetation <- plot_interaction(savanna_plot_df, forest_plot_df, grass_plot_df, "trend_annualtemp", "Increasing trend in RE")
+
+remove(savanna_plot_df, grass_plot_df, forest_plot_df,
+       greening_incre_at_forest, greening_incre_at_grass, greening_incre_at_savanna,
+       browning_incre_at_forest, browning_incre_at_grass, browning_incre_at_savanna)
+
+nochangere_annualtemp_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "nochangere_annualtemp_vegetation.png"), nochangere_annualtemp_vegetation,
+        dpi = 700, height = 40, width=40, units = "cm")
+decre_annualtemp_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "decre_annualtemp_vegetation.png"), decre_annualtemp_vegetation,
+        dpi = 700, height = 40, width=40, units = "cm")
+incre_annualtemp_vegetation
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "ThreeWay_InteractionResults", "incre_annualtemp_vegetation.png"), incre_annualtemp_vegetation,
+        dpi = 700, height = 40, width= 40, units = "cm")
+
+
 ```
 
 #Step 5b (iii) - Trends in burned area, annual temp and re  ### DO NOT RUN 
 
-#Step 5c - Visualization of univariate relationships
+#Step 5c - Visualization of univariate relationships considering only data of the driver within 90% percentile 
 ```{r}
 increase_model_extractsmooths <- function (gam_model, outputsmooth_file_name_in_quotes){
   significant_onevariable_smooths <- gratia::smooth_estimates(gam_model,
@@ -997,12 +1136,19 @@ increase_model_extractsmooths <- function (gam_model, outputsmooth_file_name_in_
                                                            "s(mean_burnedarea)", "s(mean_savanna_percentage)",
                                                            "s(mean_grass_percentage)", "s(mean_forest_percentage)"),
                                                 n=100, unconditional = TRUE) %>%
-  mutate(ci_low= .estimate - .se * 1.96,
-         ci_high = .estimate + .se * 1.96)
+  mutate(intercept_no_uncertainty = gam_model$coefficients[1],
+         intercept_add_estimate = .estimate + intercept_no_uncertainty,
+         
+         intercept_estimate_ci_low = intercept_add_estimate - .se*1.96,
+         intercept_estimate_ci_high = intercept_add_estimate + .se*1.96,
+         
+         se_low_inv = inv.logit(intercept_estimate_ci_low),
+         se_high_inv = inv.logit(intercept_estimate_ci_high),
+         estimate_inv = inv.logit(intercept_add_estimate))
   significant_onevariable_smooths 
 }
 increase_significant_onevariablesmooths <- increase_model_extractsmooths(inc_gam)
-increase_significant_onevariablesmooths <- increase_significant_onevariablesmooths %>% mutate(TrajType ="Increase")
+increase_significant_onevariablesmooths <- increase_significant_onevariablesmooths %>% mutate(TrajType ="Greening")
 
 decrease_model_extractsmooths <- function (gam_model, outputsmooth_file_name_in_quotes){
   significant_onevariable_smooths <- gratia::smooth_estimates(gam_model,
@@ -1012,13 +1158,19 @@ decrease_model_extractsmooths <- function (gam_model, outputsmooth_file_name_in_
                                                            "s(mean_spei)", "s(mean_burnedarea)",
                                                            "s(mean_grass_percentage)", "s(mean_forest_percentage)"),
                                                 n=100, unconditional = TRUE) %>%
-  mutate(ci_low= .estimate - .se * 1.96,
-         ci_high = .estimate + .se * 1.96)
+  mutate(intercept_no_uncertainty = gam_model$coefficients[1],
+         intercept_add_estimate = .estimate + intercept_no_uncertainty,
+         
+         intercept_estimate_ci_low = intercept_add_estimate - .se*1.96,
+         intercept_estimate_ci_high = intercept_add_estimate + .se*1.96,
+         
+         se_low_inv = inv.logit(intercept_estimate_ci_low),
+         se_high_inv = inv.logit(intercept_estimate_ci_high),
+         estimate_inv = inv.logit(intercept_add_estimate))
   significant_onevariable_smooths
 }
 decrease_significant_onevariablesmooths <- decrease_model_extractsmooths(dec_gam)
-decrease_significant_onevariablesmooths <- decrease_significant_onevariablesmooths %>% mutate(TrajType ="Decrease")
-
+decrease_significant_onevariablesmooths <- decrease_significant_onevariablesmooths %>% mutate(TrajType ="Browning")
 
 bothmodels_all_commonvar_labels <- read_csv(here("Outputs", "AnalysesResults", "GAMResults", "both_model_common_var_labels.csv"))
 bothmodels_all_commonvar_list <- bothmodels_all_commonvar_labels$vars
@@ -1026,7 +1178,7 @@ bothmodels_all_commonvar_plots <- list(length = length(bothmodels_all_commonvar_
 
 commonvar_plots <- purrr::map(bothmodels_all_commonvar_list, function(var){
   
-   x_label <- bothmodels_all_commonvar_labels$label[bothmodels_all_commonvar_labels$vars == var]
+     x_label <- bothmodels_all_commonvar_labels$label[bothmodels_all_commonvar_labels$vars == var]
     if (bothmodels_all_commonvar_labels$parse[bothmodels_all_commonvar_labels$vars == var]) {
       x_label <- parse(text = x_label)
     }
@@ -1035,30 +1187,36 @@ commonvar_plots <- purrr::map(bothmodels_all_commonvar_list, function(var){
       dplyr::select(all_of(var)) %>%
       dplyr::rename(z = 1)
   density <- ggplot(data_df, aes(x = z)) +
-      geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    geom_vline(xintercept = quantile(data_df$z, probs=0.1), linetype="dashed") +
+    geom_vline(xintercept = quantile(data_df$z, probs=0.9), linetype="dashed") +
       theme_void()
   
   increase_smooth_df <- increase_significant_onevariablesmooths  %>%
-      dplyr::select(.smooth, .type, .estimate, .se, ci_low, ci_high, all_of(var), TrajType) %>%
-      rename(var0 = 7) %>%
-      drop_na()
+    dplyr::select(.smooth, .type, estimate_inv, se_low_inv, se_high_inv, all_of(var), TrajType) %>%
+    rename(var0 = 6) %>%
+    drop_na() %>% 
+    filter(var0 > quantile(var0, probs=0.1) & var0 < quantile (var0, probs =0.9))
+    
   decrease_smooth_df <- decrease_significant_onevariablesmooths  %>%
-      dplyr::select(.smooth, .type, .estimate, .se, ci_low, ci_high, all_of(var), TrajType) %>%
-      rename(var0 = 7) %>%
-      drop_na()
+    dplyr::select(.smooth, .type, estimate_inv, se_low_inv, se_high_inv, all_of(var), TrajType) %>%
+    rename(var0 = 6) %>%
+    drop_na() %>%
+    filter(var0 > quantile(var0, probs=0.1) & var0 < quantile (var0, probs =0.9))
   smooth_df <- bind_rows(increase_smooth_df, decrease_smooth_df)  
   
-  plot <- ggplot(smooth_df, aes(x = var0, y = .estimate, group = TrajType, colour = TrajType, fill = TrajType)) +
-    geom_ribbon(aes(ymin = ci_low, ymax = ci_high), alpha = 0.7) + 
+  plot <- ggplot(smooth_df, aes(x = var0, y = estimate_inv, group = TrajType, colour = TrajType, fill = TrajType)) +
+    geom_ribbon(aes(ymin = se_low_inv, ymax = se_high_inv), alpha = 0.2) + 
     geom_line(alpha = 0.8, lwd = 0.6) + 
-  scale_fill_manual(values = c("#6699cc", "#8dbfa8"), name ="Trajectory Type") + 
-  scale_color_manual(values = c("#3399ff", "#26897E")) +
+    coord_cartesian(xlim = c(quantile(smooth_df$var0, probs=0.1),quantile(smooth_df$var0, probs=0.9)), ylim = c(0,1)) +
+  scale_fill_manual(values = c("#996633", "#669900"), name ="Trajectory Type") + 
+  scale_color_manual(values = c("#663300", "#61A36A")) +
   scale_x_continuous( labels = label_number()) +
   labs(x = x_label,
-         y = "Partial effect") +
+         y = "Probability of trajectory type") +
     theme_classic() + theme(legend.position="none")
   
-  density + plot +
+  x<-density + plot +
     patchwork::plot_layout(ncol = 1, nrow = 2, widths = 4, heights = c(1, 4))
 })
 
@@ -1069,40 +1227,131 @@ additional_plots <- function (var, model_smooth_df, x_label, fill_color, line_co
       dplyr::rename(z = 1)
   density <- ggplot(data_df, aes(x = z)) +
       geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
-      theme_void()
+    geom_vline(xintercept = quantile(data_df$z, probs=0.1), linetype="dashed") +
+    geom_vline(xintercept = quantile(data_df$z, probs=0.9), linetype="dashed") +
+      theme_void() 
   
   smooth_df <- model_smooth_df  %>%
-      dplyr::select(.smooth, .type, .estimate, .se, ci_low, ci_high, var, TrajType) %>%
-      rename(var0 = 7) %>%
-      drop_na()
+      dplyr::select(.smooth, .type, estimate_inv, se_low_inv, se_high_inv, all_of(var), TrajType) %>%
+      rename(var0 = 6) %>%
+      drop_na() %>%
+     filter(var0 > quantile(var0, probs=0.1) & var0 < quantile (var0, probs =0.9))
   
-  plot <- ggplot(smooth_df, aes(x = var0, y = .estimate, group = TrajType, colour = TrajType, fill = TrajType)) +
-    geom_ribbon(aes(ymin = ci_low, ymax = ci_high), alpha = 0.7) + 
+  plot <- ggplot(smooth_df, aes(x = var0, y = estimate_inv, group = TrajType, colour = TrajType, fill = TrajType)) +
+    geom_ribbon(aes(ymin = se_low_inv, ymax = se_high_inv), alpha = 0.2) + 
     geom_line(alpha = 0.8, lwd = 0.6) + 
+    coord_cartesian(xlim = c(quantile(smooth_df$var0, probs=0.1),quantile(smooth_df$var0, probs=0.9)), ylim = c(0,1)) +
   scale_fill_manual(values = fill_color, name ="Trajectory Type") + 
   scale_color_manual(values = line_color) +
   scale_x_continuous( labels = label_number()) +
   labs(x = x_label,
-         y = "Partial effect") +
+         y = "Probability of trajectory type") +
     theme_classic() + theme(legend.position="none")
   
   x <- density + plot +
     patchwork::plot_layout(ncol = 1, nrow = 2, widths = 4, heights = c(1, 4))
   x
 }
+mean_savanna_increase <- additional_plots("mean_savanna_percentage", increase_significant_onevariablesmooths, "mean savanna formation proportion (%)", "#669900", "#61A36A")
+trend_heatwave_increase <- additional_plots("trend_heatwave", increase_significant_onevariablesmooths, "trend in heatwaves","#669900", "#61A36A")
+mean_heatwave_decrease <- additional_plots("mean_heatwave", decrease_significant_onevariablesmooths, "mean number of heatwaves", "#996633", "#663300")
 
-mean_savanna_increase <- additional_plots("mean_savanna_percentage", increase_significant_onevariablesmooths, "mean savanna formation proportion (%)", "#8dbfa8","#26897E")
-trend_heatwave_increase <- additional_plots("trend_heatwave", increase_significant_onevariablesmooths, "trend in heatwaves", "#8dbfa8","#26897E")
-mean_heatwave_decrease <- additional_plots("mean_heatwave", decrease_significant_onevariablesmooths, "mean number of heatwaves", "#6699cc","#3399ff")
 
-gam_plot1 <- ggpubr::ggarrange(plotlist = commonvar_plots[c(1,6:11)], labels=c("a)", "b)", "c)", "d)", "e)", "f)", "g)"),
+mean_annual_temp <- function (var, x_label){
+  data_df <- analyses_df_noNA_nooutliers %>%
+      dplyr::select(all_of(var)) %>%
+      dplyr::rename(z = 1)
+  density <- ggplot(data_df, aes(x = z)) +
+    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    geom_vline(xintercept = quantile(data_df$z, probs=0.1), linetype="dashed") +
+    geom_vline(xintercept = quantile(data_df$z, probs=0.9), linetype="dashed") +
+      theme_void()
+  
+  increase_smooth_df <- increase_significant_onevariablesmooths  %>%
+    dplyr::select(.smooth, .type, estimate_inv, se_low_inv, se_high_inv, all_of(var), TrajType) %>%
+    rename(var0 = 6) %>%
+    drop_na() %>% 
+    filter(var0 > quantile(var0, probs=0.1) & var0 < quantile (var0, probs =0.9))
+    
+  decrease_smooth_df <- decrease_significant_onevariablesmooths  %>%
+    dplyr::select(.smooth, .type, estimate_inv, se_low_inv, se_high_inv, all_of(var), TrajType) %>%
+    rename(var0 = 6) %>%
+    drop_na() %>%
+    filter(var0 > quantile(var0, probs=0.1) & var0 < quantile (var0, probs =0.9))
+  smooth_df <- bind_rows(increase_smooth_df, decrease_smooth_df)  
+  
+  plot <- ggplot(smooth_df, aes(x = var0, y = estimate_inv, group = TrajType, colour = TrajType, fill = TrajType)) +
+    geom_ribbon(aes(ymin = se_low_inv, ymax = se_high_inv), alpha = 0.2) + 
+    geom_line(alpha = 0.8, lwd = 0.6) + 
+    coord_cartesian(xlim = c(quantile(smooth_df$var0, probs=0.1),quantile(smooth_df$var0, probs=0.9)), ylim = c(0,1)) +
+  scale_fill_manual(values = c("#996633", "#669900"), name ="Trajectory Type") + 
+  scale_color_manual(values = c("#663300", "#61A36A")) +
+  scale_x_continuous(breaks= c(295,296,297,298,299), labels = c(21.85, 22.85, 23.85, 24.85, 25.85))  +
+  labs(x = x_label,
+         y = "Probability of trajectory type") +
+    theme_classic() + theme(legend.position="none")
+  
+  x<-density + plot +
+    patchwork::plot_layout(ncol = 1, nrow = 2, widths = 4, heights = c(1, 4))
+}
+mean_at_plot <- mean_annual_temp ("mean_at", "mean annual temperature (degrees centigrade)")
+
+
+gam_plot1 <- ggpubr::ggarrange(plotlist = commonvar_plots[c(1,6:10)], mean_savanna_increase, mean_at_plot, mean_heatwave_decrease, labels=c("a)", "b)", "c)", "d)", "e)", "f)", "g)", "h)", "i)"),ncol = 3, nrow = 3, common.legend = TRUE)
+gam_plot2 <- ggpubr::ggarrange(plotlist = commonvar_plots[c(2:5)], trend_heatwave_increase, 
+                               labels=c("a)", "b)", "c)", "d)", "e)"),
                       ncol = 3, nrow = 3, common.legend = TRUE)
-gam_plot2 <- ggpubr::ggarrange(plotlist = commonvar_plots[c(2:5)], trend_heatwave_increase, mean_savanna_increase, mean_heatwave_decrease, 
-                               labels=c("a)", "b)", "c)", "d)", "e)", "f)", "g)"),
-                      ncol = 3, nrow = 3, common.legend = TRUE)
-ggsave(here("Outputs", "AnalysesResults", "GAMResults", "oneway_variablepartialeffects_means.png"),
+
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "oneway_variablepartialeffects_means_probability.png"),
        gam_plot1,dpi = 700, height = 40, width=40, units = "cm")
-ggsave(here("Outputs", "AnalysesResults", "GAMResults", "oneway_variablepartialeffects_trends_others.png"),
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "oneway_variablepartialeffects_trends_others_probability.png"),
        gam_plot2,dpi = 700, height = 40, width=40, units = "cm")
+
+```
+
+#Step 5d- Density plot of variables with the values of different variables to make plots
+```{r}
+analyses_df_noNA_nooutliers
+
+density_df <- analyses_df_noNA_nooutliers %>% mutate(mean_savanna = mean(mean_savanna_percentage), sd_savanna = sd(mean_savanna_percentage),
+                                                     mean_forest = mean(mean_forest_percentage), sd_forest = sd(mean_forest_percentage),
+                                                     mean_grass = mean(mean_grass_percentage), sd_grass= sd(mean_grass_percentage),
+                                                     mean_re = mean(trend_re), sd_re= sd(trend_re),
+                                                     mean_spei = mean(trend_spei), sd_spei= sd(trend_spei))
+density_plot_line1 <- function (variable_to_plot, mean1, sd1){
+  density <- ggplot(data = density_df, aes(x = .data[[variable_to_plot]])) +
+    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    geom_vline(data = density_df, aes(xintercept = .data[[mean1]]), color= "blue") +
+    geom_vline(data = density_df, aes(xintercept = .data[[mean1]] + .data[[sd1]]), color= "red", linetype ="dashed") +
+    geom_vline(data = density_df, aes(xintercept = .data[[mean1]] - .data[[sd1]]), linetype ="dashed") +
+    theme_minimal()
+}
+
+savanna_plot<- density_plot_line1("mean_savanna_percentage", "mean_savanna", "sd_savanna")
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "savanna_plotting_values.png"),
+       savanna_plot,dpi = 700, height = 5, width=5, units = "cm")
+grass_plot<- density_plot_line1("mean_grass_percentage", "mean_grass", "sd_grass")
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "grass_plotting_values.png"),
+       grass_plot,dpi = 700, height = 5, width=5, units = "cm")
+forest_plot<- density_plot_line1("mean_forest_percentage", "mean_forest", "sd_forest")
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "forest_plotting_values.png"),
+       forest_plot,dpi = 700, height = 5, width=5, units = "cm")
+
+
+density_plot_line2 <- function (variable_to_plot, mean1, sd1){
+  density <- ggplot(data = density_df, aes(x = .data[[variable_to_plot]])) +
+    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
+    geom_vline(data = density_df, aes(xintercept = 0), color= "blue") +
+    geom_vline(data = density_df, aes(xintercept = .data[[mean1]] + .data[[sd1]]), color= "red", linetype ="dashed") +
+    geom_vline(data = density_df, aes(xintercept = .data[[mean1]] - .data[[sd1]]), linetype ="dashed") +
+    theme_minimal()
+}
+
+re_plot<- density_plot_line2("trend_re", "mean_re", "sd_re")
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "re_plotting_values.png"),
+       re_plot,dpi = 700, height = 5, width=5, units = "cm")
+spei_plot<- density_plot_line2("trend_spei", "mean_spei", "sd_spei")
+ggsave(here("Outputs", "AnalysesResults", "GAMResults", "spei_plotting_values.png"),
+       spei_plot,dpi = 700, height = 5, width=5, units = "cm")
 
 ```
