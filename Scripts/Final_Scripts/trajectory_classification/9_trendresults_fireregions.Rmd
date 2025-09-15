@@ -214,11 +214,10 @@ plotting_function <- function (df){
 }  
 
 Sys.time(); plot_monthly_ndvi_agg <- plotting_function(monthly_agg_ndvi_area) 
+write_rds(plot_monthly_ndvi_agg , here("Outputs", "TrendsResults", "Figures", "agg_trajectories_fireregions.rdata"))
 ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_monthly_fireregions.png"),
       plot_monthly_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
-Sys.time(); plot_annual_ndvi_agg <- plotting_function(annual_agg_ndvi_area)
-ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_annual_fireregions.png"),
-      plot_annual_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
+
 
 #aggregated, cross timesteps and indices
 Sys.time(); monthly_agg_aniso_area <- monthly_agg_aniso_area %>% mutate(TimeStep ="monthly", Index = "anisotropic EVI"); Sys.time()
