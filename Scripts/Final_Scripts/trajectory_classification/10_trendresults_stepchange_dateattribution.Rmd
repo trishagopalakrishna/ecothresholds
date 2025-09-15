@@ -190,8 +190,28 @@ Sys.time(); raster_dec_monthly_aniso_date_month <- rasterize_stepdf_function_mon
 
 #Step 4- compilation of results of step date- by year and by month
 ```{r}
+input_file_path <- here("Outputs", "TrendsResults", "stepchange_date_rasters")
+read_files_function <- function (annual_or_monthly_folder, file_name_with_tif){
+  rds_file<- rast(paste0(input_file_path,"/", annual_or_monthly_folder, "/", file_name_with_tif))
+}
+
+raster_inc_annual_ndvi_date <- read_files_function("annual", "inc_annual_ndvi_date.tif")
+raster_inc_annual_evi_date <- read_files_function("annual", "inc_annual_evi_date.tif")
+raster_inc_annual_aniso_date <- read_files_function("annual", "inc_annual_aniso_date.tif")
+raster_inc_monthly_ndvi_date <- read_files_function("monthly", "inc_monthly_ndvi_date.tif")
+raster_inc_monthly_evi_date <- read_files_function("monthly", "inc_monthly_evi_date.tif")
+raster_inc_monthly_aniso_date <- read_files_function("monthly", "inc_monthly_aniso_date.tif")
+
 year_inc<- c(raster_inc_annual_ndvi_date, raster_inc_annual_evi_date, raster_inc_annual_aniso_date,
              raster_inc_monthly_ndvi_date, raster_inc_monthly_evi_date, raster_inc_monthly_aniso_date)
+
+raster_dec_annual_ndvi_date <- read_files_function("annual", "dec_annual_ndvi_date.tif")
+raster_dec_annual_evi_date <- read_files_function("annual", "dec_annual_evi_date.tif")
+raster_dec_annual_aniso_date <- read_files_function("annual", "dec_annual_aniso_date.tif")
+raster_dec_monthly_ndvi_date <- read_files_function("monthly", "dec_monthly_ndvi_date.tif")
+raster_dec_monthly_evi_date <- read_files_function("monthly", "dec_monthly_evi_date.tif")
+raster_dec_monthly_aniso_date <- read_files_function("monthly", "dec_monthly_aniso_date.tif")
+
 year_dec<- c(raster_dec_annual_ndvi_date, raster_dec_annual_evi_date, raster_dec_annual_aniso_date,
              raster_dec_monthly_ndvi_date, raster_dec_monthly_evi_date, raster_dec_monthly_aniso_date)
 
