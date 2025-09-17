@@ -109,21 +109,21 @@ proportion_df_calc <- function (trendresults_raster, index_name){
   names(x_df)[4]<- "value"
   x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~"Linear decrease",
                                                 value==2~ "Linear increase",
-                                                value==4~ "Step decrease",
-                                                value==5~"Step increase",
+                                                value==4~ "Abrupt negative",
+                                                value==5~"Abrupt positive",
                                                 value==6~"Quadratic decrease (accelerated)",
                                                 value==7~"Quadratic decrease (decelerated)",
                                                 value==8~"Quadratic increase (accelerated)",
                                                 value==9~"Quadratic increase (decelerated)",
                                                 TRUE~"No trend"))
-  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Decrease",
-                                                value==2~ "Increase",
-                                                value==4~ "Decrease",
-                                                value==5~"Increase",
-                                                value==6~"Decrease",
-                                                value==7~"Decrease",
-                                                value==8~"Increase",
-                                                value==9~"Increase",
+  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Browning",
+                                                value==2~ "Greening",
+                                                value==4~ "Browning",
+                                                value==5~"Greening",
+                                                value==6~"Browning",
+                                                value==7~"Browning",
+                                                value==8~"Greening",
+                                                value==9~"Greening",
                                                 TRUE~"No trend"))
   agg_traj_count_df <- x_df %>% group_by(agg_traj) %>% summarise(total_count = n())
   seperate_traj_count_df <- x_df %>% group_by(seperate_traj, index, agg_traj) %>% summarise(count= n())
@@ -143,14 +143,27 @@ df_agg <- bind_rows(monthly_ndvi, monthly_evi, monthly_aniso,
                     annual_ndvi, annual_evi, annual_aniso)
 
 df_agg <- df_agg %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
-Set1palette<- c("#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677",  "#994F00",   "#88CCEE" ) 
+Set1palette_barplot<- c("#994F00",   "#88CCEE" ,  "#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677") 
+
+monthly_ndvi_seperate_plot <- monthly_ndvi %>%
+  ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
+   geom_bar(stat = "identity")  + 
+  theme_classic() +
+    scale_fill_manual(values =Set1palette_barplot)+
+     theme(legend.title=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust=0.7),
+    axis.title.x = element_blank(),
+        legend.title=element_blank(),
+        axis.ticks.x = element_blank()) + ylab ("Proportion of study area") 
+ggsave(here("Outputs", "TrendsResults", "barplot_swin11_ndvi_only_seperate_trajectories.png"),
+      monthly_ndvi_seperate_plot ,dpi = 700, height = 10, width = 10, units = "cm")
 
 
 trendsresults_barplot <- df_agg %>%
   ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
    geom_bar(stat = "identity") + facet_grid(TimeStep~Index) + 
   theme_classic() +
-    scale_fill_manual(values =Set1palette)+
+    scale_fill_manual(values =Set1palette_barplot)+
      theme(legend.title=element_blank()) +
   theme(axis.text.x = element_text(angle = 45, vjust=0.7),
     axis.title.x = element_blank(),
