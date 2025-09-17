@@ -25,18 +25,23 @@ environmental drives and abrupt shift count
 
 ##Data input
 ```{r}
-ndvi_count_5km<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" , "binary_count_5km", "monthlyswin11_ndvi_count_5km.tif"))
+ndvi_agg_count <- rast (here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly_ndvi_agg_count_5km.tif"))
+#1-browning, 2-greening, 3- no trend
 
-
+#static drivers
 anthropic_dist<- rast(here("Outputs", "OtherVariables", "AnthropicDist", "5km_meandist_20thresholdsanthropicpixel.tif"))
 hand<- rast(here("Outputs", "OtherVariables","HAND", "cerrado_hand_5km.tif"))
 
-burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
-re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
-at<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
-spei<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
-heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
-savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_savanna_percentage_5km_2002_2021.tif"))
+#trend variables
+trend_burnedarea<- rast(here("Outputs", "OtherVariables", "Fire", "theilsen_burnedarea_5km.tif"))
+trend_re<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_re.tif"))
+trend_at<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_at_5km.tif"))
+trend_spei<-rast(here("Outputs", "OtherVariables", "Climate", "theilsen_spei.tif"))
+trend_heatwave<- rast(here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
+
+#mean %area of veg formation
+mean_savannapercentage <- rast(here("Outputs", "OtherVariables", "Formations_Heterogeniety", "mean_savanna_percentage_5km_2002_2021.tif"))
+
 ```
 
 1) anthropic_dist - distance of the particular 5x5km grid cell to the closest anthropogenic land use
@@ -61,16 +66,16 @@ Above variables has not unit because its all slope. All trend varibales were cal
 ##Preprocessing of all data- making appropriate data structure ie makign a dataframe (df) from 
 geospatial data format
 ```{r}
-decrease <- ndvi_count_5km[[1]] +ndvi_count_5km[[4]] + ndvi_count_5km[[6]] + ndvi_count_5km[[7]]
-increase <- ndvi_count_5km[[2]] +ndvi_count_5km[[5]] + ndvi_count_5km[[8]] +ndvi_count_5km[[9]]
+#decrease <- ndvi_count_5km[[1]] +ndvi_count_5km[[4]] + ndvi_count_5km[[6]] + ndvi_count_5km[[7]]
+#increase <- ndvi_count_5km[[2]] +ndvi_count_5km[[5]] + ndvi_count_5km[[8]] +ndvi_count_5km[[9]]
 
-all_data <- c(decrease,increase, anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
-names(all_data)<- c("increase", "decrease", "anthropic_dist", "burnedarea", "hand", "re", "at", "heatwave", "spei", "savannapercentage")
+all_data <- c(ndvi_agg_count[[1]],ndvi_agg_count[[2]], anthropic_dist, trend_burnedarea, hand, trend_re, trend_at, trend_heatwave, trend_spei, mean_savannapercentage)
+names(all_data)<- c("greening", "browning", "anthropic_dist", "trend_burnedarea", "hand", "trend_re", "trend_at", "trend_heatwave", "trend_spei", "mean_savannapercentage")
 
 df1 <- terra::as.data.frame(all_data, na.rm= T)
 
-remove(anthropic_dist, burnedarea, hand, re, at, heatwave, spei, savannapercentage)
-remove(ndvi_count_5km, decrease, increase)
+remove(anthropic_dist, trend_burnedarea, hand, trend_re, trend_at, trend_heatwave, trend_spei, mean_savannapercentage)
+remove(ndvi_agg_count)
 ```
 
 #Exploratory data analyses
@@ -83,20 +88,19 @@ I also scale the dataframe because all the units and magnitudes of variables int
 very different.
 ```{r}
 summary(df1)
-inc_df_noNA <- df1 %>% dplyr::select(-c(decrease))
-dec_df_noNA <- df1 %>% dplyr::select(-c(increase))
+green_df_noNA <- df1 %>% dplyr::select(-c(browning))
+brown_df_noNA <- df1 %>% dplyr::select(-c(greening))
 
 ### Sampling 30% of the data resulting in 6306 rows of data
 set.seed(1000)
-sample_inc_df <- inc_df_noNA %>% slice_sample(prop=0.3, replace =F)
-sample_dec_df <- dec_df_noNA %>% slice_sample(prop=0.3, replace= F) #30% randomly sampled of entire dataset
-
+sample_green_df <- green_df_noNA %>% slice_sample(prop=0.3, replace =F)
+sample_brown_df <- brown_df_noNA  %>% slice_sample(prop=0.3, replace= F) #30% randomly sampled of entire dataset
 
 #library(PerformanceAnalytics)
 #chart.Correlation(sample_df, histogram = TRUE, pch= 19)
 
 #Removing outliers considering distribution of height above nearest drainage variable
-no_outliers_sample_inc_df <- sample_inc_df %>% 
+no_outliers_sample_green_df <- sample_green_df %>% 
   mutate (IQR = IQR(hand),
           O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
           O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
@@ -104,7 +108,7 @@ no_outliers_sample_inc_df <- sample_inc_df %>%
   filter(O_lower <= hand & hand <= O_upper) %>%
   dplyr::select(-c(IQR, O_upper, O_lower))
 
-no_outliers_sample_dec_df <- sample_dec_df %>% 
+no_outliers_sample_brown_df <- sample_brown_df %>% 
   mutate (IQR = IQR(hand),
           O_upper = quantile (hand, probs= c(0.75), na.rm= FALSE)+ 1.5*IQR,
           O_lower = quantile(hand, probs= c(0.25), na.rm= FALSE) - 1.5*IQR
@@ -114,19 +118,19 @@ no_outliers_sample_dec_df <- sample_dec_df %>%
 
 
 ### Scaling data by centering around means due as the units and values of all variables are very different
-scaled_analyses_stepinc<- data.frame(scale(no_outliers_sample_inc_df, center= TRUE, scale= TRUE)) 
-scaled_analyses_stepdec<- data.frame(scale(no_outliers_sample_dec_df, center= TRUE, scale= TRUE)) 
+scaled_analyses_green<- data.frame(scale(no_outliers_sample_green_df, center= TRUE, scale= TRUE)) 
+scaled_analyses_brown<- data.frame(scale(no_outliers_sample_brown_df, center= TRUE, scale= TRUE)) 
 
 #plot of distributions of scaled data
-pivot_df_inc <- scaled_analyses_stepinc  %>%
+pivot_df_green <- scaled_analyses_green  %>%
   pivot_longer(1:9)
-inc_distribution_plot <- ggplot(data = pivot_df_inc, aes(value)) +
+green_distribution_plot <- ggplot(data = pivot_df_green, aes(value)) +
   geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
   theme_classic(base_size = 16)
 
-pivot_df_dec <- scaled_analyses_stepdec  %>%
+pivot_df_brown <- scaled_analyses_brown  %>%
   pivot_longer(1:9)
-dec_distribution_plot <- ggplot(data = pivot_df_dec, aes(value)) +
+brown_distribution_plot <- ggplot(data = pivot_df_brown, aes(value)) +
   geom_histogram() +facet_wrap(~name, scales = "free", labeller = label_wrap_gen(4)) +
   theme_classic(base_size = 16)
 ```
@@ -140,66 +144,62 @@ Most of the drivers/predictors are normally distributed.
 library(lavaan)
 library(cSEM)
 
-######## Step inc model
-stepinc1 <- '
+######## Greening model
+greening <- '
   STEPINC ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
   VEGETATION ~ PULSE_STRESSORS + BACKGROUND_CLIMATE +ANTHROPIC_PRESSURES + FIRE
   FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   WATER_ACCESS ~ ANTHROPIC_PRESSURES
   
-  BACKGROUND_CLIMATE <~ re+at
-  PULSE_STRESSORS <~ heatwave + spei
+  BACKGROUND_CLIMATE <~ trend_re + trend_at
+  PULSE_STRESSORS <~ trend_heatwave + trend_spei
   
-  STEPINC =~ increase
+  STEPINC =~ greening
   WATER_ACCESS =~ hand
-  VEGETATION =~ savannapercentage
-  FIRE =~ burnedarea
+  VEGETATION =~ mean_savannapercentage
+  FIRE =~ trend_burnedarea
   ANTHROPIC_PRESSURES =~ anthropic_dist
 '
-Sys.time(); stepinc_model1 <- cSEM::csem(.data = no_outliers_sample_inc_df,
-                                         .model = stepinc1,
+Sys.time(); greening_model1 <- cSEM::csem(.data = no_outliers_sample_green_df,
+                                         .model = greening,
                                          .approach_weights = "PLS-PM",
                                          .resample_method = "bootstrap",
                                          .R =1000,
-                                         .seed = 1000
-                                         ); Sys.time()
+                                         .seed = 1000); Sys.time()
 
 
-cSEM::summarize(stepinc_model1)
-x_inc_assess <- cSEM::assess(stepinc_model1)
-cSEM::verify(stepinc_model1)
-inc_modelfit <- cSEM::testOMF(stepinc_model1)
+cSEM::summarize(greening_model1)
+x_greening_assess <- cSEM::assess(greening_model1)
+cSEM::verify(greening_model1)
+green_modelfit <- cSEM::testOMF(greening_model1)
 
-######## Step dec model
-stepdec1 <- '
+######## Browning model
+browning <- '
   STEPDEC ~ BACKGROUND_CLIMATE + PULSE_STRESSORS + WATER_ACCESS + VEGETATION + ANTHROPIC_PRESSURES + FIRE
   VEGETATION ~ PULSE_STRESSORS + BACKGROUND_CLIMATE +ANTHROPIC_PRESSURES + FIRE
   FIRE ~ PULSE_STRESSORS + BACKGROUND_CLIMATE + ANTHROPIC_PRESSURES
   WATER_ACCESS ~ ANTHROPIC_PRESSURES
   
-  BACKGROUND_CLIMATE <~ re+at
-  PULSE_STRESSORS <~ heatwave + spei
+  BACKGROUND_CLIMATE <~ trend_re + trend_at
+  PULSE_STRESSORS <~ trend_heatwave + trend_spei
   
-  STEPDEC =~ decrease
+  STEPDEC =~ browning
   WATER_ACCESS =~ hand
-  VEGETATION =~ savannapercentage
-  FIRE =~ burnedarea
+  VEGETATION =~ mean_savannapercentage
+  FIRE =~ trend_burnedarea
   ANTHROPIC_PRESSURES =~ anthropic_dist
 '
-Sys.time(); stepdec_model1 <- cSEM::csem(.data = no_outliers_sample_dec_df,
-                                         .model = stepdec1,
+Sys.time(); browning_model1 <- cSEM::csem(.data = no_outliers_sample_brown_df,
+                                         .model = browning,
                                          .approach_weights = "PLS-PM",
                                          .resample_method = "bootstrap",
                                          .R =1000,
-                                         .seed = 1000
-); Sys.time()
+                                         .seed = 1000); Sys.time()
 
-cSEM::summarize(stepdec_model1)
-x_dec_assess <- cSEM::assess(stepdec_model1)
-cSEM::verify(stepdec_model1)
-dec_modelfit <- cSEM::testOMF(stepdec_model1)
-
-
+cSEM::summarize(browning_model1)
+x_browning_assess <- cSEM::assess(browning_model1)
+cSEM::verify(browning_model1)
+brown_modelfit <- cSEM::testOMF(browning_model1)
 
  #model fit statistics look good - R2 for structural regression equations from "assess()" results for reporting
  # model admissibility looks good
