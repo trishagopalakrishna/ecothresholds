@@ -230,6 +230,7 @@ df_prep_function <- function (df_veg_trajectory){
 Sys.time(); df_monthly_aniso_agg <- df_prep_function(monthly_aniso_agg); Sys.time()
 Sys.time(); df_monthly_evi_agg <- df_prep_function(monthly_evi_agg ); Sys.time()
 Sys.time(); df_monthly_ndvi_agg <- df_prep_function(monthly_ndvi_agg); Sys.time()
+write_rds(df_monthly_ndvi_agg, here("Outputs", "TrendsResults", "Figures", "agg_trajectories_vegformations_boxplot.rdata"))
 
 Sys.time(); df_annual_aniso_agg <- df_prep_function(annual_aniso_agg); Sys.time()
 Sys.time(); df_annual_evi_agg <- df_prep_function(annual_evi_agg); Sys.time()
@@ -251,7 +252,6 @@ boxplot_function <- function (df){
 }
 
 monthly_ndvi_agg <- boxplot_function(df_monthly_ndvi_agg)
-write_rds(monthly_ndvi_agg, here("Outputs", "TrendsResults", "Figures", "agg_trajectories_vegformations_boxplot.rdata"))
 ggsave(here("Outputs", "TrendsResults", "boxplot_agg_ndvi_monthly.png"),
       monthly_ndvi_agg ,dpi = 700, height = 10, width = 10, units = "cm")
 
