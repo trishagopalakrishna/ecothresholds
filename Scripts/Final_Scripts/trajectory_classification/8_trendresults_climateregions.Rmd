@@ -195,6 +195,7 @@ Sys.time(); annual_agg_ndvi_area <- agg_df_prep_function (agg_annual_rds_list[[3
 
 #Step 4- visualization of results - bar plots
 ```{r}
+write_rds(monthly_agg_ndvi_area , here("Outputs", "TrendsResults", "Figures", "agg_trajectories_climatezones.rdata"))
 aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 plotting_function <- function (df){
@@ -208,7 +209,7 @@ plotting_function <- function (df){
 }  
 
 Sys.time(); plot_monthly_ndvi_agg <- plotting_function(monthly_agg_ndvi_area) 
-write_rds(plot_monthly_ndvi_agg , here("Outputs", "TrendsResults", "Figures", "agg_trajectories_climatezones.rdata"))
+
 ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_monthly_climateregions.png"),
       plot_monthly_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
 
