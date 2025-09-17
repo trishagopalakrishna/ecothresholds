@@ -157,6 +157,7 @@ distribution_plot
 analyses_df_plot <- plot_df_function (analyses_df_noNA_nooutliers)
 
 remove(plot_df_function, remove_HAND_outliers, remove_NA)
+write_rds(analyses_df_noNA_nooutliers, here("Scripts", "Final_Scripts", "analyses", "analyses_df_noNA_nooutliers.rdata"))
 
 ```
 
@@ -568,7 +569,7 @@ plot_interaction <- function (savanna_df, forest_df, grass_df, xaxis_variable, t
     theme_classic() +
     scale_fill_manual(values = c("#996633", "#669900"))+
     scale_color_manual(values=c("#663300", "#61A36A")) + 
-    ylab ("Partial Effect") + theme(legend.position="none")
+    ylab ("Probability of trajectory type") + theme(legend.position="none")
   
   forest_plot<- ggplot(forest_df, aes(x = .data[[xaxis_variable]], y = main_effect,
                                           color = TrajType, fill =TrajType,
@@ -579,7 +580,7 @@ plot_interaction <- function (savanna_df, forest_df, grass_df, xaxis_variable, t
     theme_classic() +
     scale_fill_manual(values = c("#996633", "#669900"))+
     scale_color_manual(values=c("#663300", "#61A36A")) + 
-    ylab ("Partial Effect") + theme(legend.position="none")
+    ylab ("Probability of trajectory type") + theme(legend.position="none")
   
   grass_plot<- ggplot(grass_df, aes(x = .data[[xaxis_variable]], y = main_effect,
                                           color = TrajType, fill =TrajType,
@@ -590,7 +591,7 @@ plot_interaction <- function (savanna_df, forest_df, grass_df, xaxis_variable, t
     theme_classic() +
     scale_fill_manual(values = c("#996633", "#669900"))+
     scale_color_manual(values=c("#663300", "#61A36A")) + 
-    ylab ("Partial Effect") + theme(legend.position="none")
+    ylab ("Probability of trajectory type") + theme(legend.position="none")
   
     x <- ggpubr::ggarrange(forest_plot, grass_plot, savanna_plot, nrow = 1, ncol = 3, 
                            labels = c("Forest", "Grass", "Savanna"))
