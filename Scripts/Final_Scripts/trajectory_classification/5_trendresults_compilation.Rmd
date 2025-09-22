@@ -316,14 +316,14 @@ difference_function <- function (trajectory_type, index){
   dec_diff_percentage
 }
 
-dec_ndvi <- difference_function("Decrease","NDVI")
-dec_evi <- difference_function("Decrease","EVI")
-dec_aniso <- difference_function("Decrease","anisoEVI")
+dec_ndvi <- difference_function("Browning","NDVI")
+dec_evi <- difference_function("Browning","EVI")
+dec_aniso <- difference_function("Browning","anisoEVI")
 mean_dec_all_indices <- mean(c(dec_ndvi, dec_evi, dec_aniso))
 
-inc_ndvi <- difference_function("Increase","NDVI")
-inc_evi <- difference_function("Increase","EVI")
-inc_aniso <- difference_function("Increase","anisoEVI")
+inc_ndvi <- difference_function("Greening","NDVI")
+inc_evi <- difference_function("Greening","EVI")
+inc_aniso <- difference_function("Greening","anisoEVI")
 mean_inc_all_indices <- mean(c(inc_ndvi, inc_evi, inc_aniso))
 
 difference_function2 <- function (trajectory_type, index){
