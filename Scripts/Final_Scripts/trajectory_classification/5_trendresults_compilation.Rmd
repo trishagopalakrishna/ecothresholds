@@ -107,14 +107,14 @@ proportion_df_calc <- function (trendresults_raster, index_name){
   x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
   x_df<- x_df %>% mutate(index = index_name)
   names(x_df)[4]<- "value"
-  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~"Linear decrease",
-                                                value==2~ "Linear increase",
-                                                value==4~ "Abrupt negative",
-                                                value==5~"Abrupt positive",
-                                                value==6~"Quadratic decrease (accelerated)",
-                                                value==7~"Quadratic decrease (decelerated)",
-                                                value==8~"Quadratic increase (accelerated)",
-                                                value==9~"Quadratic increase (decelerated)",
+  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~"Linear browning",
+                                                value==2~ "Linear greening",
+                                                value==4~ "Abrupt browning",
+                                                value==5~"Abrupt greening",
+                                                value==6~"Quadratic browning (accelerated)",
+                                                value==7~"Quadratic browning (decelerated)",
+                                                value==8~"Quadratic greening (accelerated)",
+                                                value==9~"Quadratic greening (decelerated)",
                                                 TRUE~"No trend"))
   x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Browning",
                                                 value==2~ "Greening",
@@ -132,6 +132,7 @@ proportion_df_calc <- function (trendresults_raster, index_name){
 }
 
 Sys.time(); monthly_ndvi <- proportion_df_calc(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+write_rds(monthly_ndvi , here("Outputs", "TrendsResults", "Figures", "trajectorytypes_monthly_swin11.rdata"))
 Sys.time(); monthly_evi <- proportion_df_calc(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
 Sys.time(); monthly_aniso <- proportion_df_calc(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
 
@@ -154,10 +155,9 @@ monthly_ndvi_seperate_plot <- monthly_ndvi %>%
   theme(axis.text.x = element_text(angle = 45, vjust=0.7),
     axis.title.x = element_blank(),
         legend.title=element_blank(),
-        axis.ticks.x = element_blank()) + ylab ("Proportion of study area") 
+        axis.ticks.x = element_blank()) + ylab ("Area (*1000 sqkm)")
 ggsave(here("Outputs", "TrendsResults", "barplot_swin11_ndvi_only_seperate_trajectories.png"),
       monthly_ndvi_seperate_plot ,dpi = 700, height = 10, width = 10, units = "cm")
-
 
 trendsresults_barplot <- df_agg %>%
   ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
@@ -168,7 +168,7 @@ trendsresults_barplot <- df_agg %>%
   theme(axis.text.x = element_text(angle = 45, vjust=0.7),
     axis.title.x = element_blank(),
         legend.title=element_blank(),
-        axis.ticks.x = element_blank()) + ylab ("Proportion of study area") 
+        axis.ticks.x = element_blank()) + ylab ("Area (*1000 sqkm)") 
 ggsave(here("Outputs", "TrendsResults", "barplot_swin11_seperate_trajectories.png"),
       trendsresults_barplot ,dpi = 700, height = 20, width = 20, units = "cm")
 
