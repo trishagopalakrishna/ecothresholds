@@ -270,19 +270,19 @@ difference_function <- function (timestep, trajectory_type, index){
   dec_diff_percentage
 }
 
-monthly_dec_ndvi <- difference_function("monthly","Decrease","NDVI")
-monthly_dec_evi <- difference_function("monthly","Decrease","EVI")
-monthly_dec_aniso <- difference_function("monthly","Decrease","anisoEVI")
+monthly_dec_ndvi <- difference_function("monthly","Browning","NDVI")
+monthly_dec_evi <- difference_function("monthly","Browning","EVI")
+monthly_dec_aniso <- difference_function("monthly","Browning","anisoEVI")
 mean_monthly_dec_all_indices <- mean(c(monthly_dec_ndvi , monthly_dec_evi, monthly_dec_aniso))
 
-annual_dec_ndvi <- difference_function("annual","Decrease","NDVI")
-annual_dec_evi <- difference_function("annual","Decrease","EVI")
-annual_dec_aniso <- difference_function("annual","Decrease","anisoEVI")
+annual_dec_ndvi <- difference_function("annual","Browning","NDVI")
+annual_dec_evi <- difference_function("annual","Browning","EVI")
+annual_dec_aniso <- difference_function("annual","Browning","anisoEVI")
 mean_annual_dec_all_indices <- mean(c(annual_dec_ndvi , annual_dec_evi, annual_dec_aniso))
 
-monthly_inc_ndvi <- difference_function("monthly","Increase","NDVI")
-monthly_inc_evi <- difference_function("monthly","Increase","EVI")
-monthly_inc_aniso <- difference_function("monthly","Increase","anisoEVI")
+monthly_inc_ndvi <- difference_function("monthly","Greening","NDVI")
+monthly_inc_evi <- difference_function("monthly","Greening","EVI")
+monthly_inc_aniso <- difference_function("monthly","Greening","anisoEVI")
 mean_monthly_inc_all_indices <- mean(c(monthly_inc_ndvi , monthly_inc_evi, monthly_inc_aniso))
 
 annual_inc_ndvi <- difference_function("annual","Increase","NDVI")
