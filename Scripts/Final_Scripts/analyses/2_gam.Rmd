@@ -1275,12 +1275,7 @@ ggsave(here("Outputs", "AnalysesResults", "GAMResults", "oneway_variablepartiale
 
 ```
 
-
-
-
-
-
-#Step 5d- Density plot of variables with the values of different variables to make plots
+#Step 5d- Density plot of variables with the values of different variables to make 2 way and 3 way interaction plots
 ```{r}
 analyses_df_noNA_nooutliers
 
@@ -1327,10 +1322,11 @@ ggsave(here("Outputs", "AnalysesResults", "GAMResults", "spei_plotting_values.pn
 
 ```
 
-#### TO DO Step 5c - Plotting maps of probability of greening/browning for a predictor variable while other predictors are at their mean value
+#Step 5e (i) - Plotting maps of probability of greening/browning for a single predictor variable while other predictors are at their mean value
+Excluding s(x,y) effect but retaining s(x,y, mean_at) & s(x,y, trend_at) when plotting effect of remaining predictor variables
+The reasoning is that then the map of probability of greening/browning is accounting for N-S temperature gradient 
 ```{r}
-#plot of mean annual temperature effect
-mapping_probability_function <- function (driver_variable, gam_model){
+mapping_probability_function <- function (driver_variable, gam_model, greening_or_browning){
   df_means <- analyses_df_noNA_nooutliers %>% 
     dplyr::select(-c(x, y, driver_variable)) %>% 
     summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
@@ -1339,54 +1335,58 @@ mapping_probability_function <- function (driver_variable, gam_model){
     dplyr::select(c(x, y, driver_variable)) %>% 
     bind_cols(df_means)
   
-  df_estimates <- gratia::smooth_estimates(gam_model, data = df_to_predict, unconditional= T)
+  pred <- mgcv::predict.bam(gam_model, newdata = df_to_predict, type="terms") 
+  pred <- as.data.frame(pred)
+  pred <- pred %>% bind_cols(analyses_df_noNA_nooutliers %>% 
+    dplyr::select(c(x, y, driver_variable)))
   
-  df_estimates <- df_estimates  %>%                                         
-  mutate(intercept_no_uncertainty = gam_model$coefficients[1],
-         intercept_add_estimate = .estimate + intercept_no_uncertainty,
-         
-         intercept_estimate_ci_low = intercept_add_estimate - .se*1.96,
-         intercept_estimate_ci_high = intercept_add_estimate + .se*1.96,
-         
-         se_low_inv = inv.logit(intercept_estimate_ci_low),
-         se_high_inv = inv.logit(intercept_estimate_ci_high),
-         estimate_inv = inv.logit(intercept_add_estimate))
+  coef_index_trial1 <- grep(paste0("s(",driver_variable,")"),names(pred),fixed = T)
+  coef_index_trial2 <- grep(paste0("ti(mean_at,x,y)"),names(pred),fixed = T)
+  coef_index_trial3 <- grep(paste0("ti(trend_annualtemp,x,y)"),names(pred),fixed = T)
+
+  effects_cols_indices <- c(coef_index_trial1, coef_index_trial2, coef_index_trial3)
   
-  only_probability <- df_estimates %>% dplyr::select(c(x,y, estimate_inv))
-  x_rast <- rast(as.data.frame(only_probability %>% drop_na()), type="xyz")
+  x1Eff <- rowSums(pred [effects_cols_indices])
+  x1Eff_inv <- inv.logit(x1Eff + gam_model$coefficients[1])
+  x1Eff_inv <- as.data.frame(x1Eff_inv)
+  x1Eff_inv <- x1Eff_inv %>% bind_cols(analyses_df_noNA_nooutliers %>% 
+    dplyr::select(c(x, y)))
+  names(x1Eff_inv)[1]<- "main_effect"
+  x1Eff_inv <- x1Eff_inv %>% dplyr::select(x,y, main_effect)
+  x_rast <- rast(as.data.frame(x1Eff_inv %>% drop_na()), type="xyz")
   
-  x_rast
+  writeRaster(x_rast, paste0(here("Outputs", "AnalysesResults", "GAMResults", "SinglePartialEffects_ResultsRasters", greening_or_browning), "/", driver_variable, ".tif"))
 }
 
-Sys.time(); greening_mean_at_prob <- mapping_probability_function("mean_at", inc_gam); Sys.time()
-Sys.time(); greening_trend_at_prob <- mapping_probability_function("trend_annualtemp", inc_gam); Sys.time()
-Sys.time(); greening_mean_re_prob <- mapping_probability_function("mean_re", inc_gam); Sys.time()
-Sys.time(); greening_trend_re_prob <- mapping_probability_function("trend_re", inc_gam); Sys.time()
-Sys.time(); greening_mean_heatwave_prob <- mapping_probability_function("mean_heatwave", inc_gam); Sys.time()
-Sys.time(); greening_trend_heatwave_prob <- mapping_probability_function("trend_heatwave", inc_gam); Sys.time()
-Sys.time(); greening_mean_spei_prob <- mapping_probability_function("mean_spei", inc_gam); Sys.time()
-Sys.time(); greening_trend_spei_prob <- mapping_probability_function("trend_spei", inc_gam); Sys.time()
-Sys.time(); greening_mean_burnedarea_prob <- mapping_probability_function("mean_burnedarea", inc_gam); Sys.time()
-Sys.time(); greening_trend_burnedarea_prob <- mapping_probability_function("trend_burnedarea", inc_gam); Sys.time()
-Sys.time(); greening_mean_savanna_prob <- mapping_probability_function("mean_savannapercentage", inc_gam); Sys.time()
-Sys.time(); greening_mean_grass_prob <- mapping_probability_function("mean_grasspercentage", inc_gam); Sys.time()
-Sys.time(); greening_mean_forest_prob <- mapping_probability_function("mean_forestpercentage", inc_gam); Sys.time()
-Sys.time(); greening_anthropicdist_prob <- mapping_probability_function("anthropic_dist", inc_gam); Sys.time()
+Sys.time(); mapping_probability_function("mean_at", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("trend_annualtemp", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_re", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("trend_re", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_heatwave", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("trend_heatwave", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_spei", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("trend_spei", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_burnedarea", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("trend_burnedarea", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_savanna_percentage", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_grass_percentage", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("mean_forest_percentage", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function("anthropic_dist", inc_gam, "Greening"); Sys.time()
 
-Sys.time(); browning_mean_at_prob <- mapping_probability_function("mean_at", dec_gam); Sys.time()
-Sys.time(); browning_trend_at_prob <- mapping_probability_function("trend_anualtemp", dec_gam); Sys.time()
-Sys.time(); browning_mean_re_prob <- mapping_probability_function("mean_re", dec_gam); Sys.time()
-Sys.time(); browning_trend_re_prob <- mapping_probability_function("trend_re", dec_gam); Sys.time()
-Sys.time(); browning_mean_heatwave_prob <- mapping_probability_function("mean_heatwave", dec_gam); Sys.time()
-Sys.time(); browning_trend_heatwave_prob <- mapping_probability_function("trend_heatwave", dec_gam); Sys.time()
-Sys.time(); browning_mean_spei_prob <- mapping_probability_function("mean_spei", dec_gam); Sys.time()
-Sys.time(); browning_trend_spei_prob <- mapping_probability_function("trend_spei", dec_gam); Sys.time()
-Sys.time(); browning_mean_burnedarea_prob <- mapping_probability_function("mean_burnedarea", dec_gam); Sys.time()
-Sys.time(); browning_trend_burnedarea_prob <- mapping_probability_function("trend_burnedarea", dec_gam); Sys.time()
-Sys.time(); browning_mean_savanna_prob <- mapping_probability_function("mean_savannapercentage", dec_gam); Sys.time()
-Sys.time(); browning_mean_grass_prob <- mapping_probability_function("mean_grasspercentage", dec_gam); Sys.time()
-Sys.time(); browning_mean_forest_prob <- mapping_probability_function("mean_forestpercentage", dec_gam); Sys.time()
-Sys.time(); browning_anthropicdist_prob <- mapping_probability_function("anthropic_dist", dec_gam); Sys.time()
+Sys.time(); mapping_probability_function("mean_at", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("trend_annualtemp", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_re", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("trend_re", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_heatwave", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("trend_heatwave", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_spei", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("trend_spei", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_burnedarea", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("trend_burnedarea", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_savanna_percentage", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_grass_percentage", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("mean_forest_percentage", dec_gam, "Browning"); Sys.time()
+Sys.time(); mapping_probability_function("anthropic_dist", dec_gam, "Browning"); Sys.time()
 
 
 
