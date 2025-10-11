@@ -536,7 +536,176 @@ remove(savanna_plot_df, grass_plot_df, forest_plot_df,
 
 ```
 
- #Step 5b (i) - Trends in heatwaves, SPEI across veg formations
+#Step 5c (iii) Trend in at and trend in re
+```{r}
+trend_grid_creation_prediction <- function (df_analyses, 
+                                      xaxis_variable_in_quotes, 
+                                      line_variable_in_quotes, 
+                                      gam_model,
+                                      line_lower_plotting_in_quotes_name,
+                                      line_middle_plotting_in_quotes_name,
+                                      line_higher_plotting_in_quotes_name){
+  #Creating new data and running model
+  df_select <- df_analyses %>% dplyr::select(-c(notrend))
+  
+  var_x <- subset( df_select, select = xaxis_variable_in_quotes)
+  var_line <- subset( df_select, select = line_variable_in_quotes)
+  var_line <- as.vector(var_line) %>% unlist()
+  
+  xaxis_range <- seq(min(var_x),max(var_x),len = xaxis_range_len)
+  line_range <- c((mean(var_line) - sd(var_line)), 0 , (mean(var_line) + sd(var_line))) #changed middle scenario to be 0, so no change in trend
+  
+  df_means<- df_select %>% dplyr::select(-c(x,y,xaxis_variable_in_quotes, line_variable_in_quotes)) %>%
+    summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
+  
+  newd <- data.frame(expand.grid(xaxis_range, line_range))
+  names(newd) <- c(xaxis_variable_in_quotes, line_variable_in_quotes)
+  newd <- newd %>% bind_cols(df_means) %>% mutate(x= x1, y=y1)
+  pred <- mgcv::predict.bam(gam_model, newdata = newd, type="terms") 
+  pred <- as.data.frame(pred)
+  
+  #Selecting the coefficients
+  ind <- 1:xaxis_range_len
+  ind2 <- (xaxis_range_len + 1):(xaxis_range_len*2)
+  ind3 <- ((xaxis_range_len*2)+1):(xaxis_range_len*3)
+  
+  xy_interaction_effects <- grep("x,y",names(pred),fixed = T)
+  pred_without_xy_interaction_effects <- (subset(pred, select = -xy_interaction_effects))
+  
+  coef_index_trial1 <- grep(paste0("s(",xaxis_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial2 <- grep(paste0("s(",line_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T )
+  coef_index_trial3 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", line_variable_in_quotes, ")"),names(pred_without_xy_interaction_effects),fixed = T)
+  
+  effects_cols_indices <- c(coef_index_trial1, coef_index_trial2, coef_index_trial3)
+  
+  x1Eff <- rowSums(pred_without_xy_interaction_effects [ind, effects_cols_indices])
+  x1Eff_inv <- inv.logit(x1Eff + gam_model$coefficients[1])
+  x2Eff <- rowSums(pred_without_xy_interaction_effects [ind2, effects_cols_indices])
+  x2Eff_inv <- inv.logit(x2Eff + gam_model$coefficients[1])
+  x3Eff <- rowSums(pred_without_xy_interaction_effects [ind3, effects_cols_indices])
+  x3Eff_inv <- inv.logit(x3Eff + gam_model$coefficients[1])
+  
+  #Estimating 95% CI uncertainty
+  X <- mgcv::predict.bam(gam_model, newdata = newd, type ="lpmatrix")
+  n.sims <- 1000
+  b_sims <- rmvn(n.sims,coef(gam_model), gam_model$Vp) #beta unceratinty
+  
+  smooth_index_trial1 <- grep(paste0("s(",xaxis_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T) #selecting smooths
+  smooth_index_trial2 <- grep(paste0("s(",line_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T )
+  smooth_index_trial3 <- grep(paste0("ti(", xaxis_variable_in_quotes, ",", line_variable_in_quotes, ")"),names(coef(gam_model)),fixed = T )
+
+  smooth_index <- c(smooth_index_trial1, smooth_index_trial2, smooth_index_trial3)
+  
+  X1Eff_without_latlong <- tcrossprod( X[,smooth_index] , b_sims[,smooth_index] ) #spline computation
+  
+  calc_lower_XEff_1<- apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.025)
+  invlogit_lower_xEff_1 <- inv.logit(calc_lower_XEff_1 + gam_model$coefficients[1])
+  lower_xEff_1<- as.data.frame(invlogit_lower_xEff_1)
+  calc_higher_xEff_1 <- apply(X1Eff_without_latlong[1:200,], 1, quantile,probs = 0.975)
+  invlogit_higher_xEff_1 <- inv.logit(calc_higher_xEff_1 + gam_model$coefficients[1])
+  higher_xEff_1 <- as.data.frame(invlogit_higher_xEff_1)
+  ci_xEff <- bind_cols(lower_xEff_1, higher_xEff_1, xaxis_range)
+  names(ci_xEff)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  calc_lower_XEff_2<- apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.025)
+  invlogit_lower_xEff_2 <- inv.logit(calc_lower_XEff_2 + gam_model$coefficients[1])
+  lower_xEff_2 <- as.data.frame(invlogit_lower_xEff_2)
+  calc_higher_xEff_2 <- apply(X1Eff_without_latlong[201:400,], 1, quantile,probs = 0.975)
+  invlogit_higher_xEff_2 <- inv.logit(calc_higher_xEff_2 + gam_model$coefficients[1])
+  higher_xEff_2 <- as.data.frame(invlogit_higher_xEff_2)
+  ci_xEff_2 <- bind_cols(lower_xEff_2, higher_xEff_2, xaxis_range)
+  names(ci_xEff_2)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  calc_lower_XEff_3 <- apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.025)
+  invlogit_lower_xEff_3 <- inv.logit(calc_lower_XEff_3 + gam_model$coefficients[1])
+  lower_xEff_3 <- as.data.frame(invlogit_lower_xEff_3)
+  calc_higher_xEff_3 <- apply(X1Eff_without_latlong[401:600,], 1, quantile,probs = 0.975)
+  invlogit_higher_xEff_3 <- inv.logit(calc_higher_xEff_3 + gam_model$coefficients[1])
+  higher_xEff_3 <- as.data.frame(invlogit_higher_xEff_3)
+  ci_xEff_3 <- bind_cols(lower_xEff_3, higher_xEff_3, xaxis_range)
+  names(ci_xEff_3)<- c("lower.ci", "upper.ci", xaxis_variable_in_quotes)
+  
+  plot_df <- data.frame(xaxis_colname = xaxis_range)
+  low_plot_df <- plot_df %>% mutate(x1Eff_colname = x1Eff_inv, line_variable_type = line_lower_plotting_in_quotes_name)
+  names(low_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  low_plot_df <- left_join(low_plot_df, ci_xEff, by = xaxis_variable_in_quotes)
+  
+  average_plot_df <- plot_df %>% mutate(x1Eff_colname = x2Eff_inv, line_variable_type = line_middle_plotting_in_quotes_name)
+  names(average_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  average_plot_df <- left_join(average_plot_df, ci_xEff_2, by = xaxis_variable_in_quotes)
+  
+  high_plot_df <- plot_df %>% mutate(x1Eff_colname = x3Eff_inv, line_variable_type = line_higher_plotting_in_quotes_name)
+  names(high_plot_df)<- c(xaxis_variable_in_quotes, "main_effect", "line_variable_type")
+  high_plot_df <- left_join(high_plot_df, ci_xEff_3, by = xaxis_variable_in_quotes)
+  
+  
+  final_plot_df <- bind_rows(low_plot_df, average_plot_df, high_plot_df)
+  final_plot_df 
+}
+
+greening_trend_at_re <- trend_grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_annualtemp", 
+                                                           "trend_re",
+                                                           inc_gam,
+                                                           "low", "no change", "high")
+browning_trend_at_re <- trend_grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_annualtemp", 
+                                                           "trend_re",
+                                                           dec_gam,
+                                                           "low", "no change", "high")
+
+trend_combined_plot_df_prep <- function (greening_results, browning_results){
+  greening_results <- greening_results %>% mutate(TrajType = "Greening")
+  browning_results <- browning_results %>% mutate(TrajType = "Browning")
+  plot_df <- bind_rows (greening_results, browning_results)
+  plot_df
+}
+
+trend_at_re_plot_df <- trend_combined_plot_df_prep(greening_trend_at_re, browning_trend_at_re)
+
+plot_trend_interaction <- function (interaction_trend_df, xaxis_variable){
+  x_plot<- ggplot(interaction_trend_df, aes(x = .data[[xaxis_variable]], y = main_effect,
+                                          color = TrajType, fill =TrajType,
+                                          group = interaction(line_variable_type, TrajType))) +
+    geom_line(aes(color = TrajType), linewidth = 1) + 
+    geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.1) +
+    facet_wrap(~factor(line_variable_type, c("low", "no change", "high")), nrow=1)+
+    theme_classic() +
+    scale_fill_manual(values = c("#996633", "#669900"))+
+    scale_color_manual(values=c("#663300", "#61A36A")) + 
+    ylab ("Probability of trajectory type") + theme(legend.position="none")
+  x_plot
+}
+
+plot_trend_at_re <- plot_trend_interaction(trend_at_re_plot_df, "trend_annualtemp")
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "trend_at_re_probability.png"), plot_trend_at_re,
+        dpi = 700, height = 25, width=25, units = "cm")
+
+```
+
+#Step 5c (iv) Trend in spei and trend in heatwave
+```{r}
+greening_trend_heatwave_spei <- trend_grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_heatwave", 
+                                                           "trend_spei",
+                                                           inc_gam,
+                                                           "low", "no change", "high")
+browning_trend_heatwave_spei <- trend_grid_creation_prediction(analyses_df_noNA_nooutliers, 
+                                                           "trend_heatwave", 
+                                                           "trend_spei",
+                                                           dec_gam,
+                                                           "low", "no change", "high")
+
+trend_heatwave_spei_plot_df <- trend_combined_plot_df_prep(greening_trend_heatwave_spei, browning_trend_heatwave_spei)
+
+plot_trend_heatwave_spei <- plot_trend_interaction(trend_heatwave_spei_plot_df, "trend_heatwave")
+
+ggsave (here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "trend_heatwave_spei_probability.png"), plot_trend_heatwave_spei,
+        dpi = 700, height = 25, width=25, units = "cm")
+
+```
+
+#Step 5b (i) - Trends in heatwaves, SPEI across veg formations
 ```{r}
 # location
 x1 <- -43.2781
@@ -1177,8 +1346,8 @@ anthropic_dist_plot_df <- combined_plot_df_prep(greening_anthropicdist, browning
 
 univariate_relationships_list <- list(mean_at_plot_df, mean_re_plot_df, mean_burnedarea_plot_df, mean_spei_plot_df, 
                                       mean_heatwave_plot_df, mean_savanna_plot_df, mean_forest_plot_df, mean_grass_plot_df,
-                                     trend_at_plot_df, trend_re_plot_df, trend_ba_plot_df, trend_spei_plot_df, trend_heatwave_plot_df,
-                                     anthropic_dist_plot_df)
+                                     trend_at_plot_df, trend_re_plot_df, trend_ba_plot_df, trend_spei_plot_df, trend_heatwave_plot_df,anthropic_dist_plot_df)
+write_rds(univariate_relationships_list, here("Outputs", "TrendsResults", "Figures", "univariate_partialeffects.rds"))
 
 remove(mean_at_plot_df,mean_re_plot_df,mean_burnedarea_plot_df,mean_spei_plot_df, mean_heatwave_plot_df, mean_savanna_plot_df, mean_forest_plot_df, mean_grass_plot_df, trend_at_plot_df, trend_re_plot_df, trend_ba_plot_df, trend_spei_plot_df, trend_heatwave_plot_df, anthropic_dist_plot_df)
 
@@ -1394,3 +1563,47 @@ Sys.time(); mapping_probability_function("anthropic_dist", dec_gam, "Browning");
 
 ```
 
+#Step 5e (ii) - Plotting maps of probability of greening/browning for a combination drivres of climae (trend_at, trend_re and trend_heatwaves, trend_spei). Including s(x,y, mean_at) & s(trend_at, x,y)
+```{r}
+
+mapping_probability_function2 <- function (driver_variable1, driver_variable2, gam_model, greening_or_browning){
+  df_means <- analyses_df_noNA_nooutliers %>% 
+    dplyr::select(-c(x, y, driver_variable1, driver_variable2)) %>% 
+    summarise(across(where(is.numeric), ~mean(.x, na.rm= T)))
+  
+  df_to_predict<- analyses_df_noNA_nooutliers %>% 
+    dplyr::select(c(x, y, driver_variable1, driver_variable2)) %>% 
+    bind_cols(df_means)
+  
+  pred <- mgcv::predict.bam(gam_model, newdata = df_to_predict, type="terms") 
+  pred <- as.data.frame(pred)
+  pred <- pred %>% bind_cols(analyses_df_noNA_nooutliers %>% 
+    dplyr::select(c(x, y, driver_variable1, driver_variable2)))
+  
+  coef_index_trial1 <- grep(paste0("s(",driver_variable1,")"),names(pred),fixed = T)
+  coef_index_trial2 <- grep(paste0("s(",driver_variable2,")"),names(pred),fixed = T)
+  coef_index_trial3 <- grep(paste0("ti(",driver_variable1, driver_variable2,")"),names(pred),fixed = T)
+  coef_index_trial4 <- grep(paste0("ti(mean_at,x,y)"),names(pred),fixed = T)
+  coef_index_trial5 <- grep(paste0("ti(trend_annualtemp,x,y)"),names(pred),fixed = T)
+
+  effects_cols_indices <- c(coef_index_trial1, coef_index_trial2, coef_index_trial3, coef_index_trial4, coef_index_trial5)
+  
+  x1Eff <- rowSums(pred [effects_cols_indices])
+  x1Eff_inv <- inv.logit(x1Eff + gam_model$coefficients[1])
+  x1Eff_inv <- as.data.frame(x1Eff_inv)
+  x1Eff_inv <- x1Eff_inv %>% bind_cols(analyses_df_noNA_nooutliers %>% 
+    dplyr::select(c(x, y)))
+  names(x1Eff_inv)[1]<- "main_effect"
+  x1Eff_inv <- x1Eff_inv %>% dplyr::select(x,y, main_effect)
+  x_rast <- rast(as.data.frame(x1Eff_inv %>% drop_na()), type="xyz")
+  
+  writeRaster(x_rast, paste0(here("Outputs", "AnalysesResults", "GAMResults", "TwoWay_InteractionResults", "ResultsRasters", greening_or_browning), "/", driver_variable1, "_", driver_variable2, ".tif"))
+}
+
+Sys.time(); mapping_probability_function2("trend_annualtemp", "trend_re", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function2("trend_annualtemp", "trend_re", dec_gam, "Browning"); Sys.time()
+
+Sys.time(); mapping_probability_function2("trend_heatwave", "trend_spei", inc_gam, "Greening"); Sys.time()
+Sys.time(); mapping_probability_function2("trend_heatwave", "trend_spei", dec_gam, "Browning"); Sys.time()
+
+```
