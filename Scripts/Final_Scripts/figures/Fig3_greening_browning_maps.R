@@ -60,7 +60,6 @@ aggregate_mapping_function <- function (partialeffect_raster, greens_or_brown_va
 Sys.time(); map_greening <- aggregate_mapping_function(greening_rast, "greens"); Sys.time()
 Sys.time(); map_browning <- aggregate_mapping_function(browning_rast, "brown"); Sys.time()
 
-map_arrange <- tmap_arrange(map_greening, map_browning, nrow = 1, ncol =2)
-tmap_save(map_arrange, here("Outputs", "TrendsResults", "Figures", "Fig4", "map_green_brown.png"), 
-          width = 40, height = 40, units = "cm",
-          dpi = 300)
+map_arrange <- tmap_arrange(map_greening, map_browning,
+                            nrow = 1, ncol =2)
+tmap_save(map_arrange, here("Outputs", "TrendsResults", "Figures", "Fig4", "map_green_brown.png"))
