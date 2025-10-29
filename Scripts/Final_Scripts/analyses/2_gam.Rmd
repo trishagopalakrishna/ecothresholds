@@ -157,7 +157,7 @@ distribution_plot
 analyses_df_plot <- plot_df_function (analyses_df_noNA_nooutliers)
 
 remove(plot_df_function, remove_HAND_outliers, remove_NA)
-#write_rds(analyses_df_noNA_nooutliers, here("Scripts", "Final_Scripts", "analyses", "analyses_df_noNA_nooutliers.rdata"))
+write_rds(analyses_df_noNA_nooutliers, here("Scripts", "Final_Scripts", "analyses", "analyses_df_noNA_nooutliers.rds"))
 
 ```
 
