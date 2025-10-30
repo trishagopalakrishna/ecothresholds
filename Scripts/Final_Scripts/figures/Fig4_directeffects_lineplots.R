@@ -16,7 +16,6 @@ library(scales)
 analyses_df_noNA_nooutliers <- read_rds(here("Scripts", "Final_Scripts", "analyses", "analyses_df_noNA_nooutliers.rds"))
 
 greening_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses", "onemodel_inc.rds"))
-browning_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses" ,"onemodel_dec.rds"))
 
 #2. Calculation of smooths and se for greening and browning model only for direct causal relationships
 x1 <- -43.2781
@@ -132,11 +131,6 @@ greening_trend_at_re <- composite_grid_creation_prediction1(analyses_df_noNA_noo
                                                        "trend_annualtemp", 
                                                        "trend_re",
                                                        greening_gam)
-browning_trend_at_re <- composite_grid_creation_prediction1(analyses_df_noNA_nooutliers, 
-                                                       "trend_annualtemp", 
-                                                       "trend_re",
-                                                       browning_gam)
-
 
 # & ti(trend_heatwaves, trend_spei). Considering only one "more drought" condition value
 composite_grid_creation_prediction2 <- function (df_analyses, 
@@ -231,24 +225,17 @@ greening_trend_heatwave_spei <- composite_grid_creation_prediction2(analyses_df_
                                                                "trend_heatwave", 
                                                                "trend_spei",
                                                                greening_gam)
-browning_trend_heatwave_spei <- composite_grid_creation_prediction2(analyses_df_noNA_nooutliers, 
-                                                               "trend_heatwave", 
-                                                               "trend_spei",
-                                                               browning_gam)
 
 composite_combined_plot_df_prep <- function (greening_results, browning_results){
   greening_results <- greening_results %>% mutate(TrajType = "Greening")
-  browning_results <- browning_results %>% mutate(TrajType = "Browning")
-  plot_df <- bind_rows (greening_results, browning_results)
-  plot_df
+  greening_results
 }
 
-composite_at_re_plot_df <- composite_combined_plot_df_prep(greening_trend_at_re, browning_trend_at_re)
-composite_heatwave_spei_plot_df <- composite_combined_plot_df_prep(greening_trend_heatwave_spei, browning_trend_heatwave_spei)
+composite_at_re_plot_df <- composite_combined_plot_df_prep(greening_trend_at_re)
+composite_heatwave_spei_plot_df <- composite_combined_plot_df_prep(greening_trend_heatwave_spei)
 
 composite_plot_df_list <- list(composite_at_re_plot_df, composite_heatwave_spei_plot_df)
-remove(greening_trend_at_re, greening_trend_heatwave_spei,
-       browning_trend_at_re, browning_trend_heatwave_spei)
+remove(greening_trend_at_re, greening_trend_heatwave_spei)
 remove(composite_combined_plot_df_prep, composite_grid_creation_prediction1, composite_grid_creation_prediction2)
 remove(composite_at_re_plot_df, composite_heatwave_spei_plot_df)
 
@@ -309,34 +296,26 @@ greening_anthropicdist <- grid_creation_prediction(analyses_df_noNA_nooutliers,
                                                    "anthropic_dist", greening_gam)
 greening_trend_burnedarea <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
                                                      "trend_burnedarea", greening_gam)
-greening_mean_savanna<- grid_creation_prediction(analyses_df_noNA_nooutliers, 
+greening_mean_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
                                                  "mean_savanna_percentage", greening_gam)
-browning_anthropicdist <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                   "anthropic_dist", browning_gam)
-browning_trend_burnedarea <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                     "trend_burnedarea", browning_gam)
 
-combined_plot_df_prep <- function (greening_results, browning_results){
+combined_plot_df_prep <- function (greening_results){
   greening_results <- greening_results %>% mutate(TrajType = "Greening")
-  browning_results <- browning_results %>% mutate(TrajType = "Browning")
-  plot_df <- bind_rows (greening_results, browning_results)
-  plot_df
+  greening_results
 }
 
-anthropic_plot_df <- combined_plot_df_prep(greening_anthropicdist, browning_anthropicdist)
-burnedarea_plot_df <- combined_plot_df_prep(greening_trend_burnedarea, browning_trend_burnedarea)
-greening_mean_savanna <- greening_mean_savanna %>% mutate(TrajType = "Greening") 
+anthropic_plot_df <- combined_plot_df_prep(greening_anthropicdist)
+burnedarea_plot_df <- combined_plot_df_prep(greening_trend_burnedarea)
+greening_mean_savanna <- combined_plot_df_prep(greening_mean_savanna) 
 
 univariate_plot_df_list <- list(anthropic_plot_df, burnedarea_plot_df, greening_mean_savanna)
 
-remove(greening_anthropicdist, greening_trend_burnedarea, greening_mean_savanna,
-       browning_anthropicdist, browning_trend_burnedarea)
+remove(greening_anthropicdist, greening_trend_burnedarea, greening_mean_savanna)
 remove(grid_creation_prediction, combined_plot_df_prep)
 remove(anthropic_plot_df, burnedarea_plot_df)
 
 #3. Line plots of partial effects/probability for direct causal relationships
 greening_intercept_transposed <- inv.logit(greening_gam$coefficients[[1]])
-browning_intercept_transposed <- inv.logit(browning_gam$coefficients[[1]])
 
 composite_plot_function <- function (interaction_trend_df, xaxis_variable, xaxis_label){
   x_plot<- ggplot(interaction_trend_df, aes(x = .data[[xaxis_variable]], y = main_effect,
@@ -346,11 +325,10 @@ composite_plot_function <- function (interaction_trend_df, xaxis_variable, xaxis
     geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.1) +
     coord_cartesian(xlim = c(quantile(interaction_trend_df[[xaxis_variable]], probs=0.1),quantile(interaction_trend_df[[xaxis_variable]], probs=0.9)), ylim = c(0,1))+
     geom_hline(yintercept= greening_intercept_transposed, linetype='longdash', col = 'grey')+
-    geom_hline(yintercept= browning_intercept_transposed, linetype='longdash', col = 'grey')+
     facet_wrap(~factor(line_variable_type2, unique(interaction_trend_df$line_variable_type2)), nrow=1)+
     theme_classic(base_size = 10) +
-    scale_fill_manual(values = c("#996633", "#669900"))+
-    scale_color_manual(values=c("#663300", "#61A36A")) + 
+    scale_fill_manual(values = c( "#669900"))+
+    scale_color_manual(values=c( "#61A36A")) + 
     ylab ("Probability of trajectory type") + 
     xlab(xaxis_label)+
     theme(legend.position="none")
@@ -460,9 +438,8 @@ univariate_plotting <- function (var, x_label, univariate_relationship_df){
     geom_line(alpha = 0.8, lwd = 0.6) +
     coord_cartesian(xlim = c(quantile(univariate_relationship_df$var, probs=0.1),quantile(univariate_relationship_df$var, probs=0.9)), ylim = c(0,1)) +
     geom_hline(yintercept= greening_intercept_transposed, linetype='longdash', col = 'grey')+
-    geom_hline(yintercept= browning_intercept_transposed, linetype='longdash', col = 'grey')+
-    scale_fill_manual(values = c("#996633", "#669900")) + 
-    scale_color_manual(values = c("#663300", "#61A36A")) +
+    scale_fill_manual(values = c("#669900")) + 
+    scale_color_manual(values = c( "#61A36A")) +
     scale_x_continuous( labels = label_number()) +
     labs(x = x_label,
          y = "Probability of trajectory type") +
@@ -483,41 +460,10 @@ burnedarea_plot <- univariate_plotting("trend_burnedarea", "trend in burned area
 ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_burnedarea2.png"),
        burnedarea_plot,
        dpi=700, width =10, height = 10, units = "cm")
-
-savanna_univariate_plotting <- function (var, x_label, univariate_relationship_df){
-  
-  data_df <- analyses_df_noNA_nooutliers %>%
-    dplyr::select(all_of(var)) %>%
-    dplyr::rename(z = 1) %>%
-    filter(if_all(where(is.numeric), ~ between(.x, quantile(.x, .1), quantile(.x, .9))))
-  density <- ggplot(data_df, aes(x = z)) +
-    geom_density(colour = "grey70", fill = "grey90", alpha = 0.6) +
-    theme_void(base_size = 12)
-  
-  plot <- ggplot(univariate_relationship_df, aes(x = .data[[var]], y = main_effect, group = TrajType, colour = TrajType, fill = TrajType)) +
-    geom_ribbon(aes(ymin = lower.ci, ymax = upper.ci), alpha = 0.2) + 
-    geom_line(alpha = 0.8, lwd = 0.6) +
-    coord_cartesian(xlim = c(quantile(univariate_relationship_df$var, probs=0.1),quantile(univariate_relationship_df$var, probs=0.9)), ylim = c(0,1)) +
-    geom_hline(yintercept= greening_intercept_transposed, linetype='longdash', col = 'grey')+
-    scale_fill_manual(values = c( "#669900")) + 
-    scale_color_manual(values = c( "#61A36A")) +
-    scale_x_continuous( labels = label_number()) +
-    labs(x = x_label,
-         y = "Probability of trajectory type") +
-    theme_classic(base_size = 12) + theme(legend.position="none")
-  
-  x<- patchwork::wrap_elements(density) + 
-    patchwork::wrap_elements(plot) +
-    patchwork::plot_layout(ncol = 1, nrow = 2, widths = 4, heights = c(1, 4))
-  x
-  
-}
-
-savanna_plot <- savanna_univariate_plotting("mean_savanna_percentage", "average proportion of savanna area (%)", univariate_plot_df_list[[3]])
+savanna_plot <- univariate_plotting("mean_savanna_percentage", "average proportion of savanna area (%)", univariate_plot_df_list[[3]])
 ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_savanna2.png"),
        savanna_plot,
        dpi=700, width =10, height = 10, units = "cm")
-
 
 
 #composite legend only
@@ -530,41 +476,5 @@ green_legend_map<- tm_shape(cerrado)+ tm_borders()+
 tmap_save(green_legend_map, here("Outputs", "TrendsResults", "Figures", "Fig3", "green_legend.png"), 
           width = 5, height = 5, units = "cm",
           dpi = 300)
-
-brown_legend_map<- tm_shape(cerrado)+ tm_borders()+
-  tm_polygons(fill.scale = tm_scale_categorical(n=1, values = "grey"))+
-  tm_shape (browning_trend_at_re) + 
-  tm_raster(col.scale = tm_scale_continuous(values = "brown"),
-            col.legend = tm_legend(show= TRUE, title = "Probability", reverse = T, frame.color = NA) )+
-  tm_layout(legend.only = T)
-tmap_save(brown_legend_map, here("Outputs", "TrendsResults", "Figures", "Fig3", "brown_legend.png"), 
-          width = 5, height = 5, units = "cm",
-          dpi = 300)
-
-#5.Plot arrangement for univariate plots
-x_anthropic <- patchwork::wrap_elements(anthropic_plot) +
-  patchwork::wrap_elements(tmap_grob(map_green_anthropicdist))+
-  patchwork::wrap_elements(tmap_grob(map_brown_anthropicdist))+
-  patchwork::plot_layout(ncol = 3, nrow = 1)
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_anthropicdist.png"),
-       x_anthropic,
-       dpi=700, width = 30, height = 10, units = "cm")
-
-
-x_burnedarea <- patchwork::wrap_elements(burnedarea_plot) +
-  patchwork::wrap_elements(tmap_grob(map_green_burnedarea))+
-  patchwork::wrap_elements(tmap_grob(map_brown_burnedarea))+
-  patchwork::plot_layout(ncol = 3, nrow = 1)
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_burnedarea.png"),
-       x_burnedarea,
-       dpi=700, width = 30, height = 10, units = "cm")
-
-x_savanna <- patchwork::wrap_elements(savanna_plot) +
-  patchwork::wrap_elements(tmap_grob(map_green_savanna))+
-  patchwork::wrap_elements(tmap_grob(map_brown_savanna))+
-  patchwork::plot_layout(ncol = 3, nrow = 1)
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_savanna.png"),
-       x_savanna,
-       dpi=700, width = 30, height = 10, units = "cm")
 
 
