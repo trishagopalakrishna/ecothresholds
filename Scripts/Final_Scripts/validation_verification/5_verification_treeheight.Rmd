@@ -1,0 +1,93 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I explore the results of this project against %annual woody cover change estimated by Hunter et al 2025 
+"Global 30-m annual median vegetation height maps (2000–2022) based on ICESat-2 data and Machine Learning". 
+(1) Data input and mosaicing
+(2) Process input data to match resolution of 1km (this project)
+(3) Mask resampled input data against results of this project
+(4) Results compilation
+
+#Step 1 - significant trends in median height (30m) resolution was exported out of
+GEE, which is the data input below
+```{r}
+#Data input
+raster_filepath <- list.files(path = here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight"), pattern= paste0("*.tif"), all.files=TRUE, full.names=TRUE)
+raster_list<-lapply(raster_filepath, rast)
+
+d_trans<- st_read(here("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+#Mosiac
+Sys.time(); mosaiced_sigveg <- terra::vrt(raster_filepath); Sys.time()
+
+#Crop/mask
+crop_mask_function <- function (raster){
+  x_crop <- terra::crop(raster, vect(cerrado))
+  x_mask <- terra::mask (x_crop, vect(cerrado))
+  x_mask
+}
+
+Sys.time(); cerrado_sigveg <- crop_mask_function(mosaiced_sigveg); Sys.time() #half hour
+
+#Scaling from GEE
+scaled_cerrado_sigveg <- cerrado_sigveg/10^5
+writeRaster(scaled_cerrado_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "scaled_cerrado_sigveg.tif"))
+```
+
+#Step 2 - Coarsen sig veg height trend to 1km and mask to results
+```{r}
+monthly_NDVI_disagg_results <- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly", "ndvi_monthly_swin11.tif"))
+#1-Linear decrease 2-Linear increase 3- No trend 4-Step decrease 5- Step increase 6- Quad dec acc 7-Quad dec decc 8- Quad inc acc 9-Quad inc decc
+
+Sys.time(); coarse_scaled_sigveg <- terra::resample(scaled_cerrado_sigveg, monthly_NDVI_disagg_results, method ="mean"); Sys.time() #20 min
+
+Sys.time(); mask_coarse_scaled_sigveg <- terra::mask(coarse_scaled_sigveg, monthly_NDVI_disagg_results); Sys.time()
+writeRaster(mask_coarse_scaled_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "mask_coarse_scaled_sigveg.tif"))
+
+together <- c(mask_coarse_scaled_sigveg, monthly_NDVI_disagg_results)
+Sys.time(); sigveg_traj_df <- terra::as.data.frame(together); Sys.time()
+
+names(sigveg_traj_df)<- c("percentage_annualchange", "trajectory_number")
+sigveg_traj_df <- sigveg_traj_df %>% mutate(TrajectoryType= case_when(trajectory_number==1 ~"Linear_decrease",
+                                trajectory_number==2 ~"Linear_increase",
+                                trajectory_number==3 ~"No_trend",
+                                trajectory_number==4 ~"Step_decrease",
+                                trajectory_number==5 ~"Step_increase", 
+                                trajectory_number==6 ~"Quad_dec_acc",
+                                trajectory_number==7 ~"Quad_dec_decc",
+                                trajectory_number==8 ~"Quad_inc_acc",
+                                trajectory_number==9 ~"Quad_inc_decc")) 
+
+```
+
+#Step 3- Results compilation
+```{r}
+
+p <- ggplot(sigveg_traj_df, aes(x=TrajectoryType, y=percentage_annualchange)) + 
+  geom_boxplot(outlier.shape = NA) +
+  theme_minimal()
+p
+
+```
+
