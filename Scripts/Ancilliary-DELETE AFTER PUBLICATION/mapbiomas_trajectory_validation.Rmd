@@ -1,0 +1,922 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script, I do validation of the classification trajectory method using points at 
+which I know there are transitions (change in LULC from Mapbiomas). In GEE script 
+AbruptChanges_Cerrado/LULCChanges/Sample_Transitions, I prepare 4 rasters for each 
+#type of transition with earliest date of transition and in each of the 4 rasters I sample 1000 points. 
+
+In the chunk below, I load the 1000 points wach for the 4 rasters (4000 points), 
+prepare it, and extract the anisoEVI data for each point
+
+#1. Data load, prepare and extract anisoEVI data
+```{r}
+pts_path<- list.files(path = here("Data", "Savanna_transitions"), 
+                       pattern='.geojson$', all.files=TRUE, full.names=TRUE) #alphabetical order
+
+pts_list<- list()
+for(i in 1:length(pts_path)){
+  pt<- st_read(pts_path[[i]])
+  pts_list[[i]]<- pt
+}
+remove(pt)
+
+#1. Adding transition type
+pts_list[[1]]<- pts_list[[1]] %>% mutate(TransType="S_Farm")
+pts_list[[1]]<- pts_list[[1]] %>% mutate(CellID=paste0 ("Farm_", 1:nrow(pts_list[[1]])))
+pts_list[[2]]<- pts_list[[2]] %>% mutate(TransType="S_Forest")
+pts_list[[2]]<- pts_list[[2]] %>% mutate(CellID=paste0 ("Forest_", 1:nrow(pts_list[[2]])))
+pts_list[[3]]<- pts_list[[3]] %>% mutate(TransType="S_OtherNative")
+pts_list[[3]]<- pts_list[[3]] %>% mutate(CellID=paste0 ("OtherNative_", 1:nrow(pts_list[[3]])))
+pts_list[[4]]<- pts_list[[4]] %>% mutate(TransType="S_Pasture")
+pts_list[[4]]<- pts_list[[4]] %>% mutate(CellID=paste0 ("Pasture_", 1:nrow(pts_list[[4]])))
+
+validation_pts<- do.call(rbind,pts_list)
+remove(pts_list, i)
+validation_pts
+
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+
+map_validation_pts<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape (validation_pts)+
+  tm_dots(size=0.03) 
+tmap_save(map_validation_pts, here("Outputs", "Sample_Validation", "3882samplepoints_map.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+#2/ Extracting anisoEVI timeseries at each point
+#evi<- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "mosaiced_anisoEVI.tif"))
+#Sys.time();evi_scaled<- evi/10^5;Sys.time() #scaling factor mentioned on the description page of the GEE asset
+#writeRaster(evi_scaled, here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "scaled_mosaiced_anisoEVI.tif"))
+evi_scaled <- rast(here("Data", "Indices", "AnisoEVI_Cerrado_GEE", "scaled_mosaiced_anisoEVI.tif"))
+
+##changing band names to year and months
+colnames<- list()
+tic(); for ( i in 1:nlyr(evi_scaled)){
+  x<- names(evi_scaled)[[i]]
+  y<- paste0(strsplit(x, "_")[[1]][5], "_",strsplit(x, "_")[[1]][6] )
+  colnames[[i]] <-y
+}; toc()
+colnames<- unlist(colnames)
+names(evi_scaled)<- colnames
+evi_scaled2<- evi_scaled[[23:262]]
+remove(evi_scaled)
+
+tic(); anisoEVI_validation_pts<- terra::extract(evi_scaled2, validation_pts, method= "simple", xy=TRUE, bind=T); toc() #1min
+anisoEVI_validation_pts<- sf::st_as_sf(anisoEVI_validation_pts)
+pivot_validation_pts<- pivot_longer(anisoEVI_validation_pts, cols = 6:245)
+summary(pivot_validation_pts)#2.3 % of 960000 rows missing og_anisoEVI value
+
+pivot_validation_pts<- pivot_validation_pts %>% separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+pivot_validation_pts<- pivot_validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","NewID"))
+pivot_validation_pts<- pivot_validation_pts %>% mutate(CellID= paste0(TransTo, NewID))
+
+remove(evi,x,y, i)
+```
+
+
+In the next chunk I need to deal with the NA anisoEVI values for each unique pixel, similar to what I have done 
+for the actual analyses. I exclude all pixels that have 4 or more consecutive missing anisoEVI values in one year,
+then I linearly interpolate for pixels with 1 consecutive missing value. For remaining missing values, I take the
+climatological mean. 
+
+```{r}
+#1. exclude pts in any transition that has 4 or missing consecutive anisoEVI values in a year
+no_consecutive_NA<- function (x){
+  y<- is.na(x)
+  if (sum(y)==0){
+    x<-0
+  } else {
+    x<- max(rle(y)$lengths[rle(y)$values])
+  }
+  x
+}
+
+pivot_validation_pts <- pivot_validation_pts %>% group_by(TransTo, NewID, Year) %>%
+    mutate(no_consecutive_NA= no_consecutive_NA(value))
+summary(pivot_validation_pts)
+pivot_validation_pts2 <- pivot_validation_pts %>% group_by(CellID) %>% filter(max(no_consecutive_NA)<4) 
+
+#2. Linearly impute values where maxgap is 1 for each unique cellid
+tic(); pivot_validation_pts3<- pivot_validation_pts2%>%
+  group_by(CellID) %>%
+  mutate(value_int = imputeTS::na_interpolation(value, option = "linear", maxgap = 1));toc()
+summary(pivot_validation_pts3) 
+
+#3. Remaining missing values in value_int, fill by using climatological mean for that point 
+tic(); pivot_validation_pts4 <- pivot_validation_pts3 %>%
+  group_by(CellID, Month) %>%
+  mutate(value_mean = mean(value, na.rm=T)) %>%
+  mutate(value_int= ifelse(is.na(value), value_mean, value)); toc() #11 min
+summary(pivot_validation_pts4)
+
+remove(no_consecutive_NA, evi_scaled2)
+```
+
+
+In the next chunk, I complete the stl decomposition for each unique pixel followign the same rules as the main analyses
+
+```{r}
+library(stlplus)
+stl_decomposition_function<- function (one_pixel_df){
+    one_pixel_ts<- ts(one_pixel_df$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+    stl_df<- stlplus(one_pixel_ts, s.window = 11, s.degree = 1, t.degree = 1)
+    df_needed<- (stl_df$data)
+    df_needed<- df_needed %>% bind_cols(one_pixel_df)
+    df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+    df_needed<- df_needed %>% dplyr::select(-c(raw, seasonal, remainder))
+    df_needed
+}
+
+tic()
+pivot_validation_pts5 <- pivot_validation_pts4 %>%
+    group_by(CellID) %>%
+    nest() %>%
+    mutate(stl_data = purrr::map(data, stl_decomposition_function)) %>%
+    select(-data) %>%
+    unnest(stl_data)
+toc()
+
+remove(pivot_validation_pts, stl_decomposition_function)
+remove(validation_pts)
+```
+
+In the next chunk I include the classification functions
+```{r}
+library(MuMIn)
+
+class_trajectory_mod <- function (dataset = NULL, interval_size = 0.5) {
+  dataset<- dataset %>% mutate(Months= 1:nrow(dataset))
+  #Trajectory fitting
+  null_mod<- lm(trend ~ 1, data = dataset) ##1. No intercept
+  summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
+  nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2)/length(dataset$trend))/sd(dataset$trend)
+  aic_null<- MuMIn::AICc(null_mod)
+
+  linear_mod<- lm(trend ~ Months, data = dataset) ##2.linear
+  summary(linear_mod)
+  nmrs_lin<- sqrt(sum(summary(linear_mod)$residuals^2)/length(dataset$trend))/sd(dataset$trend)
+  aic_lin<- MuMIn::AICc(linear_mod)
+
+  orth_poly_mod<- lm(trend ~ poly(Months,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
+  summary(orth_poly_mod)
+  nmrs_quad<- sqrt(sum(summary(orth_poly_mod)$residuals^2)/length(dataset$trend))/sd(dataset$trend)
+  aic_quad<- MuMIn::AICc(orth_poly_mod)
+
+  ## To get relevant values for quadratic output - Directly from Pellise et al., 2024 
+  ## https://github.com/matpelissie/abrupt_shifts_ecological_timeseries_classification/blob/main/R/functions_trajclass.R
+  
+  # After getting Y = gamma*chi + delta*X' + epsilon with orthogonal polynomial,
+  # we have to perform a variable change to obtain relevant values in the X interval 
+  # for first_order_coefficient, second_order_coefficient and intercept, 
+  # knowing that X'= alpha*X + beta and chi = eta*X'^2 + theta
+
+  gammab  <-  orth_poly_mod$coefficients[3]
+  delta  <-  orth_poly_mod$coefficients[2]
+  epsilon  <-  orth_poly_mod$coefficients[1]
+
+  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Months)$coef[2]
+  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Months)$coef[1]
+
+  eta  <-  1/lm((orth_poly_mod$model[, 2][, 1])^2 ~
+                orth_poly_mod$model[, 2][, 2])$coef[2]
+  theta  <-  (-lm((orth_poly_mod$model[, 2][, 1])^2 ~
+                  orth_poly_mod$model[, 2][, 2])$coef[1])*eta
+
+  Y2 <- dataset$trend*(max(dataset$Months)-min(dataset$Months))/(max(dataset$trend)-min(dataset$trend)) 
+
+  # p2 and p3 are relevant when Y and X amplitudes are equivalent,in particular when 
+  # studying scaled-to-1 indices, Y and X amplitudes may be very different, so we 
+  # scaled the amplitudes to calculate p2 and p3
+
+  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$Months,2, raw=T))$coefficients
+
+  # Quadratic model output:
+  classification <-
+    data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = (alpha^2)*gammab*eta,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               # points of interest:
+               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta),
+               p2 = (-polynomial_orthonormal_basis[2]+1)/
+                 (2*polynomial_orthonormal_basis[3]),
+               p3 = (-polynomial_orthonormal_basis[2]-1)/
+                 (2*polynomial_orthonormal_basis[3]),
+               aic = aic_quad,
+               nrmse = nmrs_quad,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+  
+  # Linear model output:
+  classification[2,] <-
+    data.frame(first_order_coefficient = delta*alpha,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = epsilon+delta*beta,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_lin,
+               nrmse = nmrs_lin,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+
+  # No change model output:
+  classification[3,] <-
+    data.frame(first_order_coefficient = 0,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = null_mod$coefficients,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_null,
+               nrmse = nmrs_null,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+
+
+  # Classification of each model fitted:
+  for (i in 1:3){
+
+    # Compute the derivative at xm-delta and at xm + delta with delta being
+    # half of the input interval size (its 25% of the time interval which is set as 0.5)
+      derivative <-
+        2*(classification$x_m[i] - (dataset$Months[length(dataset$Months)]-dataset$Months[1])*(interval_size/2))*  
+        classification$second_order_coefficient[i] +
+        classification$first_order_coefficient[i]
+      derivative2 <-
+        2*(classification$x_m[i] + (dataset$Months[length(dataset$Months)]-dataset$Months[1])*(interval_size/2))*
+        classification$second_order_coefficient[i] +
+        classification$first_order_coefficient[i]
+
+
+      if(sign(derivative) != sign(derivative2) | i==3){
+      # non consistent direction around x_m
+        classification$derivative[i]  <-  NA
+        classification$intercept_derivative[i]  <-  NA
+
+      } else {
+      # consistent direction around x_m
+        classification$derivative[i] <- mean(c(derivative, derivative2))
+        classification$intercept_derivative[i] <-
+          (classification$second_order_coefficient[i]*classification$x_m[i]^2+
+             classification$first_order_coefficient[i]*classification$x_m[i]+
+              classification$intercept[i]) -
+          classification$x_m[i]*classification$derivative[i]
+      }
+
+    # Compute the derivative of the curvature function to get acceleration:
+      classification$derivated_curvature[i] <-
+        -12*(classification$second_order_coefficient[i]^2)*
+        (2*classification$second_order_coefficient[i]*classification$x_m[i]+
+           classification$first_order_coefficient[i])*
+        (classification$second_order_coefficient[i]/
+           abs(classification$second_order_coefficient[i]))/
+        ((1+(2*classification$second_order_coefficient[i]*classification$x_m[i]+
+            classification$first_order_coefficient[i])^2)^(2.5))
+
+    # Keep derivated curvature even if not significant for polynomial fit:
+      if(classification$second_order_pvalue[i]>0.05 & i != 1){
+        classification$derivated_curvature[i] <- NA
+      }
+
+    # Classify the direction:
+      classification$direction[i] <- NA
+        classification$direction[i][which(
+          classification$derivative[i] > 0)] <- "increase"
+      classification$direction[i][which(
+        classification$derivative[i] < 0)] <- "decrease"
+      classification$direction[i][which(
+        is.na(classification$derivative[i]))] <- "stable"
+      classification$direction[i][which(
+        as.numeric(classification$first_order_pvalue[i])>0.05 &
+          as.numeric(classification$second_order_pvalue[i])>0.05)] <- "stable"
+
+    # Classify the acceleration:
+      classification$acceleration[i] <- NA
+        classification$acceleration[i][which(
+          classification$derivated_curvature[i] < 0)] <- "accelerated"
+      classification$acceleration[i][which(
+        classification$derivated_curvature[i] > 0)] <- "decelerated"
+      classification$acceleration[i][which(
+        classification$direction[i] == "stable" &
+          classification$second_order_coefficient[i] < 0)] <- "concave"
+      classification$acceleration[i][which(
+        classification$direction[i] == "stable" &
+          classification$second_order_coefficient[i] > 0)] <- "convex"
+      classification$acceleration[i][which(
+        is.na(classification$derivated_curvature[i]))] <- "constant"
+
+    # Give the final classification combining direction and acceleration:
+      classification$shape_class[i] <- paste(classification$direction[i],
+                                             classification$acceleration[i],
+                                             sep="_")
+  }
+  
+  # Abrupt breakpoint analyses
+  chng_fit<- chngpt::chngptm(formula.1=trend~1,
+                      formula.2=~Months,
+                      family="gaussian", data=dataset,
+                      type="step",
+                      var.type="bootstrap", weights=NULL)
+
+  pred_chg <- data.frame(timestep = dataset$Months,
+                         bp = chng_fit$best.fit$fitted.values)
+
+  chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$trend))/sd(dataset$trend)
+
+  classification[4, 13] <- chng_fit$chngpt
+  classification[4, 11] <- MuMIn::AICc(chng_fit)
+  classification[4, 12] <- chng_nrmse
+  classification[4, 14] <- ifelse(pred_chg$bp[1] >
+                                       pred_chg$bp[length(pred_chg$bp)],
+                                     "decrease", "increase")
+  classification[4, 15] <-  pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]
+  classification[4, 16] <-  (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
+                        max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1]))
+  classification[4, 17] <-  dataset %>%
+                                  dplyr::filter(Months<=chng_fit$chngpt) %>%
+                                  dplyr::pull(trend) %>%
+                                  sd()
+  classification[4, 18] <- dataset %>%
+                        dplyr::filter(Months>=chng_fit$chngpt) %>%
+                        dplyr::pull(trend) %>%
+                        sd()
+  
+  row.names(classification) <- c("Y_pol","Y_lin", "Y_nch", "Y_abpt")
+  
+   classification$CellID <- unique(dataset$CellID)
+  #classification$x <- unique(dataset$x)
+  #classification$y <- unique(dataset$y)
+
+  return(classification)
+}
+```
+
+In the next chunk I apply the classification function to the above detrended data. 
+```{r}
+numCores<- 32
+library(foreach)
+library(doParallel)
+
+my.cluster<- parallel::makeCluster(
+  numCores,
+  type = "FORK",
+  outfile = ""
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+foreach::getDoParRegistered() #should be TRUE
+foreach::getDoParWorkers() #should give numCores
+
+uniquecell_list<- pivot_validation_pts5 %>% group_split(CellID)
+##Converting above to nested parallelized foreach loop
+Sys.time(); x_class_trajectory<- foreach(
+  i= 1:length(uniquecell_list),
+  .combine= "rbind") %dopar%
+    (uniquecell_list[[i]] %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, class_trajectory_mod)) %>%
+      unnest(classification_data)
+       ); Sys.time()
+
+remove(uniquecell_list)
+stopCluster(my.cluster)
+
+x_class_trajectory <- x_class_trajectory %>% dplyr::select(-data)
+write_rds(x_class_trajectory, here("Outputs", "Sample_Validation", "3882points_trajectories.rds"))
+
+```
+
+In the next chunk I apply the model selection function
+```{r}
+model_levels <- c("Null", "Lin", "Step", "Quad")
+
+model_select<- function(models_pixel_df){
+  #adding model name which did not get exported out in the classification function( row.names)
+  models_pixel_df <- models_pixel_df %>% mutate(model_order=ordered(c("Quad", "Lin", "Null", "Step"),
+                                                                    levels = model_levels))
+  # #adding model simplicity for selection in next few steps
+  # models_pixel_df<- models_pixel_df %>% mutate(modelorder= case_when( model_type=="Null"~1,
+  #                                   model_type=="Lin"~2,
+  #                                   model_type=="Step"~3,
+  #                                   model_type=="Quad"~4))
+  #least AIC model selection
+  models_pixel_df <- models_pixel_df %>%
+    mutate(aic_diff= abs(aic) - min(abs(aic))) #wrt model with least AIC
+  
+  condition_less2<- models_pixel_df %>% filter(aic_diff<=2)
+  
+  if (dim(condition_less2)[1]==1){
+    models_pixel_df<- condition_less2 
+  } else{
+    models_pixel_df<- condition_less2 %>% 
+      filter(model_order==min(model_order))
+  }
+  models_pixel_df 
+}
+
+Sys.time(); x_modelselect<- x_class_trajectory %>% 
+  group_by(CellID) %>%
+  nest() %>%
+  mutate(modelselect_data = purrr::map(data, model_select)) %>%
+  unnest(modelselect_data)
+; Sys.time()
+
+x_modelselect <- x_modelselect %>% dplyr::select(-data)
+write_rds(x_modelselect, here("Outputs", "Sample_Validation", "3882points_finalmodel.rds"))
+```
+
+I repeat above classification of trajectory and model selection using the original
+anisoEVI values. 
+
+```{r}
+library(MuMIn)
+class_oganisoEVI_mod <- function (dataset = NULL, interval_size = 0.5) {
+  dataset<- dataset %>% mutate(Months= 1:nrow(dataset))
+  #Trajectory fitting
+  null_mod<- lm(og_anisoEVI ~ 1, data = dataset) ##1. No intercept
+  summary(null_mod) #significant pvalue next to intercept  means that the mean is significantly different from 0
+  nmrs_null<- sqrt(sum(summary(null_mod)$residuals^2)/length(dataset$og_anisoEVI))/sd(dataset$og_anisoEVI, na.rm = T)
+  aic_null<- MuMIn::AICc(null_mod)
+
+  linear_mod<- lm(og_anisoEVI ~ Months, data = dataset) ##2.linear
+  summary(linear_mod)
+  nmrs_lin<- sqrt(sum(summary(linear_mod)$residuals^2)/length(dataset$og_anisoEVI))/sd(dataset$og_anisoEVI, na.rm=T)
+  aic_lin<- MuMIn::AICc(linear_mod)
+
+  orth_poly_mod<- lm(og_anisoEVI ~ poly(Months,2, raw=F), data = dataset) #raw=F means orthogonal polynomials are used
+  summary(orth_poly_mod)
+  nmrs_quad<- sqrt(sum(summary(orth_poly_mod)$residuals^2)/length(dataset$og_anisoEVI))/sd(dataset$og_anisoEVI, na.rm=T)
+  aic_quad<- MuMIn::AICc(orth_poly_mod)
+
+  ## To get relevant values for quadratic output - Directly from Pellise et al., 2024 
+  ## https://github.com/matpelissie/abrupt_shifts_ecological_timeseries_classification/blob/main/R/functions_trajclass.R
+  
+  # After getting Y = gamma*chi + delta*X' + epsilon with orthogonal polynomial,
+  # we have to perform a variable change to obtain relevant values in the X interval 
+  # for first_order_coefficient, second_order_coefficient and intercept, 
+  # knowing that X'= alpha*X + beta and chi = eta*X'^2 + theta
+
+  gammab  <-  orth_poly_mod$coefficients[3]
+  delta  <-  orth_poly_mod$coefficients[2]
+  epsilon  <-  orth_poly_mod$coefficients[1]
+
+  alpha  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Months[!is.na(dataset$og_anisoEVI)])$coef[2]
+  beta  <-  lm(orth_poly_mod$model[, 2][, 1] ~ dataset$Months[!is.na(dataset$og_anisoEVI)])$coef[1]
+
+  eta  <-  1/lm((orth_poly_mod$model[, 2][, 1])^2 ~
+                orth_poly_mod$model[, 2][, 2])$coef[2]
+  theta  <-  (-lm((orth_poly_mod$model[, 2][, 1])^2 ~
+                  orth_poly_mod$model[, 2][, 2])$coef[1])*eta
+
+  Y2 <- dataset$og_anisoEVI[!is.na(dataset$og_anisoEVI)]*(max(dataset$Months[!is.na(dataset$og_anisoEVI)])-min(dataset$Months[!is.na(dataset$og_anisoEVI)]))/(max(dataset$og_anisoEVI[!is.na(dataset$og_anisoEVI)])-min(dataset$og_anisoEVI[!is.na(dataset$og_anisoEVI)])) 
+
+  # p2 and p3 are relevant when Y and X amplitudes are equivalent,in particular when 
+  # studying scaled-to-1 indices, Y and X amplitudes may be very different, so we 
+  # scaled the amplitudes to calculate p2 and p3
+
+  polynomial_orthonormal_basis <- lm(Y2~poly(dataset$Months[!is.na(dataset$og_anisoEVI)],2, raw=T))$coefficients
+
+  # Quadratic model output:
+  classification <-
+    data.frame(first_order_coefficient = (delta+2*beta*gammab*eta)*alpha,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = (alpha^2)*gammab*eta,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = epsilon+beta*delta+(beta^2)*gammab*eta+gammab*theta,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               # points of interest:
+               p1 = -(delta+2*beta*gammab*eta)/(2*alpha*gammab*eta),
+               p2 = (-polynomial_orthonormal_basis[2]+1)/
+                 (2*polynomial_orthonormal_basis[3]),
+               p3 = (-polynomial_orthonormal_basis[2]-1)/
+                 (2*polynomial_orthonormal_basis[3]),
+               aic = aic_quad,
+               nrmse = nmrs_quad,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+  
+  # Linear model output:
+  classification[2,] <-
+    data.frame(first_order_coefficient = delta*alpha,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = epsilon+delta*beta,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_lin,
+               nrmse = nmrs_lin,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+
+  # No change model output:
+  classification[3,] <-
+    data.frame(first_order_coefficient = 0,
+               first_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[2, 4],
+               second_order_coefficient = 0,
+               second_order_pvalue =
+                 summary(orth_poly_mod)$coefficients[3, 4],
+               strd_error=summary(orth_poly_mod)$coefficients[2, 2],
+               intercept = null_mod$coefficients,
+               x_m = (dataset$Months[length(dataset$Months)]-dataset$Months[1])/2+dataset$Months[1],
+               p1 = NA,
+               p2 = NA,
+               p3 = NA,
+               aic = aic_null,
+               nrmse = nmrs_null,
+               loc_brk = NA, 
+               trend = NA,
+               mag = NA,
+               rel_chg = NA,
+               SDbef = NA,
+               SDaft = NA)
+
+
+  # Classification of each model fitted:
+  for (i in 1:3){
+
+    # Compute the derivative at xm-delta and at xm + delta with delta being
+    # half of the input interval size (its 25% of the time interval which is set as 0.5)
+      derivative <-
+        2*(classification$x_m[i] - (dataset$Months[length(dataset$Months)]-dataset$Months[1])*(interval_size/2))*  
+        classification$second_order_coefficient[i] +
+        classification$first_order_coefficient[i]
+      derivative2 <-
+        2*(classification$x_m[i] + (dataset$Months[length(dataset$Months)]-dataset$Months[1])*(interval_size/2))*
+        classification$second_order_coefficient[i] +
+        classification$first_order_coefficient[i]
+
+
+      if(sign(derivative) != sign(derivative2) | i==3){
+      # non consistent direction around x_m
+        classification$derivative[i]  <-  NA
+        classification$intercept_derivative[i]  <-  NA
+
+      } else {
+      # consistent direction around x_m
+        classification$derivative[i] <- mean(c(derivative, derivative2))
+        classification$intercept_derivative[i] <-
+          (classification$second_order_coefficient[i]*classification$x_m[i]^2+
+             classification$first_order_coefficient[i]*classification$x_m[i]+
+              classification$intercept[i]) -
+          classification$x_m[i]*classification$derivative[i]
+      }
+
+    # Compute the derivative of the curvature function to get acceleration:
+      classification$derivated_curvature[i] <-
+        -12*(classification$second_order_coefficient[i]^2)*
+        (2*classification$second_order_coefficient[i]*classification$x_m[i]+
+           classification$first_order_coefficient[i])*
+        (classification$second_order_coefficient[i]/
+           abs(classification$second_order_coefficient[i]))/
+        ((1+(2*classification$second_order_coefficient[i]*classification$x_m[i]+
+            classification$first_order_coefficient[i])^2)^(2.5))
+
+    # Keep derivated curvature even if not significant for polynomial fit:
+      if(classification$second_order_pvalue[i]>0.05 & i != 1){
+        classification$derivated_curvature[i] <- NA
+      }
+
+    # Classify the direction:
+      classification$direction[i] <- NA
+        classification$direction[i][which(
+          classification$derivative[i] > 0)] <- "increase"
+      classification$direction[i][which(
+        classification$derivative[i] < 0)] <- "decrease"
+      classification$direction[i][which(
+        is.na(classification$derivative[i]))] <- "stable"
+      classification$direction[i][which(
+        as.numeric(classification$first_order_pvalue[i])>0.05 &
+          as.numeric(classification$second_order_pvalue[i])>0.05)] <- "stable"
+
+    # Classify the acceleration:
+      classification$acceleration[i] <- NA
+        classification$acceleration[i][which(
+          classification$derivated_curvature[i] < 0)] <- "accelerated"
+      classification$acceleration[i][which(
+        classification$derivated_curvature[i] > 0)] <- "decelerated"
+      classification$acceleration[i][which(
+        classification$direction[i] == "stable" &
+          classification$second_order_coefficient[i] < 0)] <- "concave"
+      classification$acceleration[i][which(
+        classification$direction[i] == "stable" &
+          classification$second_order_coefficient[i] > 0)] <- "convex"
+      classification$acceleration[i][which(
+        is.na(classification$derivated_curvature[i]))] <- "constant"
+
+    # Give the final classification combining direction and acceleration:
+      classification$shape_class[i] <- paste(classification$direction[i],
+                                             classification$acceleration[i],
+                                             sep="_")
+  }
+  
+  # Abrupt breakpoint analyses
+  chng_fit<- chngpt::chngptm(formula.1=og_anisoEVI~1,
+                      formula.2=~Months,
+                      family="gaussian", data=dataset,
+                      type="step",
+                      var.type="bootstrap", weights=NULL)
+
+  pred_chg <- data.frame(timestep = dataset$Months[!is.na(dataset$og_anisoEVI)],
+                         bp = chng_fit$best.fit$fitted.values)
+
+  chng_nrmse <- sqrt(sum(residuals(chng_fit)^2)/length(dataset$og_anisoEVI))/sd(dataset$og_anisoEVI)
+
+  classification[4, 13] <- chng_fit$chngpt
+  classification[4, 11] <- MuMIn::AICc(chng_fit)
+  classification[4, 12] <- chng_nrmse
+  classification[4, 14] <- ifelse(pred_chg$bp[1] >
+                                       pred_chg$bp[length(pred_chg$bp)],
+                                     "decrease", "increase")
+  classification[4, 15] <-  pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]
+  classification[4, 16] <-  (pred_chg$bp[length(pred_chg$bp)] - pred_chg$bp[1]) /
+                        max(abs(pred_chg$bp[length(pred_chg$bp)]),abs(pred_chg$bp[1]))
+  classification[4, 17] <-  dataset %>%
+                                  dplyr::filter(Months<=chng_fit$chngpt) %>%
+                                  dplyr::pull(og_anisoEVI) %>%
+                                  sd()
+  classification[4, 18] <- dataset %>%
+                        dplyr::filter(Months>=chng_fit$chngpt) %>%
+                        dplyr::pull(og_anisoEVI) %>%
+                        sd()
+  
+  row.names(classification) <- c("Y_pol","Y_lin", "Y_nch", "Y_abpt")
+  
+   classification$CellID <- unique(dataset$CellID)
+
+  return(classification)
+}
+
+
+```
+
+```{r}
+names(pivot_validation_pts5)[14]<- "og_anisoEVI"
+
+uniquecell_list<- pivot_validation_pts5 %>% group_split(CellID)
+##Converting above to nested parallelized foreach loop
+Sys.time(); x_og_class_trajectory<- foreach(
+  i= 1:length(uniquecell_list),
+  .combine= "rbind") %dopar%
+    (uniquecell_list[[i]] %>%
+      nest() %>%
+      mutate(classification_data = purrr::map(data, class_oganisoEVI_mod)) %>%
+      unnest(classification_data)
+       ); Sys.time()
+
+remove(uniquecell_list)
+stopCluster(my.cluster)
+
+x_og_class_trajectory<- x_og_class_trajectory %>% dplyr::select(-data)
+write_rds(x_og_class_trajectory, here("Outputs", "Sample_Validation", "og_3882points_trajectories.rds"))
+
+```
+
+```{r}
+Sys.time(); x_og_modelselect<- x_og_class_trajectory %>% 
+  rename("trend_name"="trend")%>%
+  group_by(CellID) %>%
+  nest() %>%
+  mutate(modelselect_data = purrr::map(data, model_select)) %>%
+  unnest(modelselect_data)
+; Sys.time()
+
+x_og_modelselect<- x_og_modelselect %>% dplyr::select(-data)
+
+write_rds(x_og_modelselect, here("Outputs", "Sample_Validation", "og_3882points_finalmodel.rds"))
+
+```
+
+
+Next I compile results.
+```{r}
+#1. Final models input
+final_model_stl<- read_rds(here("Outputs", "Sample_Validation", "3882points_finalmodel.rds"))
+final_model_og<- read_rds(here("Outputs", "Sample_Validation", "og_3882points_finalmodel.rds"))
+
+#2. selecting required columns and merging into one df
+final_model_stl<- final_model_stl %>% dplyr::select (c(CellID, model_order, shape_class, trend, loc_brk))
+final_model_og<- final_model_og %>% dplyr::select (c(CellID, model_order, shape_class, trend_name, loc_brk))
+final_model_og <- final_model_og %>% rename(c("CellID"="CellID", "OGmodel_order"="model_order",
+                                              "OGshape_class"= "shape_class", "OGtrend"= "trend_name", "OGloc_brk"="loc_brk"))
+
+results_both<- final_model_stl %>% full_join(final_model_og, by= join_by("CellID"=="CellID"))
+
+#3. reran 1st chunk for complete information of points
+remove(evi_scaled2, pivot_validation_pts)
+
+anisoEVI_validation_pts2<- anisoEVI_validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","UniqueNumber"))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% dplyr::select(-c(UniqueNumber))
+anisoEVI_validation_pts2<- anisoEVI_validation_pts2 %>% dplyr::select(c(min, TransType, TransTo, x, y, geometry, CellID))
+results_both2<- anisoEVI_validation_pts2 %>% inner_join(results_both, by=join_by(CellID == CellID))
+results_both2<- results_both2 %>% mutate(DetrendedResults = paste0(model_order,"_", shape_class,"_", trend), 
+                                         OGResults = paste0(OGmodel_order, "_", OGshape_class, "_", OGtrend))
+results_both3 <- results_both2 %>% dplyr::select(-c(model_order, shape_class, trend, OGmodel_order, OGshape_class, OGtrend))
+pivot_results_both3<- results_both3 %>% pivot_longer(c(8,9))
+
+#4. Overall plot of transitions comparing detrended and og final models selected
+overall_plot_df<- pivot_results_both3 %>% group_by(name, value) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(pivot_results_both3))*100) 
+
+p1 <- ggplot(data=overall_plot_df, aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity", color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="bottom")
+p1<- p1 + scale_fill_brewer(palette = "Greys")
+#ggsave(here("Outputs", "Sample_Validation", "overalltransitions_trajectory.png"), plot = p1,
+#       height = 30, width = 30, units = "cm", dpi=700) 
+
+transitionto_plot_df<- pivot_results_both3 %>% group_by(name, value, TransTo) %>% 
+  summarise(count= n()) %>%
+  mutate(percentage= (count/nrow(pivot_results_both3))*100) 
+
+farm_transition<- transitionto_plot_df %>% filter(TransTo=="Farm") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "BuPu")+ggtitle("Farm")
+forest_transition<- transitionto_plot_df %>% filter(TransTo=="Forest") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Greens") +ggtitle("Forest")
+othernative_transition<- transitionto_plot_df %>% filter(TransTo=="OtherNative") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Oranges") + ggtitle("Other_Native")
+pasture_transition<- transitionto_plot_df %>% filter(TransTo=="Pasture") %>%
+  ggplot(aes(x=value, y=percentage, fill=name)) +
+geom_bar(stat="identity",color="black", position=position_dodge())+
+  theme_minimal()+
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),legend.position="none")+
+  scale_fill_brewer(palette = "Reds") + ggtitle("Pasture")
+p2<-ggarrange(farm_transition, forest_transition, othernative_transition, pasture_transition,
+          ncol = 2, nrow = 2)
+#ggsave(here("Outputs", "Sample_Validation", "grouptransitions_trajectory.png"), plot = p2,
+#       height = 30, width = 30, units = "cm", dpi=700) 
+
+remove(overall_plot_df, p1, transitionto_plot_df, farm_transition, forest_transition,
+       othernative_transition, pasture_transition, p2)
+
+#5. Comparison of breakpoints for the few points that show step changes in the og anisoEVI
+head(final_model_og)
+head(final_model_stl)
+
+stepmodel_og<- final_model_og %>% filter(!is.na(OGtrend))
+stepmodel_og  <- stepmodel_og  %>% 
+    tidyr::extract("CellID", c("TransTo", "UniqueNumber"), "(\\D*)(\\d.*)")
+stepmodel_og<- stepmodel_og %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+
+years<- rep(seq(from= 2002, to=2021),each=12)
+months<- rep(seq(from=1, to=12), 20)
+date_df<- tibble(years, months)
+date_df<- date_df %>% mutate(loc_brk= 1:nrow(date_df))
+stepmodel_og<- stepmodel_og %>% inner_join(date_df, by=join_by(OGloc_brk==loc_brk))
+
+validation_pts<- validation_pts %>% separate_wider_delim(cols = CellID, delim = "_", names = c("TransTo","UniqueNumber"))
+validation_pts<- validation_pts %>% mutate(CellID= paste0(TransTo, UniqueNumber))
+stepmodel_og<- stepmodel_og %>% inner_join(validation_pts, by= join_by(CellID==CellID))
+#stepmodel_og<- stepmodel_og %>% dplyr::select(-c(TransTo.x, UniqueNumber.x))
+stepmodel_og<- stepmodel_og %>% mutate(YearAgreement= ifelse(years==min-1,1,0)) 
+sum(stepmodel_og$YearAgreement)
+
+#basically none of the breakpoints from trend analyses matches the year at which Mapbiomas detected
+#a LULC change.
+
+#6. Have decided to look at Google Earth imagery at these points
+#st_write(stepmodel_og, here("Outputs", "Sample_Validation", "stepmodel_og_validation_points.shp"))
+
+stepmodel_og<- st_read(here("Outputs", "Sample_Validation", "stepmodel_og_validation_points.shp"))
+map_validation_pts<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(d_trans)+ tm_fill()+
+  tm_shape (stepmodel_og)+
+  tm_dots(size=0.03) 
+tmap_save(map_validation_pts, here("Outputs", "Sample_Validation", "stepmodel_points.png"),
+          height = 30, width = 30, units = "cm", dpi=700)
+
+
+#7. Below I plot the og anisoEVI time series and decomposed trend for 3 points
+
+years<- rep(seq(from= 2002, to=2021),each=12)
+months<- rep(seq(from=1, to=12), 20)
+date_df<- tibble(years, months)
+date_df <- date_df %>% mutate(date = make_date(years, months))
+date_df<- date_df %>% mutate(index= 1:240)
+
+library(stlplus)
+plot<- function (cellid){
+  point_select<- pivot_validation_pts4 %>% filter(CellID==cellid)
+  point_ts<- ts(point_select$value_int, start=c(2002,1), end=c(2021,12), frequency=12)
+  stl_df<- stlplus(point_ts, s.window = 11, s.degree = 1, t.degree = 1)
+  df_needed<- (stl_df$data)
+  df_needed<- df_needed %>% bind_cols(point_select)
+  df_needed<- df_needed %>% dplyr::select(-c(weights, sub.labels ))
+  df_needed<- df_needed %>% dplyr::select(-c(raw, seasonal, remainder))
+  
+  
+  lp_fig<- df_needed %>% 
+  dplyr::select(c(value, trend)) %>%
+  mutate(index= 1:240) %>% inner_join(date_df, by=join_by("index"=="index")) %>%
+    ggplot(aes(x=date)) + 
+      geom_line(aes(y = value), color = "darkred") + 
+      geom_line(aes(y = trend), color="black", linetype="longdash")+
+      ylab("anisoEVI related value")+
+      theme_classic()
+  lp_fig
+  
+}
+
+forest427<- plot("Forest427")
+ggsave(here("Outputs", "Sample_Validation", "forest427.png"), plot = forest427,
+       height = 10, width = 15, units = "cm", dpi=700) 
+pasture616<- plot("Pasture427")
+ggsave(here("Outputs", "Sample_Validation", "pasture616.png"), plot = pasture616,
+       height = 10, width = 15, units = "cm", dpi=700) 
+othernative818<- plot("OtherNative818")
+ggsave(here("Outputs", "Sample_Validation", "othernative818.png"), plot = othernative818,
+       height = 10, width = 15, units = "cm", dpi=700) 
+
+
+```

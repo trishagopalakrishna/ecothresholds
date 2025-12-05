@@ -1,0 +1,279 @@
+---
+title: "Summary of methods. Statistical analyses 1. Summaries"
+author: "Miguel Berdugo"
+date: "10/5/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Opening the database
+
+```{r opening, echo=TRUE, eval=TRUE}
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+
+DF=read.csv("FinalDB3.csv")
+
+```
+
+## Basic summary statistics (Figure 1)
+
+here we plot the pie diagram plus examples and maps
+
+```{r pie,echo=TRUE,eval=TRUE}
+library(moonBook)
+library(webr)
+library(ggplot2)
+
+DF$TrajType2=DF$TrajType
+DF$TrajType2[DF$TrajType2=="notrend"]="Lineal"
+DF$TrajType2=as.factor(as.character(DF$TrajType2))
+
+PieDonut(data = DF,aes(pies=trendtype,donuts=TrajType2),r0=0,showPieName = FALSE,labelpositionThreshold = 3)
+
+```
+
+The examples chosen are the next ones (note that you will need the time series to compute them):
+
+```{r examples, eval=FALSE,echo=TRUE}
+dd=read.csv("C:/Users/velai/Dropbox/Drydin/Datanew/Time Series new.csv")
+dff=dd[,c(22,21,1:19)]
+
+ids=c(NegativeStep=29927,notrend=18707,Shifting=7871,NegativeLineal=12882,PositiveLineal=40657, PositiveStep=34281,NegativeQuad=28798,PositiveQuad=40031)
+
+dfexample=lapply(ids, function(id,dff){
+  dfi=data.frame(year=seq(from=2001, to=2019),NDVI=as.numeric(dff[dff$Point.ID==id,c(3:21)]))
+  dfi$NDVI=(dfi$NDVI-mean(dfi$NDVI,na.rm = TRUE))/sd(dfi$NDVI,na.rm = TRUE) #Standardization of variables
+  dfi$id=id
+  return(dfi)
+},dff=dff)
+dfexample=do.call(rbind,dfexample)
+dfexample$type=rep(unique(DF$TrajSubtype),each=19)
+dfexample$trendtype=DF$trendtype[match(dfexample$id,DF$Site)]
+dfexample$TrajType=DF$TrajType2[match(dfexample$id,DF$Site)]
+dfexample$TrajType=as.character(dfexample$TrajType)
+dfexample$TrajType[dfexample$TrajType=="Quad"]="Quadratic"
+dfexample$TrajType=as.factor(dfexample$TrajType)
+
+
+p<-ggplot(data = dfexample,aes(x = year,y=NDVI))+
+  theme_classic()+
+  geom_line(size=1)+
+  ylab("Standardized NDVI \n (unitless)")+
+  facet_grid(trendtype~TrajType)+
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face="bold",size = 12))
+p
+
+```
+
+And the maps of the incidence per subtype
+
+```{r maps,echo=T,eval=T}
+library(rnaturalearth)
+library(rnaturalearthdata)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+colorsSEL=c("red","#CC3333","darkred","#CCCC00","cyan","royalblue","darkblue","#999900")
+p<-ggplot(world)+
+  theme_bw()+
+  geom_sf(fill="snow3",color=NA)+
+  geom_point(data = DF,aes(x = long,y=lat,color=TrajSubtype),size=0.01)+
+  scale_color_manual(values = colorsSEL)+
+  facet_grid(trendtype~TrajType2)+
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face="bold",size = 12))
+p
+
+##An alternative version of the map
+sf_use_s2(F)
+
+colorsSEL=c("#FF6666","#FF6666","#660000","#FFFFCC","#99CCFF","#99CCFF","#000066","#FFFFCC")
+p<-ggplot(world)+
+  theme_bw()+
+  geom_sf(fill="snow3",color=NA)+
+  coord_sf(xlim = c(-140, 180), ylim = c(-60, 80), expand = FALSE)+
+  geom_tile(width=0.5, height=0.5,data = DF,aes(x = long,y=lat,fill=TrajSubtype))+
+  scale_fill_manual(values = colorsSEL)+
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face="bold",size = 8),
+        legend.position = "none",
+        text = element_text(size=8))
+p
+#ggsave("Map.tiff",p,device = "tiff",dpi = 600,width = 180,height = 100,units = "mm")
+
+```
+
+### Zoomed maps
+
+For better visualization, we zoom in the ecozones one by one and plot all types together
+
+```{r zoomedmaps}
+library(rnaturalearth)
+library(rnaturalearthdata)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+ecozones=unique(DF$EcoZ)
+ecozones=ecozones[-3]#3 is na
+boundariesEcoZ=list(long=list(Nearctic=c(-170,-55),
+                              Palearctic=c(-15,180),
+                              IndoMalasian=c(60,110),
+                              Neotropical=c(-100,-35),
+                              Atrotropic=c(-20,50),
+                              Australasian=c(100,180)),
+                    lat=list(Nearctic=c(20,80),
+                              Palearctic=c(20,70),
+                              IndoMalasian=c(0,40),
+                              Neotropical=c(-55,20),
+                              Atrotropic=c(-40,20),
+                              Australasian=c(-50,0)))
+
+i=6  #Simply iterate through i from 1 to 6 to check all ecozones: 1)"Nearctic" 2) "Palearctic" 3) "IndoMalasian" 4) "Neotropical" 5) "Afrotropic" 6)  "Australasian"
+colorsSEL=c("red","#CC3333","darkred","#CCCC00","cyan","royalblue","darkblue","#999900")
+p<-ggplot(world)+
+  theme_bw()+
+  geom_sf(fill="snow3",color=NA)+
+  geom_point(data = DF[DF$EcoZ==ecozones[i],],aes(x = long,y=lat,color=TrajSubtype),size=0.01)+
+  scale_color_manual(values = colorsSEL)+
+  xlim(boundariesEcoZ$long[[i]][1],boundariesEcoZ$long[[i]][2])+
+  ylim(boundariesEcoZ$lat[[i]][1],boundariesEcoZ$lat[[i]][2])+
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face="bold",size = 12))
+p
+
+  PieDonut(data = DF[DF$EcoZ==ecozones[i],],aes(pies=trendtype,donuts=TrajType2),r0=0,showPieName = FALSE,labelpositionThreshold = 3)
+
+```
+
+## Analysis on changing landscapes
+
+To assess whether the different dynamical types are associated to changes in landscape, we used MCD12Q1 product, which classifies pixels into different vegetation types on a yearly basis. We re-classified all possible types of change as follows:
+
+```{r LCchanges}
+dfLC=read.csv("Landscape change.csv")
+dfLC$init=ifelse(dfLC$MFLCinit %in% c(1:5),"Forest",
+                 ifelse(dfLC$MFLCinit %in% c(6,7),"Shrubland",
+                        ifelse(dfLC$MFLCinit==10,"Grassland",
+                               ifelse(dfLC$MFLCinit %in% c(8,9),"Savannah",
+                                       ifelse(dfLC$MFLCinit==16,"Desert","others")))))
+dfLC$fin=ifelse(dfLC$MFLCfin %in% c(1:5),"Forest",
+                 ifelse(dfLC$MFLCfin %in% c(6,7),"Shrubland",
+                        ifelse(dfLC$MFLCfin==10,"Grassland",
+                               ifelse(dfLC$MFLCfin %in% c(8,9),"Savannah",
+                                       ifelse(dfLC$MFLCfin==16,"Desert","others")))))
+
+dfLC$traj.type=DF$TrajSubtype[match(dfLC$Point.ID,DF$Site)]
+
+
+dfLC=dfLC[!is.na(dfLC$traj.type),]
+
+dfLC$change.prod=paste(as.character(dfLC$init),as.character(dfLC$fin),sep = "->")
+dfLC$change.prod[dfLC$init=="others"]="others"
+dfLC$change.prod[dfLC$fin=="others"]="others"
+dfLC$change.prod[dfLC$fin=="Desert"]="Desertification"
+dfLC$change.prod[dfLC$init=="Desert"]="de-Desertification"
+dfLC$change.prod[dfLC$init==dfLC$fin]="unchanged"
+
+dfLC$change.prod[dfLC$change.prod %in% c("Savannah->Shrubland",
+                                         "Savannah->Grassland")]="Savannah->Open"
+dfLC$change.prod[dfLC$change.prod %in% c("Forest->Shrubland",
+                                         "Forest->Grassland")]="Forest->Open"
+dfLC$change.prod[dfLC$change.prod %in% c("Shrubland->Savannah",
+                                         "Grassland->Savannah")]="Open->Savannah"
+dfLC$change.prod[dfLC$change.prod %in% c("Shrubland->Forest",
+                                         "Grassland->Forest")]="Open->Forest"
+
+chisq=chisq.test(dfLC$change.prod,dfLC$traj.type)
+residC=melt(chisq$stdres) #We obtain the standardized residuals of a chi squared analysis
+names(residC)=c("Change.produced","Trajectory.type","value")
+
+significance=0.05 #We want to set to 0 those unsignificant association. To do so alpha level is set to 0.05
+sigAdj=significance/(length(unique(residC$Change.produced))*length(unique(residC$Trajectory.type)))  #then the adjusted significance is calculated based on the size of chisquared table
+zz=abs(qnorm(sigAdj/2)) #and the Z value for significance is found so that these: residC$value>(-zz) & residC$value<zz would be non significant
+
+#alternatively
+library(chisq.posthoc.test)
+M=chisq.posthoc.test(table(dfLC$change.prod,dfLC$traj.type)) #posthoctest for chi squared
+M=M[M$Value=="p values",]
+M=melt(M)
+residC$pval=M$value
+residC$value2=residC$value
+residC$value2[residC$pval>0.05]=0 #unsginificant associations are set to 0
+residC$value[residC$value>(-zz) & residC$value<zz]=0 #unsginificant associations are set to 0
+
+#both residC$value and residC$value2 are identical
+
+
+residC$Change.produced2=factor(residC$Change.produced,levels=levels(residC$Change.produced)[c(8,12,2,3,10,4,11,5,9,7,6,1)])
+
+
+p<-  ggplot(residC,aes(Change.produced2, Trajectory.type, fill = value)) + 
+  geom_tile(color = "gray") + 
+  scale_fill_gradient2(low = "red", 
+                       high = "blue", 
+                       mid = "white", 
+                       midpoint = 0,
+                       limit = c(-40, 40), 
+                       space = "Lab", 
+                       name = "Standardized\n Chi squared\n residual") + 
+  coord_fixed()+
+  coord_flip()+
+  ylab("\n Trajectory type")+
+  xlab("Change produced \n in vegetation class\n")+
+  theme(axis.text.x=element_text(angle=45, hjust=1),
+        text = element_text(size=10),
+        legend.position = "top")
+  
+p
+#ggsave("LCchangeFig.pdf",plot = p,device = "pdf",width = 87,height = 90,units = "mm")
+
+```
+
+##Additional figure: histogram years of changepoint
+
+I plot here the years in which changepoints have been detected to see whether there is any trend on those
+
+```{r chngpthist}
+#First open repository where data are saved
+dfres=read.csv("MiguelResTypesMD.csv") #the classified typologies file
+
+DF$chngpt=dfres$chngpt[match(DF$Site,dfres$Point.ID)]
+#Transform to year again
+yy=seq(from=2001, to=2019)
+DF$chngpt=DF$chngpt*sd(yy)+mean(yy)
+DF$yearchngpt=floor(DF$chngpt)
+
+#dodged
+dd1=data.frame(breaks=ceiling(hist(DF$yearchngpt[DF$TrajSubtype=="Positive Step"])$mids),
+               count=hist(DF$yearchngpt[DF$TrajSubtype=="Positive Step"])$counts)
+dd2=data.frame(breaks=ceiling(hist(DF$yearchngpt[DF$TrajSubtype=="Negative Step"])$mids),
+               count=hist(DF$yearchngpt[DF$TrajSubtype=="Negative Step"])$counts)
+
+dd1$type="Positive"
+dd2$type="Negative"
+dd=rbind(dd1,dd2)
+p<-ggplot(data = dd,aes(x = as.factor(breaks),y=count,fill=type))+
+  theme_classic()+
+  geom_bar(position = position_dodge(),stat = "identity",color="grey")+
+  xlab("Year")+
+  ylab("Occurrence of abrupt\n trajectory types")+
+  scale_fill_manual(values = c("darkred","darkblue"))+
+  theme(axis.text.x = element_text(angle=90, hjust=1),
+        legend.position = "top",
+        legend.title = element_text(color = "black", size = 10),
+        legend.text = element_text(color = "black", size = 9))
+p  
+
+
+```
+
+Figure S1 shows the density of Negative, Neutral and positive respect to trend in PDSI. Computed as:
+
+```{r FigS1}
+p<-ggplot(data = DF,aes(x=trendPDSI,color=trendtype))+
+  geom_density()
+
+```
