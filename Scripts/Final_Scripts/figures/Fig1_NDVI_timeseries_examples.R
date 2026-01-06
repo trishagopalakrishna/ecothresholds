@@ -35,6 +35,7 @@ output_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_resul
 tmap_save(fig1_map, paste0(output_file_path, "/", "map1km_ndvi_aggtrajectories_monthly_swin11_2.png"),
           height = 12, width = 12, units = "cm", dpi= 400)
 
+
 #2. Examples of time series of different types of trajectories
 ts_data <- read.csv(here("Outputs", "TrajectoryPlotting", "ndvi_evi_ts_trajectories.csv"))
 
@@ -48,9 +49,9 @@ lp_fig<- function (df, title) {
          axis.ticks.y = element_blank(),
          axis.title.x = element_blank(),
          axis.text.x = element_text(angle = 45, hjust=1, colour = "black"),
-         plot.title = element_text(size = 8,hjust = 0.5))+
-  ylab("NDVI deseasoned\nmonthly value") + ggtitle(title)+
-   scale_alpha(guide = 'none')
+         plot.title = element_text(size = 8,hjust = 0.5)) +
+    ylab("NDVI deseasoned\nmonthly value") + 
+    ggtitle(title)+scale_alpha(guide = 'none')
 }
 
 lin_inc <- ts_data %>% filter(NDVI_ID==200529) %>% dplyr::select(c(time, NDVI_trend)) %>% mutate(Time2=time) %>%
@@ -83,7 +84,6 @@ fig_no_trend <- lp_fig(no_trend, "No transition")
 ggsave(here("Outputs", "TrajectoryPlotting", "maintext_NDVI_lineplots", "no_trend.png"),
        fig_no_trend, dpi = 300, height = 3, width = 3, units = "cm")
 
-
 ############################## Fig 1b - Characterization of browning, greening and no trends in terms of vegetation formation
 input_filepath <- here("Outputs", "TrendsResults", "Figures")
 
@@ -113,8 +113,8 @@ trajectorycomposition[7,1] <- "Quadratic browning (-)"
 trajectorycomposition[8,1] <- "Quadratic greening (+)"
 trajectorycomposition[9,1] <- "Quadratic greening (-)"
 
-#Set1palette_barplot<- c("#994F00","#117733", "#bf812d", "#41AB5D", "lightgrey", "#dfc27d", "#f6e8c3", "#74C476","#C7E9C0")
 Set1palette_barplot<- c("#663300","#61A36A", "#bf812d", "#41AB5D" , "#7C7083", "#dfc27d", "#f6e8c3", "#74C476","#C7E9C0")
+
 
 trajectorycomposition <- trajectorycomposition %>%
   mutate(seperate_traj = factor(seperate_traj, 
@@ -123,6 +123,7 @@ trajectorycomposition <- trajectorycomposition %>%
                                           "No transitions", "Quadratic browning (+)",
                                           "Quadratic browning (-)", "Quadratic greening (+)",
                                           "Quadratic greening (-)")))
+
 
 monthly_ndvi_seperate_plot <- trajectorycomposition %>%
   ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
