@@ -27,6 +27,8 @@ In this script, I explore the results of this project against %annual woody cove
 (3) Mask resampled input data against results of this project
 (4) Results compilation
 
+The results from this script were ultimately not included in the manuscript. 
+
 #Step 1 - significant trends in median height (30m) resolution was exported out of
 GEE, which is the data input below
 ```{r}
