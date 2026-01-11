@@ -28,7 +28,7 @@ In this script, I plot the time series of sampled plots for different indices, m
 (3) Plotting monthly time series results
 (4) For same points, plotting annual time series results
 
-#Step 1- read sampled poitns and extract results of trajectories obtained from annual time series (after stl decomposition)
+#Step 1- read sampled points and extract results of trajectories obtained from annual time series (after stl decomposition)
 ```{r}
 input_file_path <- here("Outputs", "TrajectoryPlotting", "NDVI_trajectories")
 
