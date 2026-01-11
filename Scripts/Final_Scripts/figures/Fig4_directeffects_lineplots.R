@@ -239,7 +239,7 @@ remove(greening_trend_at_re, greening_trend_heatwave_spei)
 remove(composite_combined_plot_df_prep, composite_grid_creation_prediction1, composite_grid_creation_prediction2)
 remove(composite_at_re_plot_df, composite_heatwave_spei_plot_df)
 
-#2. (ii) For univariate smooth relationships of anthropic pressures, fire activity and savanna vegetation cover
+#2. (ii) For univariate smooth relationships of anthropic pressures and fire activity 
 
 grid_creation_prediction <- function (df_analyses, 
                                       xaxis_variable_in_quotes, 
@@ -296,8 +296,6 @@ greening_anthropicdist <- grid_creation_prediction(analyses_df_noNA_nooutliers,
                                                    "anthropic_dist", greening_gam)
 greening_trend_burnedarea <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
                                                      "trend_burnedarea", greening_gam)
-greening_mean_savanna <- grid_creation_prediction(analyses_df_noNA_nooutliers, 
-                                                 "mean_savanna_percentage", greening_gam)
 
 combined_plot_df_prep <- function (greening_results){
   greening_results <- greening_results %>% mutate(TrajType = "Greening")
@@ -306,11 +304,10 @@ combined_plot_df_prep <- function (greening_results){
 
 anthropic_plot_df <- combined_plot_df_prep(greening_anthropicdist)
 burnedarea_plot_df <- combined_plot_df_prep(greening_trend_burnedarea)
-greening_mean_savanna <- combined_plot_df_prep(greening_mean_savanna) 
 
-univariate_plot_df_list <- list(anthropic_plot_df, burnedarea_plot_df, greening_mean_savanna)
+univariate_plot_df_list <- list(anthropic_plot_df, burnedarea_plot_df)
 
-remove(greening_anthropicdist, greening_trend_burnedarea, greening_mean_savanna)
+remove(greening_anthropicdist, greening_trend_burnedarea)
 remove(grid_creation_prediction, combined_plot_df_prep)
 remove(anthropic_plot_df, burnedarea_plot_df)
 
@@ -329,20 +326,20 @@ composite_plot_function <- function (interaction_trend_df, xaxis_variable, xaxis
     theme_classic(base_size = 10) +
     scale_fill_manual(values = c( "#669900"))+
     scale_color_manual(values=c( "#61A36A")) + 
-    ylab ("Probability of trajectory type") + 
+    ylab ("Probability of greening") + 
     xlab(xaxis_label)+
     theme(legend.position="none")
   x_plot
 }
 composite_plot_trend_at_re <- composite_plot_function(composite_plot_df_list[[1]], "trend_annualtemp", 
                                                       "trend in annual temperature (degree centigrade/year)")
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "panel_re_at2.png"),
+ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "panel_re_at3.png"),
        composite_plot_trend_at_re,
        dpi=700, width =15, height = 5, units = "cm")
 
 composite_plot_trend_heatwave_spei <- composite_plot_function(composite_plot_df_list[[2]], "trend_heatwave", 
                                                               "trend in number of heatwaves (per year)")
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "panel_heatwave_spei2.png"),
+ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "panel_heatwave_spei3.png"),
        composite_plot_trend_heatwave_spei,
        dpi=700, width =15, height = 5, units = "cm")
 
@@ -442,7 +439,7 @@ univariate_plotting <- function (var, x_label, univariate_relationship_df){
     scale_color_manual(values = c( "#61A36A")) +
     scale_x_continuous( labels = label_number()) +
     labs(x = x_label,
-         y = "Probability of trajectory type") +
+         y = "Probability of greening") +
     theme_classic(base_size = 12) + theme(legend.position="none")
   
   x<- patchwork::wrap_elements(density) + 
@@ -453,18 +450,13 @@ univariate_plotting <- function (var, x_label, univariate_relationship_df){
 }
 
 anthropic_plot <- univariate_plotting("anthropic_dist", "distance to anthropic land use (m)", univariate_plot_df_list[[1]])
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_anthropicdist2.png"),
+ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_anthropicdist3.png"),
        anthropic_plot,
        dpi=700, width =10, height = 10, units = "cm")
 burnedarea_plot <- univariate_plotting("trend_burnedarea", "trend in burned area (% per year)", univariate_plot_df_list[[2]])
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_burnedarea2.png"),
+ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_burnedarea3.png"),
        burnedarea_plot,
        dpi=700, width =10, height = 10, units = "cm")
-savanna_plot <- univariate_plotting("mean_savanna_percentage", "average proportion of savanna area (%)", univariate_plot_df_list[[3]])
-ggsave(here("Outputs", "TrendsResults", "Figures", "Fig3", "univariate_savanna2.png"),
-       savanna_plot,
-       dpi=700, width =10, height = 10, units = "cm")
-
 
 #composite legend only
 green_legend_map<- tm_shape(cerrado)+ tm_borders()+
