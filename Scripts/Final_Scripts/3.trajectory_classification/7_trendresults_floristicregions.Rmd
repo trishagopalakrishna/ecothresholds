@@ -28,6 +28,7 @@ The floristic regions are from Francoso et al 2020
 (2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices ine ach of the floristic zones 
 (3) Visualization of above results
 
+The results from this script were ultimately not included in the manuscript. 
 
 #Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}

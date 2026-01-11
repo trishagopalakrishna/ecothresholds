@@ -29,6 +29,7 @@ The fie regions are from Segura Garcia et al., 2025. I specifically focus on per
 (2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices in each of the climate zones 
 (3) Visualization of above results
 
+The results from this script were ultimately not included in the manuscript. 
 
 #Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}

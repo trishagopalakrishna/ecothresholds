@@ -28,6 +28,8 @@ The climate regions are from Catellan et al 2024
 (2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices in the study area that is present in each of the climate zones 
 (3) Visualization of above results
 
+The results from this script were ultimately not included in the manuscript. 
+
 #Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
 ```{r}
 #separate trajectories 
