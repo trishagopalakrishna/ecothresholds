@@ -52,18 +52,22 @@ Sys.time(); cerrado_sigveg <- crop_mask_function(mosaiced_sigveg); Sys.time() #h
 
 #Scaling from GEE
 scaled_cerrado_sigveg <- cerrado_sigveg/10^5
-writeRaster(scaled_cerrado_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "scaled_cerrado_sigveg.tif"))
+#writeRaster(scaled_cerrado_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "scaled_cerrado_sigveg.tif"))
 ```
 
 #Step 2 - Coarsen sig veg height trend to 1km and mask to results
 ```{r}
+scaled_cerrado_sigveg<- rast(here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "scaled_cerrado_sigveg.tif"))
+
 monthly_NDVI_disagg_results <- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly", "ndvi_monthly_swin11.tif"))
 #1-Linear decrease 2-Linear increase 3- No trend 4-Step decrease 5- Step increase 6- Quad dec acc 7-Quad dec decc 8- Quad inc acc 9-Quad inc decc
 
 Sys.time(); coarse_scaled_sigveg <- terra::resample(scaled_cerrado_sigveg, monthly_NDVI_disagg_results, method ="mean"); Sys.time() #20 min
 
 Sys.time(); mask_coarse_scaled_sigveg <- terra::mask(coarse_scaled_sigveg, monthly_NDVI_disagg_results); Sys.time()
-writeRaster(mask_coarse_scaled_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "mask_coarse_scaled_sigveg.tif"))
+#writeRaster(mask_coarse_scaled_sigveg, here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "mask_coarse_scaled_sigveg.tif"))
+
+mask_coarse_scaled_sigveg<- rast(here("Data", "Hunteretal2025_MedianVegHeight", "SignificantVegHeight", "mask_coarse_scaled_sigveg.tif"))
 
 together <- c(mask_coarse_scaled_sigveg, monthly_NDVI_disagg_results)
 Sys.time(); sigveg_traj_df <- terra::as.data.frame(together); Sys.time()
