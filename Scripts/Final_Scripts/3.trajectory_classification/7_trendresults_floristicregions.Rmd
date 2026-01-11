@@ -1,0 +1,250 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I evaluate the floristic regions that the different trajectories fall into. 
+The floristic regions are from Francoso et al 2020 
+(1) Read final trajectory type results for all indices, aggregated trajectories for all indices and floristic regions GIS files
+(2) Data analyses of the distribution of seperate trajectories and aggregated trajectories across all indices ine ach of the floristic zones 
+(3) Visualization of above results
+
+
+#Step 1- read data- seperate trajectories, aggregated trajectories for all indices at annual and monthly time steps
+```{r}
+#separate trajectories 
+monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
+
+seperate_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(seperate_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(seperate_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(seperate_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+seperate_annual_rds_list<- lapply(annual_file_list, rast)
+names(seperate_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(seperate_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(seperate_annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
+
+#aggregate trajectories
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
+
+agg_monthly_rds_list<- lapply(monthly_file_list, rast)
+names(agg_monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(agg_monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(agg_monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+agg_annual_rds_list<- lapply(annual_file_list, rast)
+names(agg_annual_rds_list[[2]])<- "evi_swin11_annual"
+names(agg_annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(agg_annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(monthly_input_file_path, monthly_file_list, annual_input_file_path, annual_file_list)
+
+#floristic regions
+floristic_regions <- st_read(here("Data", "FloristicRegions_Francosoetal","Cerrado2019_BDs.shp"))
+proj_floristic_regions <- sf::st_set_crs(floristic_regions, crs(agg_monthly_rds_list[[3]]))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+proj_floristic_regions <- proj_floristic_regions %>% mutate(Region = c("Central-East", "Central-West", "North-East", "North-West", "South","South-East", "South-West", "external North" ))
+remove(floristic_regions)
+
+```
+
+#Step 2- data analyses
+```{r}
+sep_df_prep_function <- function (sep_traj_raster){
+  totalarea_raster <- cellSize(sep_traj_raster, unit ="km", mask= T)
+  total_area <- sum(values(totalarea_raster), na.rm= T)
+  
+  #study area estimation in each zone
+  m <- rbind(c(1,999), c(2, 999), c(3,999), c(4,999), c(5,999), c(6,999), c(7,999), c(8,999), c(9,999))
+  reclass_trajectory_results_raster <- terra::classify(sep_traj_raster,m, others=NA)
+  list_studyarea_zones <- list()
+  for (i in 1:length(proj_floristic_regions$Region)){
+        x_region_raster <- terra::crop(reclass_trajectory_results_raster , vect(proj_floristic_regions$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "studyarea_zone_sqkm"
+        x_area <- x_area %>% mutate( Region = proj_floristic_regions$Region[i])
+        list_studyarea_zones[[i]] <- x_area
+  }
+  studyarea_zones <- bind_rows(list_studyarea_zones)
+  
+  #trajectory types in the studyarea present in each zone
+  trajectory_names <- c("Lin_dec", "Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_dec_acc", "Quad_dec_dec", "Quad_inc_acc", "Quad_inc_dec")
+  split_trajectory <- terra::segregate(sep_traj_raster, other = NA)
+
+  df_for_histogram <- list()
+  for (i in 1:length(proj_floristic_regions$Region)){
+      list_area <- list()
+      for (j in 1:length(trajectory_names)){
+        x_region_raster <- terra::crop(split_trajectory[[j]], vect(proj_floristic_regions$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "area_sqkm"
+        x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[j], Region = proj_floristic_regions$Region[i])
+        list_area[[j]]<- x_area
+     }
+    particular_region <- bind_rows(list_area)
+    df_for_histogram[[i]]<- particular_region
+  }
+  traj_zones <- bind_rows(df_for_histogram)
+  traj_zones <- traj_zones %>% left_join(studyarea_zones)
+  traj_zones
+}
+
+Sys.time(); monthly_seperate_aniso_area <- sep_df_prep_function(seperate_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_seperate_evi_area <- sep_df_prep_function(seperate_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_seperate_ndvi_area <- sep_df_prep_function(seperate_monthly_rds_list[[3]]); Sys.time()
+
+Sys.time(); annual_seperate_aniso_area <- sep_df_prep_function(seperate_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_seperate_evi_area <- sep_df_prep_function(seperate_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_seperate_ndvi_area <- sep_df_prep_function(seperate_annual_rds_list[[3]]); Sys.time()
+
+agg_df_prep_function <- function (sep_traj_raster){
+  totalarea_raster <- cellSize(sep_traj_raster, unit ="km", mask= T)
+  total_area <- sum(values(totalarea_raster), na.rm= T)
+  
+  #study area estimation in each zone
+  m <- rbind(c(1,999), c(2, 999), c(3,999))
+  reclass_trajectory_results_raster <- terra::classify(sep_traj_raster,m, others=NA)
+  list_studyarea_zones <- list()
+  for (i in 1:length(proj_floristic_regions$Region)){
+        x_region_raster <- terra::crop(reclass_trajectory_results_raster , vect(proj_floristic_regions$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "studyarea_zone_sqkm"
+        x_area <- x_area %>% mutate( Region = proj_floristic_regions$Region[i])
+        list_studyarea_zones[[i]] <- x_area
+  }
+  studyarea_zones <- bind_rows(list_studyarea_zones)
+  
+  #trajectory types in the studyarea present in each zone
+  trajectory_names <- c("Browning", "Greening", "No trend")
+  split_trajectory <- terra::segregate(sep_traj_raster, other = NA)
+
+  df_for_histogram <- list()
+  for (i in 1:length(proj_floristic_regions$Region)){
+      list_area <- list()
+      for (j in 1:length(trajectory_names)){
+        x_region_raster <- terra::crop(split_trajectory[[j]], vect(proj_floristic_regions$geometry[[i]]))
+        x_region_raster <- terra::mask(x_region_raster, vect(proj_floristic_regions$geometry[[i]]))
+        area_raster <- terra::cellSize(x_region_raster, unit = "km", mask= T)
+        x_area <- sum(values(area_raster), na.rm = T)
+        x_area <- as.data.frame(x_area)
+        names(x_area) <- "area_sqkm"
+        x_area <- x_area %>% mutate(TrajectoryType = trajectory_names[j], Region = proj_floristic_regions$Region[i])
+        list_area[[j]]<- x_area
+     }
+    particular_region <- bind_rows(list_area)
+    df_for_histogram[[i]]<- particular_region
+  }
+  traj_zones <- bind_rows(df_for_histogram)
+  traj_zones <- traj_zones %>% left_join(studyarea_zones)
+  traj_zones
+}
+
+Sys.time(); monthly_agg_aniso_area <- agg_df_prep_function (agg_monthly_rds_list[[1]]); Sys.time()
+Sys.time(); monthly_agg_evi_area <- agg_df_prep_function (agg_monthly_rds_list[[2]]); Sys.time()
+Sys.time(); monthly_agg_ndvi_area <- agg_df_prep_function (agg_monthly_rds_list[[3]]); Sys.time()
+
+Sys.time(); annual_agg_aniso_area <- agg_df_prep_function (agg_annual_rds_list[[1]]); Sys.time()
+Sys.time(); annual_agg_evi_area <- agg_df_prep_function (agg_annual_rds_list[[2]]); Sys.time()
+Sys.time(); annual_agg_ndvi_area <- agg_df_prep_function (agg_annual_rds_list[[3]]); Sys.time()
+
+```
+
+
+#Step 4- visualization of results - barplots
+```{r}
+write_rds(monthly_agg_ndvi_area , here("Outputs", "TrendsResults", "Figures", "agg_trajectories_floristicregions.rdata"))
+
+aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
+
+plotting_function <- function (df){
+  
+  ggplot(df, aes(x = factor(Region, 
+                            levels = c("Central-East", "Central-West", "North-East", "North-West", "South", "South-East", "South-West", "external North")), 
+         y= area_sqkm/1000, fill =factor(TrajectoryType))) + 
+   geom_bar(stat = "identity") + theme_classic() +
+    scale_fill_manual(values =aggregate_trajectory_palette)+
+    theme(legend.position="none")+
+  theme(axis.title.x = element_blank(),
+    axis.ticks.x = element_blank()) +  ylab ("Area (*1000 sqkm)") 
+  
+}  
+
+Sys.time(); plot_monthly_ndvi_agg <- plotting_function(monthly_agg_ndvi_area) 
+ggsave(here("Outputs", "TrendsResults", "barplot_agg_ndvi_monthly_floristicregions.png"),
+      plot_monthly_ndvi_agg ,dpi = 700, height = 20, width = 20, units = "cm")
+
+#aggregated, cross timesteps and indices
+Sys.time(); monthly_agg_aniso_area <- monthly_agg_aniso_area %>% mutate(TimeStep ="monthly", Index = "anisotropic EVI"); Sys.time()
+Sys.time(); monthly_agg_evi_area <- monthly_agg_evi_area %>% mutate(TimeStep ="monthly", Index = "EVI"); Sys.time()
+Sys.time(); monthly_agg_ndvi_area <- monthly_agg_ndvi_area %>% mutate(TimeStep ="monthly", Index = "NDVI") ; Sys.time()
+
+Sys.time(); annual_agg_aniso_area  <- annual_agg_aniso_area  %>% mutate(TimeStep ="annual", Index = "anisotropic EVI"); Sys.time()
+Sys.time(); annual_agg_evi_area <- annual_agg_evi_area %>% mutate(TimeStep ="annual", Index = "EVI"); Sys.time()
+Sys.time(); annual_agg_ndvi_area <- annual_agg_ndvi_area %>% mutate(TimeStep ="annual", Index = "NDVI") ; Sys.time()
+
+df_agg <- bind_rows(monthly_agg_aniso_area, monthly_agg_evi_area, monthly_agg_ndvi_area, 
+                    annual_agg_aniso_area, annual_agg_evi_area, annual_agg_ndvi_area)
+
+agg_barplot <- ggplot(df_agg, aes(y = area_sqkm/1000, x = factor(Region, 
+                            levels = c("Central-East", "Central-West", "North-East", "North-West", "South", "South-East", "South-West", "external North")), fill =factor(TrajectoryType))) +
+  geom_bar( stat = "identity") + 
+  scale_alpha_discrete(range = c(0.3, 0.6, 1), guide = guide_legend(override.aes = list(fill = "black"))) +
+  facet_grid(TimeStep~Index) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, vjust=0.7),
+    axis.title.x = element_blank(),
+        legend.title=element_blank(),
+        axis.ticks.x = element_blank())+ 
+ scale_fill_manual(values =aggregate_trajectory_palette)  +  ylab ("Area (*1000 sqkm)") 
+ggsave(here("Outputs", "TrendsResults", "barplot_agg_floristicregions_indices_timestep.png"),
+      agg_barplot  ,dpi = 700, height = 20, width = 20, units = "cm")
+
+```

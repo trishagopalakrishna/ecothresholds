@@ -1,0 +1,121 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I process the indices exported from GEE. 
+(1) I mosaic the multiple files exported from GEE
+(2) Apply the respective scaling factor mentioned on GEE page of each index
+(3a) Align resolution, extent and crs across all three indices
+(3b) Match time series ie start from Mar 2000 to Dec 2021
+(4) Crop and mask to the three climate zones of Cattelan et al., 2024
+
+#Step 1- make .vrt from all files exported from GEE
+```{r}
+vrt_function <- function (folder_address){
+  x_vrt <- terra::vrt(folder_address)
+  x_vrt 
+}
+
+ndvi_gee_folder_filepath <- list.files(path = here("Data", "Indices", "Cerrado_monthlyNDVI_GEE"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+evi_gee_folder_filepath <- list.files(path = here("Data", "Indices", "Cerrado_monthlyEVI_GEE"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+anisoevi_gee_folder_filepath <- list.files(path = here("Data", "Indices", "AnisoEVI_Cerrado_GEE"), pattern= ".tif$", all.files=TRUE, full.names=TRUE)
+
+Sys.time(); ndvi_vrt <- vrt_function(ndvi_gee_folder_filepath); Sys.time()
+Sys.time(); evi_vrt <- vrt_function(evi_gee_folder_filepath); Sys.time()
+Sys.time(); anisoevi_vrt <- vrt_function(anisoevi_gee_folder_filepath); Sys.time()
+
+remove(vrt_function)
+remove(ndvi_gee_folder_filepath, evi_gee_folder_filepath, anisoevi_gee_folder_filepath)
+
+
+```
+
+#Step 2- application of scaling factor from respective veg index pages of GEE 
+```{r}
+scale_factor <- function( index_vrt, scalefactor){
+  x_scaled_vrt <- index_vrt * scalefactor
+}
+
+Sys.time(); scaled_ndvi_vrt <- scale_factor(ndvi_vrt, 0.0001); Sys.time() #https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13A3
+Sys.time(); scaled_evi_vrt <- scale_factor(evi_vrt, 0.0001); Sys.time() #https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13A3
+Sys.time(); scaled_anisoevi_vrt <- scale_factor(anisoevi_vrt, 0.0001); Sys.time() #Documented in anisoEVI asset description
+
+remove(scale_factor)
+```
+
+#Step 3a- align resolution, crs, extent
+I match NDVI and EVI to anisoEVI. This is because anisoEVI is in WGS 1984 projection
+with spatial resolution ~1km 
+```{r}
+reproject_function <- function (scaled_vrt){
+  x_proj_scaled_vrt <- terra::project(scaled_vrt, scaled_anisoevi_vrt, method = "bilinear", align_only = TRUE)
+}  
+
+Sys.time() ; proj_scaled_ndvi_vrt <- reproject_function(scaled_ndvi_vrt); Sys.time()
+#writeRaster(proj_scaled_ndvi_vrt, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif")) refernce for crs, spatial resolution
+Sys.time() ; proj_scaled_evi_vrt <- reproject_function(scaled_evi_vrt); Sys.time()
+
+remove(reproject_function)
+```
+
+#Step 3b- match time series ie start from Mar 2000
+```{r}
+scaled_anisoevi_vrt #262 layers
+proj_scaled_evi_vrt #263 layers Starts from Feb 2000 as per GEE page
+proj_scaled_ndvi_vrt #263 layers Starts from Feb 2000 as per GEE page
+
+proj_scaled_ndvi_vrt<- proj_scaled_ndvi_vrt[[2:263]]
+proj_scaled_evi_vrt<- proj_scaled_evi_vrt [[2:263]]
+
+Sys.time(); writeRaster(proj_scaled_ndvi_vrt, here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "projected_ndvi.tif")); Sys.time()
+```
+
+#Step 4- extract indices in the climate zones from Catellan et al., 2024
+```{r}
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+#Climate zone vector number- 1= Central; 2 = Southern; 3 = Eastern
+
+zone_function <- function (proj_scaled_vrt, index_name, climate_zone_vector_number){
+  x_crop<- terra::crop(proj_scaled_vrt, vect(d_trans$geometry[[climate_zone_vector_number]]))
+  x_mask<- terra::mask(x_crop, vect(d_trans$geometry[[climate_zone_vector_number]]))
+  writeRaster(x_mask, here("Outputs", "Indices", "Climate_Zones_Indices", paste0(index_name, "_scaled_projected_", climate_zone_vector_number, ".tif")))
+}
+
+
+Sys.time(); zone_function(proj_scaled_ndvi_vrt, "NDVI", 1); Sys.time()
+Sys.time(); zone_function(proj_scaled_ndvi_vrt, "NDVI", 2); Sys.time()
+Sys.time(); zone_function(proj_scaled_ndvi_vrt, "NDVI", 3); Sys.time()
+
+Sys.time(); zone_function(proj_scaled_evi_vrt, "EVI", 1); Sys.time()
+Sys.time(); zone_function(proj_scaled_evi_vrt, "EVI", 2); Sys.time()
+Sys.time(); zone_function(proj_scaled_evi_vrt, "EVI", 3); Sys.time()
+
+Sys.time(); zone_function(scaled_anisoevi_vrt, "anisoEVI", 1); Sys.time()
+Sys.time(); zone_function(scaled_anisoevi_vrt, "anisoEVI", 2); Sys.time()
+Sys.time(); zone_function(scaled_anisoevi_vrt, "anisoEVI", 3); Sys.time()
+
+```
+
+
+

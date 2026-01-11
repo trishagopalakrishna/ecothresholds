@@ -1,0 +1,232 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I extract the time series of all indices for ground truth points 
+of different physiognomies and land uses/cover from Lewis et al., 2020 as part of
+EDA
+(1) Read in all rasters of each index for each zone and ground truth points from 
+Lewis et al. Note Lewis et al., data was processed in ancilliary_lewisetal2020_points_processing.R
+(2) Preparation of Lewis et al points for further analyses
+(3) Extracting time series of all indices for all Lewis et al points 
+(4) Preparation of df for plotting
+(5) Plots
+
+##Step 1- reading all files
+```{r}
+ndvi_files <- list.files(path = here("Outputs", "Indices", "Climate_Zones_Indices"), pattern= "*NDVI*", all.files=TRUE, full.names=TRUE)
+ndvi_list <- lapply(ndvi_files, rast)
+evi_files <- Sys.glob(here("Outputs", "Indices", "Climate_Zones_Indices", "EVI_scaled_projected_*.tif"))
+evi_list <- lapply(evi_files, rast)
+aniso_files <- list.files(path = here("Outputs", "Indices", "Climate_Zones_Indices"), pattern= "*aniso*", all.files=TRUE, full.names=TRUE)
+aniso_list <- lapply(aniso_files, rast)
+
+lewis_points<- st_read(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "prepped_points.shp")) 
+
+remove(ndvi_files, evi_files, aniso_files)
+
+```
+
+##Step 2- preparation of Lewis et al data
+Note- I exclude ground truth points in Lewis et al that are "water" and "nonveg". The former becuase theoretically
+there should be no vegetation index values for "water" points. The latter because "nonveg" points include covers/uses
+such as narrow roads which are not of interest. Lastly, the "water" points will have a respective veg index value
+because the "water" points in Lewis et al are narrow streams, which have not been excluded from the veg indices 
+as the water features are within the 1km resolution. 
+```{r}
+lewis_points <- lewis_points %>% filter(Name!="nonveg" & Name!="water")
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+#Climate zone vector number- 1= Central; 2 = Southern; 3 = Eastern
+
+region_lewis_points <- st_intersection(lewis_points, d_trans)
+eastern_lewis_points <- region_lewis_points %>% filter(region =="Eastern")
+central_lewis_points <- region_lewis_points %>% filter(region =="Central")
+
+n_obs_name<- lewis_points %>% count(Name) %>% st_drop_geometry()
+
+remove(lewis_points, d_trans)
+```
+
+##Step 3- extraction of time series for Lewis et al points. Note time series is from Mar 2000 to Dec 2021
+```{r}
+index_extraction <- function (index_central, index_eastern){
+  x_points_central<- terra::extract(index_central, central_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE)
+  x_points_eastern<- terra::extract(index_eastern, eastern_lewis_points, cells= TRUE, xy=TRUE, bind=TRUE)
+  
+  df_central<- terra::as.data.frame(x_points_central)
+  df_eastern<- terra::as.data.frame(x_points_eastern)
+  
+  extracted_df<- bind_rows(df_central, df_eastern)
+  extracted_df
+}
+
+Sys.time(); ndvi <- index_extraction (ndvi_list[[1]], ndvi_list[[3]]); Sys.time()
+Sys.time(); evi <- index_extraction (evi_list[[1]], evi_list[[3]]); Sys.time()
+Sys.time(); aniso <- index_extraction (aniso_list[[1]], aniso_list[[3]]); Sys.time()
+
+year<- rep(2000:2021, each=12)
+month<- rep(seq(from=1, to=12),times=22)
+col_names <- vector()
+for (i in 1:length(year)){
+  col_names[[i]] <- paste0(year[[i]], "_", month[[i]])
+}
+col_names<- col_names[3:264]
+
+names(ndvi)<- c("Name", "Formation", "ID", "region", col_names, "cell", "x", "y")
+names(evi)<- c("Name", "Formation", "ID", "region", col_names, "cell", "x", "y")
+names(aniso)<- c("Name", "Formation", "ID", "region", col_names, "cell", "x", "y")
+
+remove(year, month, col_names, i)
+remove (index_extraction)
+```
+
+
+##Step 4- preparation of df for plotting
+```{r}
+pivot_function<- function (time_series_points){
+  x_pivot <- time_series_points %>% pivot_longer(5:266)
+  
+  x_pivot <- x_pivot %>%  separate_wider_delim(cols = name, delim = "_", names = c("Year","Month"))
+  x_pivot
+}
+
+Sys.time(); pivot_ndvi <- pivot_function (ndvi); Sys.time()
+Sys.time(); pivot_evi <- pivot_function (evi); Sys.time()
+Sys.time(); pivot_aniso <- pivot_function (aniso); Sys.time()
+
+summary_function <- function (pivoted_index_df){
+  summary_df <- pivoted_index_df %>% 
+    group_by(Name, Year, Month) %>%
+    summarise(mean_acrosspoints = mean(value, na.rm = T), sd_acrosspoints = sd(value, na.rm = T))
+  summary_df
+}
+
+Sys.time(); summary_ndvi <- summary_function (pivot_ndvi); Sys.time()
+names(summary_ndvi) <- c("Name", "Year", "Month", "ndvi_mean", "ndvi_sd")
+Sys.time(); summary_evi <- summary_function (pivot_evi); Sys.time()
+names(summary_evi) <- c("Name", "Year", "Month", "evi_mean", "evi_sd")
+Sys.time(); summary_aniso <- summary_function (pivot_aniso); Sys.time()
+names(summary_aniso) <- c("Name", "Year", "Month", "aniso_mean", "aniso_sd")
+
+summary_df<- full_join(summary_ndvi, summary_evi)
+summary_df<- full_join(summary_df, summary_aniso)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+summary_df<- summary_df %>% mutate(Time= paste0(Year, "_", Month, "_01"))
+summary_df<- summary_df %>% mutate(Time= as_date(Time))
+
+remove(pivot_function, summary_function)
+```
+
+##Step 5a- plotting -1 Line graph comparing all indices through time by "name" in Lewis et al
+```{r}
+pivot_summary_df1<- summary_df %>% 
+  dplyr::select(c(Name, Year, Month, Time, ndvi_mean, evi_mean, aniso_mean)) %>%
+  pivot_longer(5:7)
+
+pivot_summary_df1<- pivot_summary_df1 %>% mutate(name=case_when(name=="ndvi_mean"~"NDVI",
+                                                                name=="evi_mean"~"EVI",
+                                                                TRUE~"anisoEVI"))
+
+a<-ggplot(pivot_summary_df1, aes(x=Time, y=value, group= name, color=name)) +
+  geom_line() + 
+  theme_classic()+ 
+  theme(axis.text.x = element_blank(), axis.ticks = element_blank())+
+  facet_wrap(~Name, ncol = 1, scales = "free")+ ylab("Mean index across all points") +xlab("Time in months (2002-2021)")
+a<- a+scale_color_brewer( palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2")+
+  theme_classic()+ theme(legend.title=element_blank()) 
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "indices_acrosspoints_name_throughtime.png"),a, 
+       dpi=700, height = 25, width = 25, units = "cm")
+
+remove(a, pivot_summary_df1)
+remove(summary_df, summary_ndvi, summary_evi, summary_aniso)
+```
+
+##Step 5b- plotting-2 Line graph comparing index for all Jans, all Febs etc by "name" in Lewis et al data with CI ribbon
+```{r}
+summary_ndvi<- pivot_ndvi %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm = T), sd = sd(value, na.rm=T)) %>% mutate(Index="NDVI")
+
+summary_evi<- pivot_evi %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm = T), sd = sd(value, na.rm=T)) %>% mutate(Index="EVI")
+
+summary_aniso<- pivot_aniso %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm = T), sd = sd(value, na.rm=T)) %>% mutate(Index="anisoEVI")
+
+
+summary_df<- bind_rows(summary_ndvi, summary_evi, summary_aniso)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+summary_df<- summary_df %>% mutate(se= sd/sqrt(n),
+         lower.ci= mean- qt(1 - (0.05 / 2), n - 1) * se,
+         upper.ci= mean + qt(1 - (0.05 / 2), n - 1) * se)
+summary_df$Month <- as.numeric(summary_df$Month)
+
+p<-ggplot(data = summary_df, aes(x=Month, y=mean, group=Index, colour= Index)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2") +
+  geom_ribbon(aes(ymin = summary_df$lower.ci, ymax = summary_df$upper.ci, fill= Index), linetype=2, alpha=0.1)+
+  scale_fill_brewer(palette = "Dark2") + theme_classic() + theme(legend.title = element_blank())+
+  facet_wrap(~Name, scales = "fixed")
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "indices_forallJansFebsacrossYears_byname.png"),p, 
+       dpi=700, height = 25, width = 25, units = "cm")
+
+remove(p, summary_ndvi, summary_evi, summary_aniso, summary_df)
+```
+
+##Step 5c- plotting 3- Line graph comparing anisoEVI & NDVI for all Jans, all Febs by "name" in Lewisetal data such that the data is normalized 
+```{r}
+summary_ndvi<- pivot_ndvi %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm=T)) %>% mutate(Index="NDVI")
+
+summary_evi<- pivot_evi %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm=T)) %>% mutate(Index="EVI")
+
+summary_aniso<- pivot_aniso %>% 
+  group_by(Name, Month) %>%
+  summarise(mean = mean(value, na.rm=T)) %>% mutate(Index="anisoEVI")
+
+summary_df<- bind_rows(summary_ndvi, summary_evi, summary_aniso)
+summary_df<- full_join(summary_df, n_obs_name, by=join_by(Name))
+
+summary_df<- summary_df %>% 
+  group_by(Name, Index) %>%
+  mutate(mean_annual= mean(mean))
+summary_df<- summary_df %>% 
+  mutate(percentage_change= ((mean-mean_annual)/mean)*100)
+summary_df$Month <- as.numeric(summary_df$Month)
+
+s<-ggplot(data = summary_df, aes(x=Month, y=percentage_change, group=Index, colour= Index)) + 
+  geom_line() + scale_color_brewer(palette = "Dark2")+
+  scale_fill_brewer(palette = "Dark2") +theme_classic() +theme(legend.title = element_blank())+
+  facet_wrap(~Name, scales = "fixed")
+ggsave(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "percentage_change_indices_forallJansFebsacrossYears_byname.png"),s, 
+       dpi=700, height = 25, width = 25, units = "cm")
+```
+
+

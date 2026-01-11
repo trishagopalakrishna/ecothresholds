@@ -1,0 +1,78 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction 
+In this script, I explore how to account for spatial autocorrelation in my analyses with the goal
+of assessing a spatial resolution to which I can aggregate the trajectory responses. 
+
+For now, I plan on running regression analyses to test causal relationships between predictors
+and (1) linear increase (2) linear decrease (3) step increase (4) step decrease (5) no trend
+(6) quadtaric decrease (both types) and (7) quadratic increase (both types)
+
+So I create rasters such that a pixel is either each of the above types and the remaining at 1km 
+resolution and then conduct a spatial autocorrelation analyses.
+
+#Step 1- reclassification of trajectory results to retain above trajectories
+```{r}
+ndvi_monthly_trajectories<- rast(here("Outputs", "TrendsResults", "results_rasters", "monthly" ,"ndvi_monthly_swin11.tif"))
+ndvi_monthly_trajectories
+#1- linear decrease, 2- linear increase, 3-stable, 4-step decrease, 5- step increase, 6-quad decrease accelerated, 7-quad decrease decelerated
+#8- quad increase accelerated, 9= quad increase decelerated
+
+classification_function <- function (reclass_m){
+  y<- terra::classify(ndvi_monthly_trajectories, cbind(reclass_m, 1), others = 0)
+  y
+}
+
+linear_dec <- classification_function(1)
+linear_inc <- classification_function(2)
+stable <- classification_function(3)
+step_dec <- classification_function(4)
+step_inc <- classification_function(5)
+
+remove(classification_function)
+
+m1 <- rbind (c(6,1), c(7,1))
+quad_dec <- terra::classify(ndvi_monthly_trajectories, m1, others = 0 )
+m2 <- rbind (c(8,1), c(9,1))
+quad_inc <- terra::classify(ndvi_monthly_trajectories, m2, others = 0 )
+remove(m1, m2)
+```
+
+
+#Step 2- spatial autocorrelation using elsa r package
+https://cran.r-project.org/web/packages/elsa/vignettes/elsa.html
+```{r}
+#install.packages("elsa")
+library(elsa)
+
+stable1 <- raster(stable)
+Sys.time(); trial_correlogram <- elsa::correlogram(stable1, cutoff = 10000); Sys.time()
+
+
+```
+
+
+
+
+
+```

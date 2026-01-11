@@ -1,0 +1,75 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I process height above nearest drainage (HAND)
+
+HAND is a normalized terrain model which is a good proxy for water table depth. 
+It was used in Heinreich et al., 2023 (carbon stocks from secondary regrowth). 
+As per Nobre et al., 2011, HAND is advantageous to other terrain metrics such as 
+Topographic Wetness Index because unline TWI, HAND normalizes by topography 
+consideirng soil water dynamics. 
+
+I primarily used the Global HAND product that Heinreich used ie
+https://www.researchgate.net/profile/Gennadiy-Donchyts/publication/301559649_Global_30m_Height_Above_the_Nearest_Drainage/links/5719ed8f08ae30c3f9f2cc88/Global-30m-Height-Above-the-Nearest-Drainage.pdf
+
+Information for this product is -https://gee-community-catalog.org/projects/hand/
+I use the GEE script- https://code.earthengine.google.com/f4df14a0f175a8b82cad7eeb4e2eafc9 which is mentioned in the
+Data Availability statement of Heireich et al. 
+The Github page of this product- https://github.com/gena/paper-global-hand?tab=readme-ov-file
+This is not a peer reviewed product, but author of the product has given permission to me to use it (via GEE Google Groups query that I posted) and has said to cite the
+EGU poster made for this product (on Google scholar)
+GEE Google Groups query- https://groups.google.com/g/google-earth-engine-developers/c/RdEEfRt6Pzk
+
+I have decided to use the 90m spatial resolution HAND product because anyway I need
+to resample to the resolution of this project ~5 sqkm. In the 90m HAND product, the ~8 sqkm
+means that 8 sqkm of upstream area was considered when calculating flow accumulation, flow path etc
+
+My GEE script- https://code.earthengine.google.com/e0927de9dfa81c2732df2d681d6376c5
+
+```{r}
+gee_hand<- rast(here("Data", "HAND", "bufferCerrado_HAND_5km.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+#1. Corp/mask
+crop_hand<- terra::crop(gee_hand, cerrado)
+crop_mask<- terra::mask(crop_hand, vect(cerrado))
+writeRaster(crop_mask, here("Outputs", "OtherVariables", "HAND", "cerrado_hand_5km.tif"))
+remove(crop_hand)
+
+#2. Map
+formap_hand<- crop_mask
+formap_hand[formap_hand<0]<- 0
+map_hand<- 
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (formap_hand)+
+  tm_raster(n=5, style = "quantile", palette=get_brewer_pal("Purples", n = 5, plot=FALSE),
+            title="Height above nearest drainage(m) (5km resolution)" ) 
+tmap_save(map_hand, here("Outputs", "OtherVariables", "HAND", "map_hand_5km.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+```

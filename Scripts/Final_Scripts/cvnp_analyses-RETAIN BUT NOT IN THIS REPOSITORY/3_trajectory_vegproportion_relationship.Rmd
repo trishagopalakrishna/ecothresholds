@@ -1,0 +1,265 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script, I complete analyses to explore the relationship between the trajectories and vegetation physiognomies from Lewis et al., 2020
+(1) Data input of all trajectory results
+(2) Lewis et al data input and processing
+(3) Relationships between trajectories (across indices) and above veg phyiognomy proportions within 1km pixel
+
+#Step 1- data input of trajectory shapes
+```{r}
+cvnp_shp<- st_read(here("Data", "Admin", "WDPA_WDOECM_Jan2024_Public_59_shp","WDPA_WDOECM_Jan2024_Public_59_shp_0", "WDPA_WDOECM_Jan2024_Public_59_shp-polygons.shp")) 
+
+input_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+
+cvnp_annual_evi<- rast(here(input_file_path,"cvnp_evi_annual.tif"))
+cvnp_annual_ndvi<- rast(here(input_file_path,"cvnp_ndvi_annual.tif"))
+cvnp_monthly_evi<- rast(here(input_file_path,"cvnp_evi_monthly.tif"))
+cvnp_monthly_ndvi<- rast(here(input_file_path,"cvnp_ndvi_monthly.tif"))
+
+```
+
+#Step 2 - veg physiognomies input and processing
+```{r}
+veg_phy<- rast(here("Data", "Lewisetal2022_ChapadaNP_PhysiognomyMaps", "PNCV_vegMap_woText.tif"))
+#0= campo umido, 1=campo sujo, 3=campu rupestre, 5=cerrado sensu stricto, 6=cerrado rupestre, 8=verada
+#9=cerradao, 10=mata de galeria, 11-pasture, 12- water, 13- plantation, 14- agriculture, 15- nonvegetated
+
+crop_veg_phy<- terra::crop(veg_phy, vect(cvnp_shp))
+mask_veg_phy<- terra::mask(crop_veg_phy, vect(cvnp_shp))
+remove(crop_veg_phy, veg_phy)
+
+#Reclassifying to level 1 typology as all the campo are grasslands-1, both cerrado and verada are savannas-2
+#cerradao and mata de galeria is woodland-3. Remainder are anthropic-4, water is NA
+m<- rbind(c(0,1), c(1,1), c(3,1), c(5,2), 
+          c(6,2), c(8,2), c(9,3), c(10,3), 
+          c(11,4), c(12,NA), c(13,4), c(14,4), c(15,4))
+
+lev1_phy<- terra::classify(mask_veg_phy, m)
+remove(m)
+
+coarsening_function <- function (classified_raster){
+  x_1km<- terra::project(
+    terra::segregate(classified_raster), cvnp_annual_evi,
+    method = "average", res = res(cvnp_annual_evi)[1])
+ 
+  x_1km_mask <- terra::mask(x_1km, cvnp_shp)
+  x_1km_mask
+}
+
+coarse_lev1_phy <- coarsening_function(lev1_phy)
+names(coarse_lev1_phy) <- c("grasslands", "savannas", "woodland", "anthropic")
+
+coarse_og_phy <- coarsening_function(veg_phy)
+names(coarse_og_phy) <- c("open_wet_grass", "well_drained_grass", "rupestrian_grass", "typical_cerrado", "rupestrian_cerrado", 
+                          "palm_swamp", "dense_woodland", "gallery_forest", "pasture", "water", "plantation", "agriculture", "nonvegetated")
+
+
+```
+
+#Step 3a - eda grass, forest and savanna spread in pixels classified as each of the trajectories
+```{r}
+formation_trajectory <- function(trajectory_results_raster) {
+  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
+  trajectory_names <- c("Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_inc_acc", "Quad_inc_dec")
+  df_for_histogram<- list()
+  for (i in 1:nlyr(split_trajectory)){
+    stack_raster <- c(split_trajectory[[i]], coarse_lev1_phy)
+    names(stack_raster)<- c(trajectory_names[[i]], "grasslands", "savannas", "woodland", "anthropic")
+    stack_df <- terra::as.data.frame(stack_raster, na.rm = T)
+    df_for_histogram[[i]]<- stack_df
+  }
+  df_for_histogram
+}
+
+Sys.time(); monthly_ndvi_composition_trajectories <- formation_trajectory(cvnp_monthly_ndvi); Sys.time()
+Sys.time(); monthly_evi_composition_trajectories <- formation_trajectory(cvnp_monthly_evi); Sys.time()
+Sys.time(); annual_ndvi_composition_trajectories <- formation_trajectory(cvnp_annual_ndvi); Sys.time()
+Sys.time(); annual_evi_composition_trajectories <- formation_trajectory(cvnp_annual_evi); Sys.time()
+
+
+df_prep_function <- function (df_veg_trajectory){
+  prepped_df_list <- list()
+  for(i in 1:length(df_veg_trajectory)){
+    x_pivot <- pivot_longer(df_veg_trajectory[[i]], 2:dim(df_veg_trajectory[[i]])[2])
+    x_pivot <- x_pivot %>% mutate(TrajType = (names(x_pivot)[1])) %>%
+      dplyr::select(c(-1))
+    x_pivot <- x_pivot %>% group_by (name, TrajType) %>%
+      mutate(mean = mean(value),
+                median = median (value))
+    prepped_df_list[[i]] <- x_pivot
+  }
+  prepped_data <- bind_rows(prepped_df_list)
+  prepped_data
+}
+
+Sys.time(); df_prep_monthly_ndvi_trajcomp <- df_prep_function( monthly_ndvi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_monthly_evi_trajcomp <- df_prep_function( monthly_evi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_annual_ndvi_trajcomp <- df_prep_function( annual_ndvi_composition_trajectories); Sys.time()
+Sys.time(); df_prep_annual_evi_trajcomp <- df_prep_function( annual_evi_composition_trajectories); Sys.time()
+
+output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+hist_plot_function <- function (plot_df){
+  ggplot(plot_df, aes(x = value)) + 
+   geom_histogram(position = "identity", bins = 10) +
+  theme_classic(base_size = 14) + scale_x_continuous(c(0,1)) +
+  facet_grid(name ~ TrajType) + 
+     geom_vline(aes(xintercept = mean, colour = 'mean')) +
+    geom_vline(aes(xintercept = median, colour = 'median')) +
+    scale_color_manual(name = "statistics", values = c(median = "blue", mean = "red")) +
+  theme(axis.title.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank())  
+}
+
+monthly_ndvi_hist_traj_comp <- hist_plot_function(df_prep_monthly_ndvi_trajcomp)
+ggsave(paste0(output_file_path, "//", "monthly_ndvi_traj_composition.png"),
+       monthly_ndvi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
+
+monthly_evi_hist_traj_comp <- hist_plot_function(df_prep_monthly_evi_trajcomp)
+ggsave(paste0(output_file_path, "//", "monthly_evi_traj_composition.png"),
+       monthly_evi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
+
+annual_ndvi_hist_traj_comp <- hist_plot_function(df_prep_annual_ndvi_trajcomp)
+ggsave(paste0(output_file_path, "//", "annual_ndvi_traj_composition.png"),
+       annual_ndvi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
+
+annual_evi_hist_traj_comp <- hist_plot_function(df_prep_annual_evi_trajcomp)
+ggsave(paste0(output_file_path, "//", "annual_evi_traj_composition.png"),
+       annual_evi_hist_traj_comp  ,dpi = 700, height = 50, width = 50, units = "cm")
+
+```
+
+
+#Step 3b - eda of original physiognomies in pixels classified as each of the trajectories
+```{r}
+ogphy_formation_trajectory <- function(trajectory_results_raster) {
+  split_trajectory <- terra::segregate(trajectory_results_raster, other = NA)
+  trajectory_names <- c("Lin_inc", "No_trend", "Step_dec", "Step_inc", "Quad_inc_acc", "Quad_inc_dec")
+  df_for_histogram<- list()
+  for (i in 1:nlyr(split_trajectory)){
+    stack_raster <- c(split_trajectory[[i]], coarse_og_phy)
+    names(stack_raster)<- c(trajectory_names[[i]], "open_wet_grass", "well_drained_grass", "rupestrian_grass", "typical_cerrado", "rupestrian_cerrado", "palm_swamp", "dense_woodland", "gallery_forest", "pasture", "water", "plantation", "agriculture", "nonvegetated")
+    stack_df <- terra::as.data.frame(stack_raster, na.rm = T)
+    df_for_histogram[[i]]<- stack_df
+  }
+  df_for_histogram
+}
+
+Sys.time(); monthly_ndvi_ogphy_composition_trajectories <- ogphy_formation_trajectory(cvnp_monthly_ndvi); Sys.time()
+Sys.time(); monthly_evi_og_phy_composition_trajectories <- ogphy_formation_trajectory(cvnp_monthly_evi); Sys.time()
+
+Sys.time(); df_prep_monthly_ndvi_traj_ogphy_comp <- df_prep_function(monthly_ndvi_ogphy_composition_trajectories); Sys.time()
+Sys.time(); df_prep_monthly_evi_traj_ogphy_comp <- df_prep_function(monthly_evi_og_phy_composition_trajectories); Sys.time()
+
+monthly_ndvi_hist_traj_ogphy_comp <- hist_plot_function(df_prep_monthly_ndvi_traj_ogphy_comp)
+ggsave(paste0(output_file_path, "//", "monthly_ndvi_traj_og_phy_composition.png"),
+       monthly_ndvi_hist_traj_ogphy_comp ,dpi = 700, height = 50, width = 50, units = "cm")
+
+```
+
+
+#Step 3c - eda of relationship between trajectories and veg physiognomies using boxplots
+```{r}
+veg_binning_function <- function (df, veg_formation_selected){
+  df_veg_selected <- df %>% dplyr::select(c(veg_formation_selected, annual_EVI, annual_NDVI, monthly_EVI, monthly_NDVI))
+  df_veg_selected <- df_veg_selected %>% rename("veg_selected"=veg_formation_selected)
+  
+  df_veg_selected <- df_veg_selected %>% mutate(bins = cut(veg_selected, breaks =seq(0,1,0.02), ordered_result = TRUE))
+  
+  number_pixels_bin<- df_veg_selected %>% group_by(bins) %>% summarise(count=n())
+  
+  pivot_df_veg_selected <- df_veg_selected %>% pivot_longer(2:5)
+  
+  veg_trajectory_df <- pivot_df_veg_selected %>%
+    group_by(name, bins, value) %>%
+    summarise(total_pixels = n())
+  veg_trajectory_df <- inner_join(veg_trajectory_df, number_pixels_bin)
+  veg_trajectory_df<- veg_trajectory_df %>% mutate(Proportion= (total_pixels/count)*100) #nrow 
+  
+  larger_bins<- rep(c("1_20%", "21_40%", "41_60%", "61_80%", "81_100%"),each=10)
+  bin_lookup<- data.frame(bins=levels(veg_trajectory_df$bins), larger_bins=larger_bins)
+  
+   veg_trajectory_df <-  veg_trajectory_df  %>% left_join(bin_lookup)
+   veg_trajectory_df <-  veg_trajectory_df  %>% mutate(bins=if_else(is.na(bins), "No specific veg", bins)) #there are pixels where %veg is 0 which I treat as a seperate category.
+  veg_trajectory_df <- veg_trajectory_df %>% mutate(larger_bins=if_else(is.na(larger_bins), "No specific veg", larger_bins))
+
+  veg_trajectory_df <- veg_trajectory_df %>% mutate(TrajType = case_when(value == 2~" Linear Increase",
+                                                                         value == 3 ~"No trend",
+                                                                         value == 4 ~"Step Decrease",
+                                                                         value == 5 ~ "Step Increase",
+                                                                         value == 8 ~ "Quadratic Increase (acc)",
+                                                                         value == 9 ~ "Quadratic Increase (dec)"))
+  veg_trajectory_df
+  
+}
+
+Sys.time(); grass_df<- veg_binning_function(df_data_noNA, "percentage_grass"); Sys.time()
+Sys.time(); savanna_df<- veg_binning_function(df_data_noNA, "percentage_savanna"); Sys.time()
+Sys.time(); forest_df<- veg_binning_function(df_data_noNA, "percentage_woodland"); Sys.time()
+
+veg_trajectory_plot_function <- function (binned_veg_df, title){
+  plot<- ggplot(binned_veg_df, aes(x = larger_bins, y = Proportion, fill = TrajType)) + 
+    geom_boxplot() + labs(title = title) +theme_classic(base_size = 14) +
+    scale_fill_manual(values=c("#117733", "lightgrey", "#332288", "#DDCC77", "#882255", "#88CCEE"))
+  plot
+}
+
+annual_evi_grass <- veg_trajectory_plot_function(grass_df %>% filter(name=="annual_EVI"), "Trajectory from EVI (mean annual trend) related to grass%")
+annual_ndvi_grass <- veg_trajectory_plot_function(grass_df %>% filter(name=="annual_NDVI"), "Trajectory from NDVI (mean annual trend) related to grass%")
+monthly_evi_grass <- veg_trajectory_plot_function(grass_df %>% filter(name=="monthly_EVI"), "Trajectory from EVI (monthly trend) related to grass%")
+monthly_ndvi_grass <- veg_trajectory_plot_function(grass_df %>% filter(name=="monthly_NDVI"), "Trajectory from NDVI (monthly trend) related to grass%")
+
+output_file_path <- here("Outputs", "TrendsResults", "cvnp_results")
+grass_plots <- ggarrange(annual_evi_grass, annual_ndvi_grass, monthly_evi_grass, monthly_ndvi_grass, ncol =2, nrow=2 )
+ggsave(paste0(output_file_path, "//", "trajectory_grassproportion_relationship.png"),
+       grass_plots,dpi = 700, height = 80, width = 80, units = "cm")
+
+annual_evi_savanna <- veg_trajectory_plot_function(savanna_df %>% filter(name=="annual_EVI"), "Trajectory from EVI (mean annual trend) related to savanna%")
+annual_ndvi_savanna <- veg_trajectory_plot_function(savanna_df %>% filter(name=="annual_NDVI"), "Trajectory from NDVI (mean annual trend) related to savanna%")
+monthly_evi_savanna <- veg_trajectory_plot_function(savanna_df %>% filter(name=="monthly_EVI"), "Trajectory from EVI (monthly trend) related to savanna%")
+monthly_ndvi_savanna <- veg_trajectory_plot_function(savanna_df %>% filter(name=="monthly_NDVI"), "Trajectory from NDVI (monthly trend) related to savanna%")
+savanna_plots <- ggarrange(annual_evi_savanna, annual_ndvi_savanna, monthly_evi_savanna, monthly_ndvi_savanna, ncol =2, nrow=2 )
+ggsave(paste0(output_file_path, "//", "trajectory_savannaproportion_relationship.png"),
+       savanna_plots,dpi = 700, height = 80, width = 80, units = "cm")
+
+annual_evi_forest<- veg_trajectory_plot_function(forest_df %>% filter(name=="annual_EVI"), "Trajectory from EVI (mean annual trend) related to forest%")
+annual_ndvi_forest <- veg_trajectory_plot_function(forest_df %>% filter(name=="annual_NDVI"), "Trajectory from NDVI (mean annual trend) related to forest%")
+monthly_evi_forest <- veg_trajectory_plot_function(forest_df %>% filter(name=="monthly_EVI"), "Trajectory from EVI (monthly trend) related to forest%")
+monthly_ndvi_forest <- veg_trajectory_plot_function(forest_df %>% filter(name=="monthly_NDVI"), "Trajectory from NDVI (monthly trend) related to forest%")
+forest_plots <- ggarrange(annual_evi_forest, annual_ndvi_forest, monthly_evi_forest, monthly_ndvi_forest, ncol =2, nrow=2 )
+ggsave(paste0(output_file_path, "//", "trajectory_forestproportion_relationship.png"),
+       forest_plots,dpi = 700, height = 80, width = 80, units = "cm")
+
+```
+
+
+#Step 4- statistical analyses of relationship between percentage savanna and trajectory types (categorical variable) using anova
+```{r}
+ndvimonthlytraj_savanna_aov<- lm(percentage_savanna ~ as.factor(monthly_NDVI),
+                                df_data_noNA %>% filter(monthly_NDVI == 5 | monthly_NDVI == 3)) 
+summary(ndvimonthlytraj_savanna_aov)
+```
+
+No difference in group means of percentage grass in step increase and no trend trajectories. 

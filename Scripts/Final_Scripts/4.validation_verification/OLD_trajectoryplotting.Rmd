@@ -1,0 +1,454 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I extract sample points across the study area and plot the respective time series of all
+indices with trend for one stl setting (swindow =11) and include the final trajectory result for each index
+(1) Sample n = 10 random points per trajectory in the NDVI results 
+(2) 
+
+#Step 1- sample 10 random points in each trajectory consideirng NDVI results only
+Note that all outputs from the chunk below have been written to disk
+```{r}
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
+Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
+Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
+remove(mosaic_ndvi)
+
+threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
+
+ndvi_swin11_results <- read_rds(here("Outputs", "ModelSelection", "NDVI", "modelselection_swindow_11.rds"))
+results_df <- ndvi_swin11_results %>% 
+    dplyr::select(c(cell,x,y, model_order, shape_class, trend, loc_brk, climate_zone))
+  
+results_df <- results_df %>% ungroup() %>% 
+    dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
+    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
+                                model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
+                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
+                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~4,
+                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~5, 
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~6,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~7,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~8,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~9
+                                )) %>% 
+    dplyr::select(c(cell, x,y,pixelvalue, climate_zone))
+
+climate_zones <- unique(results_df$climate_zone)
+
+Sys.time(); for (i in 1:length(climate_zones)){
+  x_climate_zone <- results_df %>% filter(climate_zone == climate_zones[[i]])
+  unique_traj <- c(unique(x_climate_zone$pixelvalue))
+  for ( j in 1:length(unique_traj)){
+    selected_traj<- x_climate_zone %>% filter(pixelvalue == unique_traj[[j]])
+    selected_traj_vector<- terra::vect(selected_traj, geom=c("x", "y"), crs="epsg:4326")
+    selected_traj_raster<- terra::rasterize(selected_traj_vector,ndvi, "cell", fun="max")
+    masked_selected_traj_raster<- terra::mask(selected_traj_raster, threshold20_1km)
+    writeRaster(masked_selected_traj_raster, here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", climate_zones[[i]], paste0(j, "_traj_cellnumber.tif")))
+  }
+}; Sys.time()
+
+match_df_sample_function <- function (cz){
+  cellraster_files<- list.files(path = here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", cz), pattern =".tif", all.files= TRUE, full.names = TRUE)
+  cellraster_files<- lapply (cellraster_files, rast)
+  
+  pixels_studyarea_eachtraj <- list()
+  for ( i in 1:length(cellraster_files)){
+    raster_to_df <- terra:: as.data.frame(cellraster_files[[i]], xy=TRUE)
+    names(raster_to_df)[3]<- "cell"
+    
+    x_climate_zone <- results_df %>% filter(climate_zone == cz)
+    pixels_studyarea_eachtraj[[i]] <- left_join (raster_to_df,  x_climate_zone, by= c("cell"= "cell"))
+  }
+  
+  randomsample_studyarea_eachtraj <- list() #Sampling 10 random pixels in each trajctory ie each of the dfs in the list of dfs from previous step
+  for (i in 1:length(pixels_studyarea_eachtraj)){
+    randomsample_studyarea_eachtraj[[i]]<- pixels_studyarea_eachtraj[[i]] %>% 
+                                            ungroup() %>%
+                                              slice_sample(n = 10)
+  }
+  
+  randomsample_studyarea_eachtraj<- bind_rows(randomsample_studyarea_eachtraj)
+  randomsample_studyarea_eachtraj<- randomsample_studyarea_eachtraj %>% 
+      select(x.x, y.x, cell, climate_zone, pixelvalue) %>% rename("x"="x.x", "y"="y.x")
+  write.csv(randomsample_studyarea_eachtraj, here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", cz, "sampled_df.csv" ))
+}
+
+Sys.time(); match_df_sample_function("central"); Sys.time()
+Sys.time(); match_df_sample_function("southern"); Sys.time()
+Sys.time(); match_df_sample_function("eastern"); Sys.time()
+
+remove(match_df_sample_function, ndvi_swin11_results, results_df)
+
+#Sampled points from NDVI index, per trajectory and in each climate zone
+ndvi_sample_central<- read.csv(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "central", "sampled_df.csv"))
+ndvi_sample_southern<- read.csv(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "southern", "sampled_df.csv"))
+ndvi_sample_eastern<- read.csv(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "eastern", "sampled_df.csv"))
+
+rename_ndvisample<- function (ndvi_sample_df){ #renaming to avoid confusion with other indices
+  ndvi_sample_df<- ndvi_sample_df %>% dplyr::select(-c(X))
+  names(ndvi_sample_df)[3]<- "NDVI_cellID"
+  names(ndvi_sample_df)[5]<- "NDVI_traj"
+  ndvi_sample_df
+}
+
+ndvi_sample_central<- rename_ndvisample(ndvi_sample_central)
+ndvi_sample_southern<- rename_ndvisample(ndvi_sample_southern)
+ndvi_sample_eastern<- rename_ndvisample(ndvi_sample_eastern)
+
+
+NDVIsample_pointshp<- function(ndvi_sample_df, climate_zone){
+  point_vector<- st_as_sf(terra::vect(ndvi_sample_df, geom=c("x", "y"), crs="epsg:4326"))
+  st_write(point_vector, here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", paste0(climate_zone, "_NDVIsample.shp")))
+} 
+
+NDVIsample_pointshp(ndvi_sample_central, "central")
+NDVIsample_pointshp(ndvi_sample_southern, "southern")
+NDVIsample_pointshp(ndvi_sample_eastern, "eastern")
+remove(ndvi_sample_central, ndvi_sample_eastern, ndvi_sample_southern, rename_ndvisample, NDVIsample_pointshp)
+```
+
+#Step 2- extracting cell index for above sampled NDVI points but in EVI and anisoEVI
+```{r}
+threshold20_1km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "1km_thresholded_mapbiomas_mask_20.tif"))
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mosaic_ndvi <- rast(here("Data", "Indices", "Cerrado_monthlyNDVI_GEE", "buffer_ndvi_proj.tif"))
+Sys.time(); ndvi<- terra::crop(mosaic_ndvi[[262]], vect(cerrado)); Sys.time() #selecting random layer
+Sys.time(); ndvi<- terra::mask(ndvi, vect(cerrado)); Sys.time()
+remove(mosaic_ndvi)
+
+#Extracting cell index and traj from EVI and anisoEVI for above NDVI sampled points
+step1<- function (modelselection_df, index_name, cz, ndvisample_pointshp){
+  #df prep
+  modelselection_df<- modelselection_df %>% 
+    dplyr::select(c(cell,x,y, model_order, shape_class, trend, loc_brk, climate_zone))
+  
+  x <- modelselection_df %>% filter(climate_zone == cz)
+  
+  x<- x%>% ungroup() %>%
+    dplyr::select(c(cell, x, y, model_order, shape_class, trend, climate_zone)) %>%
+    mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
+                                 model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
+                                 model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
+                                 model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
+                                 model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
+                                 model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
+                                 model_order=="Step" & is.na(shape_class) & trend == "decrease" ~4,
+                                 model_order=="Step" & is.na(shape_class) & trend == "increase" ~5,
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~6,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~7,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~8,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~9
+                                 )) %>%
+    dplyr::select(-c(model_order, shape_class,trend)) #note Linear & Null stable is same category
+  
+  #raster of cell index
+  cellindex_vector<- terra::vect(x, geom=c("x", "y"), crs="epsg:4326")
+  cellindex_raster<- terra::rasterize(cellindex_vector, ndvi, "cell", fun="max")
+  masked_cellindex_raster<- terra::mask(cellindex_raster, threshold20_1km)
+  
+  #sample NDVI points in above raster toi get cellID
+  newindex_sample_cellID<- terra::extract(masked_cellindex_raster, ndvisample_pointshp, method ="simple", bind = TRUE)
+  
+  #for above cellID get trajectory from new index
+  newindex_sample_cellID<- as.data.frame(newindex_sample_cellID)
+  
+    
+  newindex_sample_celltraj<- left_join(newindex_sample_cellID,x, by= c("max"="cell"))
+ 
+  
+  names(newindex_sample_celltraj)[4]<-  paste0(index_name, "_ID")
+  names(newindex_sample_celltraj)[8]<- paste0(index_name, "_tr")
+  
+  write.csv(newindex_sample_celltraj, here("Outputs", "TrajectoryPlotting", paste0("NDVI_", index_name, "_", cz,  "_sampledpoints.csv")))
+}  
+
+
+#Application of above function  
+ndvi_sample_centralshp<- st_read(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "central_NDVIsample.shp"))
+ndvi_sample_southernshp<- st_read(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "southern_NDVIsample.shp"))
+ndvi_sample_easternshp<- st_read(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "eastern_NDVIsample.shp"))
+
+#EVI
+modelselection_evi<- read_rds(here("Outputs", "ModelSelection", "EVI", "modelselection_swindow_11.rds"))
+
+Sys.time(); step1(modelselection_evi, "EVI", "central", ndvi_sample_centralshp); Sys.time()
+Sys.time(); step1(modelselection_evi, "EVI", "southern", ndvi_sample_southernshp); Sys.time()
+Sys.time(); step1(modelselection_evi, "EVI", "eastern", ndvi_sample_easternshp); Sys.time()
+
+#anisoEVI
+modelselection_aniso<- read_rds(here("Outputs", "ModelSelection", "anisoEVI", "modelselection_swindow11.rds"))
+
+Sys.time(); step1(modelselection_aniso, "EVI", "central", ndvi_sample_centralshp); Sys.time()
+Sys.time(); step1(modelselection_aniso, "EVI", "southern", ndvi_sample_southernshp); Sys.time()
+Sys.time(); step1(modelselection_aniso, "EVI", "eastern", ndvi_sample_easternshp); Sys.time()
+
+```
+
+#Step 3- extracting time series from all indices for above sampled points
+Note that I ran the below commands on the server, since the time series stl 
+decomposition results for each index are on the server
+```{r}
+step2<- function (sample_df, stl_df){
+  cell_sample<- unique(sample_df$cell)
+  x<- stl_df %>% filter(cell %in% cell_sample)
+}
+```
+
+#Step 4- df preparation for plotting
+```{r}
+central_sampled_points <- read.csv(here("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "central", "central_complete_sampled.csv"))
+southern_sampled_points <- read.csv(here ("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "southern", "southern_complete_sampled.csv"))
+eastern_sampled_points <- read.csv(here ("Outputs", "TrajectoryPlotting", "NDVI_trajectories", "eastern", "eastern_complete_sampled.csv"))
+
+ 
+#Join to ndvi model selection results
+join_timeseries_trajectory_function <- function (results_df, zone_sampled_points, cz){
+  unique_cells <- unique(zone_sampled_points$cell)
+  zone_sampled_points <- zone_sampled_points %>% mutate(climate_zone = cz)
+  
+  results_df <- ndvi_swin11_results %>% 
+    dplyr::select(c(cell,x,y, model_order, shape_class, trend, loc_brk, climate_zone))
+  
+  results_df <- results_df %>% ungroup() %>% 
+      dplyr::select(c(cell,x, y, model_order, shape_class, trend, climate_zone)) %>%
+      mutate(pixelvalue= case_when(model_order=="Lin" & shape_class== "decrease_constant"& is.na(trend)~1,
+                               model_order=="Lin" & shape_class== "increase_constant" & is.na(trend)~2,
+                                model_order=="Lin" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Null" & shape_class== "stable_constant" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_concave" & is.na(trend)~3,
+                                model_order=="Quad" & shape_class== "stable_convex" & is.na(trend)~3,
+                                model_order=="Step" & is.na(shape_class) & trend == "decrease" ~4,
+                                model_order=="Step" & is.na(shape_class) & trend == "increase" ~5, 
+                                model_order=="Quad" & shape_class=="decrease_accelerated" & is.na (trend)~6,
+                                model_order=="Quad" & shape_class=="decrease_decelerated" & is.na(trend)~7,
+                                model_order=="Quad" & shape_class=="increase_accelerated" & is.na (trend)~8,
+                                model_order=="Quad" & shape_class=="increase_decelerated" & is.na(trend)~9
+                                )) %>% 
+    dplyr::select(c(cell, x,y,pixelvalue, climate_zone))
+  
+  results_df <- results_df  %>% filter(climate_zone == cz)
+  results_sampled <- results_df %>% filter(cell %in% unique_cells)
+  x_join <- left_join (results_sampled, zone_sampled_points, by= c("cell"= "cell", "climate_zone" = "climate_zone"))
+  x_join
+}
+
+ndvi_swin11_results <- read_rds(here("Outputs", "ModelSelection", "NDVI", "modelselection_swindow_11.rds"))
+
+Sys.time(); central_plot_df<-  join_timeseries_trajectory_function(ndvi_swin11_results, central_sampled_points, "central"); Sys.time()
+Sys.time(); southern_plot_df<-  join_timeseries_trajectory_function(ndvi_swin11_results, southern_sampled_points, "southern"); Sys.time()
+Sys.time(); eastern_plot_df<-  join_timeseries_trajectory_function(ndvi_swin11_results, eastern_sampled_points, "eastern"); Sys.time()
+
+ndvi_sampled_df<- bind_rows(central_plot_df, southern_plot_df, eastern_plot_df)
+ndvi_sampled_df<- ndvi_sampled_df %>% 
+  dplyr::select(-c(x.y, y.y, X, value, seasonal, remainder)) %>% 
+  rename(c("NDVI_ID"="cell","x"="x.x", "y"="y.x", "NDVI_original"="value_int", "time"="name", "NDVI_trend"="trend"))
+
+remove(central_sampled_points, southern_sampled_points, eastern_sampled_points, join_timeseries_trajectory_function,
+       ndvi_swin11_results, central_plot_df, southern_plot_df, eastern_plot_df)
+
+##Read anisoEVI and EVI sample df (outputs of Step 2 that are transferred to server)
+##and anisoEVI and EVI complete dfs (outputs from Step 3 which we get on server and transfer
+##back to laptop)
+
+input_file_path <- here("Outputs", "TrajectoryPlotting")
+read_df_join_function <- function (index_name_with_NDVI, index_considered_for_join, just_index){
+  complete_df_list <-  list.files(path = paste0(input_file_path, "/"), pattern = ("*complete*"), all.files = T, full.names = T)
+  complete_df_list <- lapply(complete_df_list, read.csv)
+  
+  df_list<- list.files(path = paste0(input_file_path, "/"), pattern = paste0("*",index_name_with_NDVI,"*"), all.files = T, full.names = T)
+  df_list <- lapply(df_list, read.csv)
+  
+  df_list<- df_list[4:6]
+  
+  join_list<- list()
+  for (i in 1:3){
+    x_join <- left_join(complete_df_list[[i]], df_list[[i]], by =c("cell"=index_considered_for_join)) #can be "EVI_ID" or "aniso_ID"
+    x_join<- x_join %>% dplyr::select(-c(X.x, value, seasonal, remainder, X.y, x.y, y.y, clmt_zn))
+    names(x_join)[1]<-index_considered_for_join
+    names(x_join)[2]<- "x"
+    names(x_join)[3]<- "y"
+    names(x_join)[5]<- paste0(just_index, "_", "original")
+    names(x_join)[6]<- paste0(just_index, "_", "trend")
+    join_list[[i]] <- x_join
+  }
+  df<- bind_rows(join_list)
+  df
+}
+
+Sys.time(); ndvi_evi_sample_df <- read_df_join_function ("NDVI_EVI_", "EVI_ID", "EVI"); Sys.time()
+#Sys.time(); ndvi_aniso_sample_df <- read_complete_stl_df_function(<<include>>); Sys.time()
+remove(read_df_join_function)
+
+#Joining EVI & NDVI together (do EVI & anisoEVI join first and then to NDVI when you have anisoEVI results)
+cz <- c("central", "southern", "eastern")
+complete_list<- list()
+for (i in 1:3){
+  x_ndvi_sample<- ndvi_sampled_df %>% filter(climate_zone == cz[[i]])
+  x_evi_sample <- ndvi_evi_sample_df %>% filter(climate_zone == cz[[i]])
+  
+  unique_cell<- unique(x_ndvi_sample$NDVI_ID)
+  
+  x_join_list<- list()
+  for (j in 1:length(unique_cell)){
+    cell_ndvi<- x_ndvi_sample %>% filter(NDVI_ID ==unique_cell[[j]])
+    cell_ndvi<- cell_ndvi %>% separate_wider_delim(cols = time, delim = "_", names = c("year","month"))
+    cell_evi<- x_evi_sample %>% filter(NDVI_ID == unique_cell[[j]])
+    cell_evi<- cell_evi %>% separate_wider_delim(cols = name, delim = "_", names = c("year","month"))
+    
+    annual_cell_ndvi <- cell_ndvi %>% 
+      group_by(NDVI_ID, year) %>% 
+      mutate(NDVI_mean_original = mean (NDVI_original),NDVI_mean_trend = mean (NDVI_trend))
+    annual_cell_ndvi <- annual_cell_ndvi %>% 
+      filter(!duplicated(year)) %>% 
+      dplyr::select(-c(NDVI_original, NDVI_trend))
+    
+    annual_cell_evi <- cell_evi %>% 
+      group_by(NDVI_ID, year) %>% 
+      mutate(EVI_mean_original = mean (EVI_original),EVI_mean_trend = mean (EVI_trend))
+    annual_cell_evi <- annual_cell_evi %>% 
+      filter(!duplicated(year)) %>% 
+      dplyr::select(-c(EVI_original, EVI_trend))
+    
+    cell_df <- bind_cols (annual_cell_ndvi, annual_cell_evi)
+    cell_df <- cell_df %>% 
+      dplyr::select(c(NDVI_ID...1, year...6, NDVI_mean_original, 
+                      NDVI_mean_trend, NDVI_tr, EVI_mean_original, EVI_mean_trend, EVI_tr, x...11, y...12, climate_zone...17))
+    names(cell_df)[1]<- "NDVI_ID"
+    names(cell_df)[2]<- "year"
+    names(cell_df)[9]<- "x"
+    names(cell_df)[10]<- "y"
+    names(cell_df)[11]<- "climate_zone"
+    x_join_list[[j]]<- cell_df
+  }
+  x_df <- bind_rows(x_join_list)
+  complete_list[[i]]<- x_df
+}
+
+df_ndvi_evi <- bind_rows(complete_list)
+remove(complete_list, x_join_list, cell_df, cell_evi, cell_ndvi, x_ndvi_sample, x_evi_sample, x_df, annual_cell_evi, annual_cell_ndvi)
+remove(i, j, unique_cell)
+
+df_ndvi_evi<- df_ndvi_evi%>% mutate(NDVI_tr = case_when(NDVI_tr == 1~ "Linear decrease",
+                                          NDVI_tr ==2~ "Linear increase",
+                                          NDVI_tr ==3 ~ "No trend",
+                                          NDVI_tr ==4~ "Step decrease",
+                                          NDVI_tr ==5~"Step increase",
+                                          NDVI_tr ==6~"Quadratic decrease (accelerated)",
+                                          NDVI_tr ==7~"Quadratic decrease (decelerated)",
+                                          NDVI_tr ==8~"Quadratic increase (accelerated)",
+                                          NDVI_tr ==9~"Quadratic increase (decelerated)"))
+  
+
+df_ndvi_evi<- df_ndvi_evi%>% mutate(EVI_tr = case_when(EVI_tr == 1~ "Linear decrease",
+                                          EVI_tr ==2~ "Linear increase",
+                                          EVI_tr ==3 ~ "No trend",
+                                          EVI_tr ==4~ "Step decrease",
+                                          EVI_tr ==5~"Step increase",
+                                          EVI_tr ==6~"Quadratic decrease (accelerated)",
+                                          EVI_tr ==7~"Quadratic decrease (decelerated)",
+                                          EVI_tr ==8~"Quadratic increase (accelerated)",
+                                          EVI_tr ==9~"Quadratic increase (decelerated)"))
+```
+
+#Step 5- plotting 
+```{r}
+final_df<- df_ndvi_evi %>% dplyr::select(c(climate_zone, x, y, year, NDVI_ID, NDVI_tr, EVI_tr, 
+                                         NDVI_mean_original, NDVI_mean_trend, EVI_mean_original, 
+                                         EVI_mean_trend))
+pivot_df<- pivot_longer(final_df, 8:11)
+pivot_df<- pivot_df %>% separate_wider_delim(cols = name, delim = "_", names = c("IndexName","mean", "value1"))
+
+pivot_df2<- pivot_df %>% dplyr::select(-c(mean)) %>% 
+  pivot_wider(names_from = value1, values_from = value)
+
+centralNDVIsample<- st_read(here("Outputs","TrajectoryPlotting", "NDVI_trajectories", "central_NDVIsample.shp"))
+southernNDVIsample<- st_read(here("Outputs","TrajectoryPlotting", "NDVI_trajectories", "southern_NDVIsample.shp"))
+easternNDVIsample<- st_read(here("Outputs","TrajectoryPlotting", "NDVI_trajectories", "eastern_NDVIsample.shp"))
+NDVIsample<- bind_rows(centralNDVIsample, southernNDVIsample, easternNDVIsample)
+remove(centralNDVIsample, southernNDVIsample, easternNDVIsample)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+for (i in 1:length(cz)){
+  mappalette<- c("red", "black")
+  
+  x_df <- pivot_df2 %>% filter(climate_zone == cz[[i]])
+  unique_ID<- unique(x_df$NDVI_ID)
+  
+  #lineplot
+  for (j in 1:length(unique_ID)){
+  
+    df<- x_df %>% filter(NDVI_ID == unique_ID[[j]])
+    ndvi_trajectory <- unique(df$NDVI_tr)
+  
+    lp_fig<- df %>%  
+      ggplot(aes(x = as.factor(year), group = IndexName))+
+      geom_line(aes(y = original, alpha = 0.4, color = IndexName )) + 
+      geom_line(aes(y = trend, color = IndexName), lwd= 1.5, linetype="longdash")+
+      theme_classic()+
+      ylab("index") + 
+      xlab("Time") + scale_alpha(guide = 'none')+
+        ggtitle (paste0("NDVI = ", unique(df$NDVI_tr), ";",
+                    " EVI = ", unique(df$EVI_tr)))
+    lp_fig <- lp_fig + scale_color_brewer(palette = "Dark2")
+    
+    #map
+    NDVIsample<- NDVIsample %>% 
+      mutate(colorcode = case_when(NDVI_ID==unique_ID[[j]] ~"1", TRUE ~ "2"))
+    
+    map_points<-   
+      tm_shape(cerrado) + tm_borders()+
+      tm_shape (NDVIsample)+
+      tm_dots(size =0.5, fill = "colorcode", 
+              fill.scale = tm_scale_categorical(values = mappalette)) +
+      tm_layout(legend.show = FALSE) 
+  
+    grobobject<- tmap_grob(map_points)
+    fig<- ggarrange(grobobject, lp_fig, widths= c(1,2))
+    ggsave(here("Outputs", "TrajectoryPlotting", "plots",
+                paste0(ndvi_trajectory,"_", unique_ID[[j]], ".png")), fig,
+           dpi= 700, height = 10, width = 30, units= "cm")
+    print (j)
+  }
+  print (i)
+}  
+
+```

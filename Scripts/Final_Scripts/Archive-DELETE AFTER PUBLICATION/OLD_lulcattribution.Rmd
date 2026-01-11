@@ -1,0 +1,405 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(tidyverse)
+library(here)
+library(tictoc)
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+library(tmap)
+library(tmaptools)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+
+##Introduction
+In this script I process the Mapbiomas anthropic and coarse vegetation types within Cerrado (forest, savanna and grass formation)
+
+#Anthropic area
+I processed Mapbiomass such that for each year, pixels are attributed as natural or anthropic using the definition of natural/anthropic from Mapbiomas in GEE (LULCChanges>Mapbiomas_NaturalAnthropic_Mask). I also create similar layers for forest, savanna and grass formations (LULCChanges>Mapbiomas_VegClassification_Mask). In GEE I also coarsen it to 1km. 
+
+```{r}
+#Border input
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+#Anthropic mask from GEE
+anthropic<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "Mapbiomass_anthropic_LULC_mask_LATEST.tif"))
+Sys.time(); anthropic_crop<- terra::crop(anthropic, cerrado)
+anthropic_mask<- terra::mask(anthropic_crop, vect(cerrado)); Sys.time()
+
+library(magick) #for animation
+
+neighbors<- st_read(here("Data", "Admin", "brazil_neighbors.shp"))
+
+map_extent<- st_bbox(c(xmin=-77.59, xmax=-31.09,
+                       ymin=6.42, ymax=-33.49), crs=4326) %>% st_as_sfc()
+
+tic(); agg_anthropic<- terra::aggregate(anthropic_mask, fact = 3 , fun= "median");toc()
+
+tmap_mode("plot")
+anthropic_map<-tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  tm_shape(agg_anthropic)+
+  tm_raster(style = 'cont',palette= get_brewer_pal("YlGnBu"), title="Anthropic %") + 
+              tm_layout (legend.position = c("left", "bottom"))+
+              tm_facets(nrow=1, ncol=1, free.coords = FALSE)+
+  tm_shape(d_trans)+ tm_borders()
+  
+
+tic();tmap_animation(anthropic_map, filename = here("Data", "Masks_to_define_pixelsofinterest","Mapbiomas_anthropic_mask", "annual_anthropic.gif"),
+               delay = 50, loop = TRUE, restart.delay = 500,
+               width = 900, height = 900, dpi = 150) ;toc() 
+
+
+remove(agg_anthropic)
+
+
+#Grassland, forest and savanna from GEE
+grass<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_natural_mask", "Mapbiomass_grass_LULC_mask.tif"))
+Sys.time(); grass_crop<- terra::crop(grass, cerrado)
+grass_mask<- terra::mask(grass_crop, vect(cerrado)); Sys.time()
+
+savanna<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_natural_mask", "Mapbiomass_savanna_LULC_mask.tif"))
+Sys.time(); savanna_crop<- terra::crop(savanna, cerrado)
+savanna_mask<- terra::mask(savanna_crop, vect(cerrado)); Sys.time()
+
+forest<- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_natural_mask", "Mapbiomass_forest_LULC_mask.tif"))
+Sys.time(); forest_crop<- terra::crop(forest, cerrado)
+forest_mask<- terra::mask(forest_crop, vect(cerrado)); Sys.time()
+
+remove(anthropic, grass, savanna, forest, anthropic_crop, grass_crop, savanna_crop, forest_crop)
+```
+
+
+##Annual rate of change
+I fit a linear model to the time series of %anthropic area. 
+In this chunk I write a lmfunction, which I then apply to understand trends in Mapbiomas anthropic, grass, tree and savanna formations. 
+Details of the lm_func: pvalue (and rsq) do not exist when all pixel values have either (1)  values 0 ie remained 0% anthropic through time
+(2) are all NAs as I masked all water and unobserved in GEE and (3) if there are a couple of NAs and then a couple of non NAs (this is weirdly
+the case in some pixels that seem to be water based on my brief qualitative EDA in QGIS) and (4) the pixel value did not change through time
+ie remained the exact same value ie 10% anthropic of 91% anthropic through time ie 0 slope. 
+
+To deal with (3), I cam up with the rule that if a pixel has more than 50% NA values then I exclude the pixel ie resulting slope, rsq and pvalue
+are all NA. And to deal with (4) I added an ifelse statement that if the slope is 0, then the pixel's pvalue and rsq are NA (because
+it is rechnically non significant and of no interest)
+```{r}
+#install.packages("RobustLinearReg")
+library(RobustLinearReg)
+
+lm_func<- function(y) { 
+  if(sum(is.na(y)) > 0.5 * length(y)){ 
+    rep(NA, 3)} else {
+        
+        year<- 1:21
+        mod <- RobustLinearReg::theil_sen_regression(y ~ year) 
+        resid_slope <- coef(mod)[2]
+        if(resid_slope==0){
+          resid_r_sq <- NA
+          resid_p_value <-NA
+        } else{
+          resid_r_sq <- broom::glance(mod)$r.squared[1]
+          resid_p_value <- broom::tidy(mod)$p.value[2]
+        }
+    c(resid_slope, resid_r_sq, resid_p_value)
+  } 
+}
+
+#Subsetting raster stack to only 2001-2021
+Sys.time(); anthropic_rate<- terra::app(anthropic_mask[[17:37]], fun=lm_func); Sys.time()#1.5 hrs
+#writeRaster(anthropic_rate, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_anthropic_mask", "anthropic_rate_slope_pvalue_rsq.tif"))
+
+Sys.time(); grass_rate<- terra::app(grass_mask[[17:37]], fun=lm_func); Sys.time()#1 hour
+#writeRaster(grass_rate, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "grass_rate_slope_pvalue_rsq.tif"))
+
+Sys.time(); savanna_rate<- terra::app(savanna_mask[[17:37]], fun=lm_func); Sys.time()#2 hours
+#writeRaster(savanna_rate, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "savanna_rate_slope_pvalue_rsq.tif"))
+
+Sys.time(); forest_rate<- terra::app(forest_mask[[17:37]], fun=lm_func); Sys.time() #1.5 hours
+#writeRaster(forest_rate, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "forest_rate_slope_pvalue_rsq.tif"))
+
+remove(anthropic_mask, grass_mask, savanna_mask, forest_mask)
+
+#maps of above
+#I chose to make final maps of rate of change of each only when significant (p<0.05)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+m <- c(-Inf, 0.05, 1,
+       0.05, Inf, NA)
+rclmat <- matrix(m, ncol=3, byrow=TRUE)
+
+anthropic_pvalue<- anthropic_rate[[3]] #third raster in stack
+anthropic_significantpixels<- terra::classify(anthropic_pvalue, rclmat, include.lowest= TRUE)
+#writeRaster(anthropic_significantpixels, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_anthropic_mask", "anthropic_signficantpvalue_mask.tif"))
+
+sig_anthropicslope<- terra::mask(anthropic_rate[[1]], anthropic_significantpixels)
+#writeRaster(sig_anthropicslope, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_anthropic_mask", "significant_anthropicslope.tif"))
+
+remove(anthropic_pvalue, anthropic_significantpixels)
+
+grass_pvalue<- grass_rate[[3]] #third raster in stack
+grass_significantpixels<- terra::classify(grass_pvalue, rclmat, include.lowest= TRUE)
+#writeRaster(grass_significantpixels, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "grass_signficantpvalue_mask.tif"))
+
+sig_grassslope<- terra::mask(grass_rate[[1]], grass_significantpixels)
+#writeRaster(sig_grassslope, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_grassslope.tif"))
+
+remove(grass_pvalue, grass_significantpixels)
+
+savanna_pvalue<- savanna_rate[[3]] #third raster in stack
+savanna_significantpixels<- terra::classify(savanna_pvalue, rclmat, include.lowest= TRUE)
+#writeRaster(savanna_significantpixels, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "savanna_signficantpvalue_mask.tif"))
+
+sig_savannaslope<- terra::mask(savanna_rate[[1]], savanna_significantpixels)
+#writeRaster(sig_savannaslope, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_savannaslope.tif"))
+
+remove(savanna_pvalue, savanna_significantpixels)
+
+forest_pvalue<- forest_rate[[3]] #third raster in stack
+forest_significantpixels<- terra::classify(forest_pvalue, rclmat, include.lowest= TRUE)
+#writeRaster(forest_significantpixels, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "forest_signficantpvalue_mask.tif"))
+
+sig_forestslope<- terra::mask(forest_rate[[1]], forest_significantpixels)
+#writeRaster(sig_forestslope, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_forestslope.tif"))
+
+remove(forest_pvalue, forest_significantpixels)
+
+tmap_mode("plot")
+anthropic_slope_sig_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (sig_anthropicslope)+
+  tm_raster(style = "quantile", palette = "PiYG",n=6, legend.show = T) +
+  tm_layout(legend.text.size = 1)
+
+tmap_save(anthropic_slope_sig_map, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_anthropic_mask", "significant_anthropicslope.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+grass_slope_sig_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (sig_grassslope)+
+  tm_raster(style = "quantile", palette = "Purples",n=3, legend.show = T) +
+  tm_layout(legend.text.size = 1)
+
+tmap_save(grass_slope_sig_map, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_grassslope.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+savanna_slope_sig_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (sig_savannaslope)+
+  tm_raster(style = "quantile", palette = "Oranges",n=4, legend.show = T) +
+  tm_layout(legend.text.size = 1)
+
+tmap_save(savanna_slope_sig_map, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_savannaslope.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+forest_slope_sig_map<-#tm_shape(neighbors, bbox = map_extent)+ tm_borders()+
+  #tm_shape(d_trans)+ tm_fill()+
+  tm_shape (sig_forestslope)+
+  tm_raster(style = "quantile", palette = "Greens",n=4, legend.show = T) +
+  tm_layout(legend.text.size = 1)
+
+tmap_save(forest_slope_sig_map, here("Data","Masks_to_define_pixelsofinterest","Mapbiomas_natural_mask", "significant_forestslope.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+remove(forest_slope_sig_map, savanna_slope_sig_map, grass_slope_sig_map, anthropic_slope_sig_map)
+remove(m, rclmat, lm_func)
+remove(d_trans, evi, cerrado)
+
+```
+
+##EDA of trajectory shapes with above rate of change of anthropic, tree, grass and savanna systems 
+##using boxplots
+The trajectory shapes that I use is the result using annual mean after STL.
+
+There is too much data ie too many pixels aka sample size per trajectory shape class to analyse
+And from the boxplot, I see absolute no difference in the %anthropic change, %grass change etc
+between the different trajectory shapes. 
+
+```{r}
+#From lines 769-784 in 5_trajectoryshapeanalyses.Rmd
+amtrend_map_results<- rast(here("Outputs", "Final_TrajShape_Models", "Annual", "am_trends11_trajresults.tif"))
+#1- Linear decrease, 2- Linear increase, 3- Stable classes, 4- Step decrease, 5- step increase
+
+df_amtrend_results<- terra::as.data.frame(amtrend_map_results, xy= TRUE, cells= TRUE, na.rm= TRUE)
+df_anthropic_rate<- terra:: as.data.frame(anthropic_rate, xy=TRUE, cells= TRUE)
+names(df_anthropic_rate)<- c("cell", "x", "y", "slope", "rsq", "pvalue")
+
+
+#join_amtrend_siganthropicslope<- full_join(df_amtrend_results, df_anthropic_rate, by=join_by(cell))
+#The n of df is an odd number ie 2079283, which is more than the usual number of pixels from
+#trend results (by a lot)
+#blank_amtrendresults<- join_amtrend_siganthropicslope %>% filter(is.na(x.x))
+#shp_blankamtrends<- st_as_sf(blank_amtrendresults, coords = c("x.y", "y.y"), crs=crs(amtrend_map_results))
+#st_write(shp_blankamtrends, here("Scratch", "blank_amtrends.shp"))
+#I visually analysed the blank points in QGIS against the amtrends and anthropic rate (MapBiomas). 
+#It seems like a lot of the NAs are either those that have been completely removed due to more than
+#3 continuous NAs in a year, water bodies but are still in anthropic rate from Mapbiomas. So I have
+#decided to trust the am trends results and focus on those pixels only. 
+#remove(blank_amtrendresults, shp_blankamtrends)
+
+join_amtrend_siganthropicslope<- left_join(df_amtrend_results, df_anthropic_rate, by=join_by(cell))
+#blank_anthropicresults<- join_amtrend_siganthropicslope %>% filter(is.na(x.y))
+#shp_blankanthropicresults<- st_as_sf(blank_anthropicresults, coords = c("x.x", "y.x"), crs=crs(anthropic_rate))
+#st_write(shp_blankanthropicresults, here("Scratch", "blank_anthropic.shp"))
+#there are 13842 ie 0.069% of pixels for which we have trajectory results, that we do not 
+#have anthropic rate info. This is because these 0.06% are in the borders, which might have
+#got cut off when processing Mapbiomas in GEE. And there are a couple of pixels in the 
+#interior in water body areas which are missing maybe because of differing water masks applied
+#by Mapbiomas (classification as water) and that applied in anisoEVI MODIS product. I am 
+#willing to let go off this 0.069% instead of try to reprocess now. Even if I do not get to it later
+#I can mention in manuscript 
+#remove(blank_anthropicresults, shp_blankanthropicresults)
+
+names(join_amtrend_siganthropicslope)<- c("cell", "x.amtrend", "y.amtrend", "trajshape", "x.anthropic", 
+                                          "y.anthropic", "anthropic_slope", "anthropic_rsq", "anthropic_pvalue")
+
+join_amtrend_siganthropicslope2<- join_amtrend_siganthropicslope %>% dplyr::select(c(trajshape, anthropic_slope, anthropic_pvalue)) %>%
+      mutate(anthropic_pvalue=case_when(anthropic_pvalue<=0.05~"Significant",
+                                        anthropic_pvalue>0.05~"NonSignificant",
+                                        TRUE~"No Slope"))
+join_amtrend_siganthropicslope2<- join_amtrend_siganthropicslope2 %>% mutate(trajshape=case_when(trajshape==1~"Linear_decrease",
+                                                                                                 trajshape==2~"Linear_increase",
+                                                                                                 trajshape==4~"Step decrease",
+                                                                                                 trajshape==5~"Step increase",
+                                                                                                 TRUE~"No trend"))
+plot1a <- ggplot(join_amtrend_siganthropicslope2 %>% filter(anthropic_pvalue!="No Slope" & anthropic_slope>0),
+               aes(x=factor(anthropic_pvalue), y=anthropic_slope, color = factor(trajshape)))+
+  geom_boxplot(outlier.shape = NA)+
+  ggtitle("Positive rate of change of %anthropic (Mapbiomas)")
+plot1a<- plot1a + scale_color_brewer(palette = "Dark2")+ 
+  theme_classic() +theme(legend.title=element_blank())
+ggsave(here("Outputs", "LULCAttribution_TrajShape" ,"amtrend_anthropic_postiveslope_boxplot.png"),
+       plot1a,dpi = 700, height = 10, width=20, units = "cm")
+
+plot1b <- ggplot(join_amtrend_siganthropicslope2 %>% filter(anthropic_pvalue!="No Slope" & anthropic_slope<0),
+               aes(x=factor(anthropic_pvalue), y=anthropic_slope, color = factor(trajshape)))+
+  geom_boxplot(outlier.shape = NA)+
+  ggtitle("Negative rate of change of %anthropic (Mapbiomas)")
+plot1b<- plot1b + scale_color_brewer(palette = "Dark2")+ 
+  theme_classic() +theme(legend.title=element_blank())
+ggsave(here("Outputs", "LULCAttribution_TrajShape" ,"amtrend_anthropic_negativeslope_boxplot.png"),
+       plot1b,dpi = 700, height = 10, width=20, units = "cm")
+
+join_amtrend_siganthropicslope2 %>% filter(anthropic_pvalue!="No Slope" & anthropic_pvalue=="Significant") %>% 
+  filter(anthropic_slope<0) %>% 
+  ggplot(aes(x = anthropic_slope)) + 
+  geom_histogram(aes(fill = anthropic_slope))
++ 
+  guides(fill=FALSE)
+
+plot1c<- barplot_df %>% filter(anthropic_pvalue=="Significant") %>%
+  ggplot(aes(x = abs(anthropic_slope), fill = name)) + 
+  stat_bin(aes(y=ifelse(fill == "Negative", -after_stat(count), after_stat(count)))) +
+  facet_grid(~trajshape, scales= "free")
+plot1c<- plot1c + scale_fill_brewer("Dark2") +theme_classic()
+
+
+remove(df_anthropic_rate,join_amtrend_siganthropicslope)
+
+###### repeating above for grass, tree and savanna formations
+##grass
+df_grass_rate<- terra:: as.data.frame(grass_rate, xy=TRUE, cells= TRUE)
+names(df_grass_rate)<- c("cell", "x", "y", "slope", "rsq", "pvalue")
+
+join_amtrend_siggrassslope<- left_join(df_amtrend_results, df_grass_rate, by=join_by(cell))
+names(join_amtrend_siggrassslope)<- c("cell", "x.amtrend", "y.amtrend", "trajshape", "x.grass", 
+                                          "y.grass", "grass_slope", "grass_rsq", "grass_pvalue")
+join_amtrend_siggrassslope2<- join_amtrend_siggrassslope %>% dplyr::select(c(trajshape, grass_slope, grass_pvalue)) %>%
+      mutate(grass_pvalue=case_when(grass_pvalue<=0.05~"Significant",
+                                        grass_pvalue>0.05~"NonSignificant",
+                                        TRUE~"No Slope"))
+join_amtrend_siggrassslope2<- join_amtrend_siggrassslope2 %>% mutate(trajshape=case_when(trajshape==1~"Linear_decrease",
+                                                                                                 trajshape==2~"Linear_increase",
+                                                                                                 trajshape==4~"Step decrease",
+                                                                                                 trajshape==5~"Step increase",
+                                                                                                 TRUE~"No trend"))
+plot2 <- ggplot(join_amtrend_siggrassslope2, aes(x=factor(trajshape), y=grass_slope, color = factor(grass_pvalue)))+
+  geom_boxplot()+
+  ggtitle("Rate of change of %grass (Mapbiomas)")
+plot2<- plot2 + scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9"))+ 
+  theme_classic() +theme(legend.title=element_blank())
+ggsave(here("Outputs", "LULCAttribution_TrajShape" ,"amtrend_grassslope_boxplot.png"),
+       plot2,dpi = 700, height = 10, width=20, units = "cm")
+
+remove(df_grass_rate,join_amtrend_siggrassslope)
+
+###savanna
+df_savanna_rate<- terra:: as.data.frame(savanna_rate, xy=TRUE, cells= TRUE)
+names(df_savanna_rate)<- c("cell", "x", "y", "slope", "rsq", "pvalue")
+
+join_amtrend_sigsavannaslope<- left_join(df_amtrend_results, df_savanna_rate, by=join_by(cell))
+names(join_amtrend_sigsavannaslope)<- c("cell", "x.amtrend", "y.amtrend", "trajshape", "x.savanna", 
+                                          "y.savanna", "savanna_slope", "savanna_rsq", "savanna_pvalue")
+join_amtrend_sigsavannaslope2<- join_amtrend_sigsavannaslope %>% dplyr::select(c(trajshape, savanna_slope, savanna_pvalue)) %>%
+      mutate(savanna_pvalue=case_when(savanna_pvalue<=0.05~"Significant",
+                                        savanna_pvalue>0.05~"NonSignificant",
+                                        TRUE~"No Slope"))
+join_amtrend_sigsavannaslope2<- join_amtrend_sigsavannaslope2 %>% mutate(trajshape=case_when(trajshape==1~"Linear_decrease",
+                                                                                                 trajshape==2~"Linear_increase",
+                                                                                                 trajshape==4~"Step decrease",
+                                                                                                 trajshape==5~"Step increase",
+                                                                                                 TRUE~"No trend"))
+plot3 <- ggplot(join_amtrend_sigsavannaslope2, aes(x=factor(trajshape), y=savanna_slope, color = factor(savanna_pvalue)))+
+  geom_boxplot()+
+  ggtitle("Rate of change of %savanna (Mapbiomas)")
+plot3<- plot3 + scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9"))+ 
+  theme_classic() +theme(legend.title=element_blank())
+ggsave(here("Outputs", "LULCAttribution_TrajShape" ,"amtrend_savannaslope_boxplot.png"),
+       plot3,dpi = 700, height = 10, width=20, units = "cm")
+
+remove(df_savanna_rate,join_amtrend_sigsavannaslope)
+
+###forest
+df_forest_rate<- terra:: as.data.frame(forest_rate, xy=TRUE, cells= TRUE)
+names(df_forest_rate)<- c("cell", "x", "y", "slope", "rsq", "pvalue")
+
+join_amtrend_sigforestslope<- left_join(df_amtrend_results, df_forest_rate, by=join_by(cell))
+names(join_amtrend_sigforestslope)<- c("cell", "x.amtrend", "y.amtrend", "trajshape", "x.forest", 
+                                          "y.forest", "forest_slope", "forest_rsq", "forest_pvalue")
+join_amtrend_sigforestslope2<- join_amtrend_sigforestslope %>% dplyr::select(c(trajshape, forest_slope, forest_pvalue)) %>%
+      mutate(forest_pvalue=case_when(forest_pvalue<=0.05~"Significant",
+                                        forest_pvalue>0.05~"NonSignificant",
+                                        TRUE~"No Slope"))
+join_amtrend_sigforestslope2<- join_amtrend_sigforestslope2 %>% mutate(trajshape=case_when(trajshape==1~"Linear_decrease",
+                                                                                                 trajshape==2~"Linear_increase",
+                                                                                                 trajshape==4~"Step decrease",
+                                                                                                 trajshape==5~"Step increase",
+                                                                                                 TRUE~"No trend"))
+plot4 <- ggplot(join_amtrend_sigforestslope2, aes(x=factor(trajshape), y=forest_slope, color = factor(forest_pvalue)))+
+  geom_boxplot()+
+  ggtitle("Rate of change of %forest (Mapbiomas)")
+plot4 <- plot4 + scale_color_manual(values=c("#999999", "#E69F00", "#56B4E9"))+ 
+  theme_classic() +theme(legend.title=element_blank())
+ggsave(here("Outputs", "LULCAttribution_TrajShape" ,"amtrend_forestslope_boxplot.png"),
+       plot4, dpi = 700, height = 10, width=20, units = "cm")
+
+remove(df_forest_rate,join_amtrend_sigforestslope)
+```
+
+##One way ANOVA and Tukey's tests 
+Since the boxplots do not provide any prelim results, I do formal one way anova tests
+to see if there is any significant difference between the trajectory shapes when 
+considering %anthropic change etc. First I only consider pixels where there are
+significant trends in %anthropic, %grass change etc
+
+```{r}
+one.way <- aov(anthropic_slope ~ as.factor(trajshape), data = significant)
+
+```
+
+
+
+
+
+

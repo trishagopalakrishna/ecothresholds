@@ -1,0 +1,341 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+#Introduction
+In this script, I compile final trend results for each index only for swindow = 11 for monthly timestep, aggregate trajectories and also 
+process the results to obtain count of aggregated trajectories at 5km spatial resolution
+(1) Read in only swin11 rasters for the three indices ie results with separate trajectories and time steps
+(2) Results maps of above
+(3) Comparison barplot of above results
+(4) Read in swin11 aggregated trajectories results for all three indices and timesteps, make maps and barplots like for seperate trajectory results above
+(5) Count of 1km aggregated trajectory pixels within 5km pixel for further analyses
+
+
+#Step 1- reading in only swin11 trend results (monthly and annual) of seperate trajectories
+```{r}
+monthly_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","_monthly_swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
+
+monthly_rds_list<- lapply(monthly_file_list, rast)
+names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "results_rasters", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","_annual_swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+annual_rds_list<- lapply(annual_file_list, rast)
+names(annual_rds_list[[2]])<- "evi_swin11_annual"
+names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
+
+```
+
+#Step 2- maps of swin11 trend results considering the individual trajectories
+```{r}
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+Set1palette_trajectoryalphabet<- c("#332288", "#117733", "lightgrey", "#994F00", "#88CCEE", "#AA4499", "#882255", "#44AA99", "#CC6677")
+
+mapping_function <- function (trendresults_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (trendresults_raster) + 
+    tm_raster(col.scale = tm_scale_categorical(n=9, values = Set1palette_trajectoryalphabet), col.legend = tm_legend_hide()) +
+    tm_add_legend( fill = Set1palette_trajectoryalphabet,
+      labels = c("Linear decrease", 
+                           "Linear increase",
+                           "No trend",
+                           "Step decrease",
+                           "Step increase",
+                           "Quad decrease (accelerated)",
+                           "Quad decrease (decelerated)",
+                           "Quad increase (accelerated)",
+                           "Quad incrase (decelerated)"), type ="polygons") + 
+    tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
+  x_map
+}
+
+output_file_path <- here("Outputs", "TrendsResults")
+
+Sys.time();monthly_ndvi_results_map <- mapping_function (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
+Sys.time();monthly_evi_results_map <- mapping_function (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
+Sys.time();monthly_aniso_results_map <- mapping_function (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
+
+Sys.time();annual_ndvi_results_map <- mapping_function (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- mapping_function (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
+Sys.time();annual_aniso_results_map <- mapping_function (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
+
+trendresult_map<- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
+                               annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
+
+tmap_save(trendresult_map, paste0(output_file_path, "/", "map1km_trendresults_swin11_monthlyannual.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
+remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map, monthly_aniso_results_map, annual_aniso_results_map)
+```
+
+#Step 3- barplot of seperate trajectory results across three indices and timesteps
+```{r}
+proportion_df_calc <- function (trendresults_raster, index_name){
+  x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
+  x_df<- x_df %>% mutate(index = index_name)
+  names(x_df)[4]<- "value"
+  x_df <- x_df %>% mutate(seperate_traj = case_when(value== 1~"Linear browning",
+                                                value==2~ "Linear greening",
+                                                value==4~ "Abrupt browning",
+                                                value==5~"Abrupt greening",
+                                                value==6~"Quadratic browning (accelerated)",
+                                                value==7~"Quadratic browning (decelerated)",
+                                                value==8~"Quadratic greening (accelerated)",
+                                                value==9~"Quadratic greening (decelerated)",
+                                                TRUE~"No trend"))
+  x_df <- x_df %>% mutate(agg_traj = case_when(value== 1~ "Browning",
+                                                value==2~ "Greening",
+                                                value==4~ "Browning",
+                                                value==5~"Greening",
+                                                value==6~"Browning",
+                                                value==7~"Browning",
+                                                value==8~"Greening",
+                                                value==9~"Greening",
+                                                TRUE~"No trend"))
+  agg_traj_count_df <- x_df %>% group_by(agg_traj) %>% summarise(total_count = n())
+  seperate_traj_count_df <- x_df %>% group_by(seperate_traj, index, agg_traj) %>% summarise(count= n())
+  seperate_traj_count_df <- seperate_traj_count_df %>% left_join(agg_traj_count_df)
+  seperate_traj_count_df
+}
+
+Sys.time(); monthly_ndvi <- proportion_df_calc(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+write_rds(monthly_ndvi , here("Outputs", "TrendsResults", "Figures", "trajectorytypes_monthly_swin11.rdata"))
+Sys.time(); monthly_evi <- proportion_df_calc(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso <- proportion_df_calc(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+
+Sys.time(); annual_ndvi <- proportion_df_calc(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi <- proportion_df_calc(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso <- proportion_df_calc(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
+
+df_agg <- bind_rows(monthly_ndvi, monthly_evi, monthly_aniso,
+                    annual_ndvi, annual_evi, annual_aniso)
+
+df_agg <- df_agg %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
+Set1palette_barplot<- c("#994F00",   "#88CCEE" ,  "#332288", "#117733", "lightgrey", "#AA4499", "#882255", "#44AA99", "#CC6677") 
+
+monthly_ndvi_seperate_plot <- monthly_ndvi %>%
+  ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
+   geom_bar(stat = "identity")  + 
+  theme_classic() +
+    scale_fill_manual(values =Set1palette_barplot)+
+     theme(legend.title=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust=0.7),
+    axis.title.x = element_blank(),
+        legend.title=element_blank(),
+        axis.ticks.x = element_blank()) + ylab ("Area (*1000 sqkm)")
+ggsave(here("Outputs", "TrendsResults", "barplot_swin11_ndvi_only_seperate_trajectories.png"),
+      monthly_ndvi_seperate_plot ,dpi = 700, height = 10, width = 10, units = "cm")
+
+trendsresults_barplot <- df_agg %>%
+  ggplot(aes(x = factor(agg_traj), y= count/1000, fill = factor(seperate_traj))) + 
+   geom_bar(stat = "identity") + facet_grid(TimeStep~Index) + 
+  theme_classic() +
+    scale_fill_manual(values =Set1palette_barplot)+
+     theme(legend.title=element_blank()) +
+  theme(axis.text.x = element_text(angle = 45, vjust=0.7),
+    axis.title.x = element_blank(),
+        legend.title=element_blank(),
+        axis.ticks.x = element_blank()) + ylab ("Area (*1000 sqkm)") 
+ggsave(here("Outputs", "TrendsResults", "barplot_swin11_seperate_trajectories.png"),
+      trendsresults_barplot ,dpi = 700, height = 20, width = 20, units = "cm")
+
+remove(df_agg, trendresults_barplot)
+remove(monthly_ndvi, monthly_evi, annual_ndvi, annual_evi, monthly_aniso, annual_aniso)
+```
+
+#Step 4 - reading in only swin11 trend results (monthly and annual) of aggregate trajectories, making maps and barplot similar to previous chunks
+```{r}
+monthly_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly")
+monthly_file_list<- list.files(path = paste0(monthly_input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
+monthly_file_list <- gtools::mixedsort(monthly_file_list)
+
+monthly_rds_list<- lapply(monthly_file_list, rast)
+names(monthly_rds_list[[3]])<- "ndvi_swin11_monthly"
+names(monthly_rds_list[[2]])<- "evi_swin11_monthly"
+names(monthly_rds_list[[1]])<- "aniso_swin11_monthly"
+
+annual_input_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual")
+annual_file_list<- list.files(path = paste0(annual_input_file_path, "/"), pattern = paste0("*","swin11","*"), all.files = T, full.names = T)
+annual_file_list <- gtools::mixedsort(annual_file_list)
+
+annual_rds_list<- lapply(annual_file_list, rast)
+names(annual_rds_list[[3]])<- "ndvi_swin11_annual"
+names(annual_rds_list[[2]])<- "evi_swin11_annual"
+names(annual_rds_list[[1]])<- "aniso_swin11_annual"
+
+remove(annual_file_list, annual_input_file_path, monthly_file_list, monthly_input_file_path)
+
+aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
+
+aggregate_mapping_function <- function (trendresults_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (trendresults_raster) + 
+     tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
+              col.legend = tm_legend_hide()) +
+    tm_add_legend(labels = c("Browning", "Greening", "No trend"),
+      fill = aggregate_trajectory_palette,
+      type = "polygons") +
+     tm_layout(legend.text.size = 3) + tm_title(title, size = 3)
+  x_map
+}
+
+output_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
+
+Sys.time();monthly_ndvi_results_map <- aggregate_mapping_function  (monthly_rds_list[[3]], "NDVI (monthly)"); Sys.time()
+write_rds(monthly_ndvi_results_map , here("Outputs", "TrendsResults", "Figures", "map_ndvi_monthlyswin11_agg_trajectories.rdata"))
+tmap_save(monthly_ndvi_results_map, paste0(output_file_path, "/", "map1km_ndvi_aggtrajectories_monthly_swin11.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
+Sys.time();monthly_evi_results_map <- aggregate_mapping_function  (monthly_rds_list[[2]], "EVI (monthly)"); Sys.time()
+Sys.time();monthly_aniso_results_map <- aggregate_mapping_function  (monthly_rds_list[[1]], "anisoEVI (monthly)"); Sys.time()
+
+Sys.time();annual_ndvi_results_map <- aggregate_mapping_function  (annual_rds_list[[3]], "NDVI (annual)"); Sys.time()
+Sys.time();annual_evi_results_map <- aggregate_mapping_function  (annual_rds_list[[2]], "EVI (annual)"); Sys.time()
+Sys.time();annual_aniso_results_map <- aggregate_mapping_function  (annual_rds_list[[1]], "anisoEVI (annual)"); Sys.time()
+
+trendresult_map <- tmap_arrange(monthly_aniso_results_map, monthly_evi_results_map, monthly_ndvi_results_map,
+                               annual_aniso_results_map, annual_evi_results_map,annual_ndvi_results_map, ncol =3, nrow= 3)
+
+tmap_save(trendresult_map, paste0(output_file_path, "/", "agg_map1km_trendresults_swin11_monthlyannual.png"),
+        height = 80, width = 80, units = "cm", dpi=700)
+
+remove(monthly_evi_results_map, monthly_ndvi_results_map, annual_evi_results_map, annual_ndvi_results_map, trendresult_map, monthly_aniso_results_map, annual_aniso_results_map)
+
+df_prep_function<- function (trendresults_raster, index_name){
+  x_df<- terra::as.data.frame(trendresults_raster, cell = TRUE, xy= TRUE)
+  x_df<- x_df %>% mutate(index = index_name)
+  names(x_df)[4]<- "value"
+  percentage_df <- x_df %>% group_by(value, index) %>% summarise(count= n()) %>% mutate(percentage= (count/nrow(x_df))*100) 
+  percentage_df
+}
+
+Sys.time(); monthly_ndvi_trend_results <- df_prep_function(monthly_rds_list[[3]], "NDVI_monthly"); Sys.time()
+Sys.time(); monthly_evi_trend_results <- df_prep_function(monthly_rds_list[[2]], "EVI_monthly"); Sys.time()
+Sys.time(); monthly_aniso_trend_results <- df_prep_function(monthly_rds_list[[1]], "anisoEVI_monthly"); Sys.time()
+Sys.time(); annual_ndvi_trend_results <- df_prep_function(annual_rds_list[[3]], "NDVI_annual"); Sys.time()
+Sys.time(); annual_evi_trend_results <- df_prep_function(annual_rds_list[[2]], "EVI_annual"); Sys.time()
+Sys.time(); annual_aniso_trend_results <- df_prep_function(annual_rds_list[[1]], "anisoEVI_annual"); Sys.time()
+
+plot_df <- bind_rows(monthly_ndvi_trend_results, monthly_evi_trend_results, monthly_aniso_trend_results,
+                     annual_ndvi_trend_results, annual_evi_trend_results, annual_aniso_trend_results)
+
+plot_df <- plot_df %>% mutate(value = case_when(value== 1~ "Browning",
+                                                value==2~ "Greening",
+                                                  TRUE~"No trend"))
+plot_df <- plot_df  %>%  separate_wider_delim(index, delim = "_", names =c("Index", "TimeStep"))
+
+agg_trendresults_barplot <- plot_df %>% 
+  ggplot(aes(value, percentage, fill = value)) +
+  geom_col(position = position_dodge(), color = "black") + facet_grid(TimeStep~Index) +
+  theme_classic() +
+  xlab("Trajectory Shape")+ ylab ("Percentage of study area")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())+
+  scale_fill_manual(values = aggregate_trajectory_palette) + theme(legend.title=element_blank()) +
+  xlab("Model Type")
+ggsave(here(output_file_path, paste0("barplot_swin11_agg_trajectories.png")),
+       agg_trendresults_barplot,dpi = 700, height = 20, width=20, units = "cm")
+
+remove(plot_df, agg_trendresults_barplot, annual_aniso_trend_results, annual_evi_trend_results, annual_ndvi_trend_results,
+       monthly_aniso_trend_results, monthly_evi_trend_results, monthly_ndvi_results_map)
+```
+
+#Step 5- estimation of number (yes number) of 1km pixels
+within 5km pixel that are of a particular trajectory for further analyses
+```{r}
+threshold20_5km <- rast(here("Data", "Masks_to_define_pixelsofinterest", "mapbiomas_anthropic_mask", "5km_thresholded_mapbiomas_mask_20.tif"))
+
+count_pixels_specific_trajectory_function <- function (trajectories_1km_raster){
+  
+  x_1km_sameextent <- terra::segregate(trajectories_1km_raster)
+ 
+  x_5km_count <- terra::aggregate (x_1km_sameextent, fact = 5, fun = "sum")
+  x_5km_count_sameextent <- terra::resample(x_5km_count, threshold20_5km, method = "near")
+  
+  x_5km_mask <- terra::mask(x_5km_count_sameextent, threshold20_5km)
+  
+  x_5km_mask
+}
+  
+Sys.time(); annual_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[3]]); Sys.time()
+writeRaster(annual_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" ,"annual_ndvi_agg_count_5km.tif"), overwrite =T)
+Sys.time(); monthly_ndvi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[3]]); Sys.time()
+writeRaster(monthly_ndvi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" , "monthly_ndvi_agg_count_5km.tif"), overwrite =T)
+
+Sys.time(); annual_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[2]]); Sys.time()
+writeRaster(annual_evi_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "aggregate_trajectory_results", "annual_evi_agg_count_5km.tif"), overwrite= T)
+Sys.time(); monthly_evi_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[2]]); Sys.time()
+writeRaster(monthly_evi_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results",  "monthly_evi_agg_count_5km.tif"), overwrite = T)
+
+Sys.time(); annual_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (annual_rds_list[[1]]); Sys.time()
+writeRaster(annual_aniso_5km_counttrajectorytypes , here("Outputs", "TrendsResults", "aggregate_trajectory_results","annual_aniso_agg_count_5km.tif"), overwrite = T)
+Sys.time(); monthly_aniso_5km_counttrajectorytypes <- count_pixels_specific_trajectory_function (monthly_rds_list[[1]]); Sys.time()
+writeRaster(monthly_aniso_5km_counttrajectorytypes, here("Outputs", "TrendsResults", "aggregate_trajectory_results" , "monthly_aniso_agg_count_5km.tif"), overwrite = T)
+
+```
+
+#Step 6a (for results section) - calculating average difference in results (aggregated trajectories) between monthly and annual timesteps across all indices
+```{r}
+#Read fourth chunk without the mapping component
+difference_function <- function (trajectory_type, index){
+  dec_diff <- plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"] - 
+    plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"]
+  dec_diff_percentage <- (dec_diff/ plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"])*100
+  dec_diff_percentage
+}
+
+dec_ndvi <- difference_function("Browning","NDVI")
+dec_evi <- difference_function("Browning","EVI")
+dec_aniso <- difference_function("Browning","anisoEVI")
+mean_dec_all_indices <- mean(c(dec_ndvi, dec_evi, dec_aniso))
+
+inc_ndvi <- difference_function("Greening","NDVI")
+inc_evi <- difference_function("Greening","EVI")
+inc_aniso <- difference_function("Greening","anisoEVI")
+mean_inc_all_indices <- mean(c(inc_ndvi, inc_evi, inc_aniso))
+
+difference_function2 <- function (trajectory_type, index){
+  dec_diff <- plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"] - 
+    plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="monthly"]
+  dec_diff_percentage <- (dec_diff/ plot_df$percentage[plot_df$value==trajectory_type &plot_df$Index==index & plot_df$TimeStep=="annual"])*100
+  dec_diff_percentage
+}
+
+notrend_ndvi <- difference_function2("No trend","NDVI")
+notrend_evi <- difference_function2("No trend","EVI")
+notrend_aniso <- difference_function2("No trend","anisoEVI")
+mean_notrend_all_indices <- mean(c(notrend_ndvi, notrend_evi, notrend_aniso))
+
+```

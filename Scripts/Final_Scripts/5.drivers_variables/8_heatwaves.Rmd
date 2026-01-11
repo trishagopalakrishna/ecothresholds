@@ -1,0 +1,150 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+library(RColorBrewer)
+library(lattice)
+library(tidyverse)
+library(here)
+library(tictoc)
+
+library(ggplot2)
+library(ggpubr)
+library(sf)
+library(terra)
+
+library(tmap)
+library(tmaptools)
+library(RColorBrewer)
+library(viridis)
+
+terraOptions(memfrac=0.8, tempdir = here("Scratch"), progress=10)
+```
+##Introduction
+In this script I process heateaves- across the entire time period and trends in heatwaves using annual product.
+I number of heatwaves between 2002 and 2021 as per Libonatti et al., 2024 using ERA4 temperature at 2m product in GEE
+https://code.earthengine.google.com/689bdfae966c1a4d69fb31a012632dc3
+(1) Number of heatwaves across time period (2002 - 2021)
+(2) Trends in heatwaves using number of heatwaves every year in time period
+
+#Step 1- number of heatwaves across time period, crop/mask and map
+```{r}
+gee_heatwave<- rast(here("Data", "Climate", "ERA5_Heatwave.tif"))
+gee_heatwave
+plot(gee_heatwave)
+
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+cerrado<- d_trans %>% st_union()
+
+heatwave_crop<- terra::crop(gee_heatwave, vect(cerrado))
+heatwave_mask<- terra::mask(heatwave_crop, vect(cerrado))
+remove(heatwave_crop)
+writeRaster(heatwave_mask, here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2021.tif"))
+
+map_hw<-   
+  tm_shape(cerrado)+ tm_fill(title="")+
+  tm_shape (heatwave_mask)+
+  tm_raster(n=5, style = "quantile",palette = "Reds", title="#Heatwaves" ) 
+tmap_save(map_hw, here("Outputs", "OtherVariables", "Climate", "heatwaves_2002_2021.png"),
+        height = 30, width = 30, units = "cm", dpi=700)
+
+```
+
+#Step 2- mean heatwaves and trends in heatwaves through time period using number of heatwaves annually (calculated in gee)
+```{r}
+gee_annual_heatwave <- rast(here("Data", "Climate", "Annual_ERA5_Heatwave.tif"))
+
+annual_heatwave_crop<- terra::crop(gee_annual_heatwave, vect(cerrado))
+annual_heatwave_mask<- terra::mask(annual_heatwave_crop, vect(cerrado))
+remove(annual_heatwave_crop)
+#writeRaster(annual_heatwave_mask, here("Outputs", "OtherVariables", "Climate", "annual_heatwaves_2002_2021.tif"))
+
+#animation
+animation_x_time_map<-
+   tm_shape(cerrado)+ tm_borders()+
+   tm_shape (annual_heatwave_mask)+
+   tm_raster(col.scale = tm_scale_intervals(n=6, style= "quantile", values = "OrRd")) +
+   tm_facets(nrow=1, ncol=1, free.coords = TRUE) 
+
+tmap_animation(animation_x_time_map, filename = here("Outputs", "OtherVariables", "Climate", "annual_heatwaves_2002_2021.gif"),
+                delay = 50, loop = TRUE, restart.delay = 500,
+                width = 900, height = 900, dpi = 150)
+
+annual_heatwave_mask<- rast(here("Outputs", "OtherVariables", "Climate", "annual_heatwaves_2002_2021.tif"))
+mean_annual_heatwave <- terra::app(annual_heatwave_mask, fun = "mean")
+writeRaster(mean_annual_heatwave, here("Outputs", "OtherVariables", "Climate", "mean_annual_heatwaves_2002_2021.tif"))
+
+
+#trends or anomaly calculation
+#1- std deviation
+Sys.time(); std_heatwaves <- terra::app (annual_heatwave_mask, fun = sd); Sys.time()
+
+#2- linear regression through time
+lm_function <- function (x){
+  Y<- 1:length(x)
+  
+  if(all(is.na(x))){
+    return (NA)
+  } else{
+    lm_model<- lm(x ~ Y )
+    slope_coefficient<- lm_model$coefficients[2]
+    slope_coefficient
+  }
+}
+Sys.time(); lm_slope_heatwaves <- terra::app (annual_heatwave_mask, fun = lm_function); Sys.time()
+
+#3- mann kendal correlation through time
+#install.packages("Kendall")
+library(Kendall)
+MKtau <- function(z){
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    as.numeric(Kendall::MannKendall(z)$tau)
+  }
+} 
+Sys.time(); kendall_tau_heatwaves <- terra::app (annual_heatwave_mask, fun = MKtau); Sys.time()
+
+#4- theilsen regression
+library(mblm)
+theilsen_function <- function(z){
+  Y<- 1:length(z)
+  
+  if(all(is.na(z))){
+    return (NA)
+  } else{
+    theilsen_model<- mblm::mblm(z ~ Y, repeated = FALSE)
+    slope_coefficient <- theilsen_model$coefficients[2]
+    slope_coefficient
+  }
+} 
+Sys.time(); theilsen_heatwaves <- terra::app (annual_heatwave_mask, fun = theilsen_function); Sys.time()
+writeRaster(theilsen_heatwaves, here("Outputs", "OtherVariables", "Climate", "theilsen_heatwaves.tif"))
+
+#Map making
+d_trans<- st_read(here ("Data", "Cattelanetal_Clustering", "cerrado_climate_zones.shp"))
+d_trans<- st_transform(d_trans, crs = 4326)
+d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
+cerrado<- d_trans %>% st_union()
+
+mapping_function <- function (anomoly_raster, title){
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape (anomoly_raster) + 
+    tm_raster(col.scale = tm_scale_intervals(n=5, style = "quantile", values = "OrRd"),
+              col.legend = tm_legend(title = title)) +
+    tm_layout(legend.text.size = 1, title.size = 4) 
+  x_map
+}
+Sys.time();std_map <- mapping_function (std_heatwaves, "Std"); Sys.time()
+Sys.time();lm_map <- mapping_function (lm_slope_heatwaves, "Linear Regression"); Sys.time()
+Sys.time();tau_map <- mapping_function (kendall_tau_heatwaves, "Mann-Kendall"); Sys.time()
+Sys.time();theilsen_map <- mapping_function (theilsen_heatwaves, "Theil-Sen Regression"); Sys.time()
+
+
+anomoly_results_map<- tmap_arrange(std_map, lm_map, tau_map, theilsen_map, ncol =4, nrow= 1) 
+tmap_save(anomoly_results_map, here("Outputs", "OtherVariables", "Climate", "anomoly_heatwaves_methods_results.png"),
+        height = 50, width = 50, units = "cm", dpi=700)
+
+```
