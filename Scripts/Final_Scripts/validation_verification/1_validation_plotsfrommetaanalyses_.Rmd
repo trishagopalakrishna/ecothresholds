@@ -7,7 +7,6 @@ library(RColorBrewer)
 library(lattice)
 library(tidyverse)
 library(here)
-library(tictoc)
 
 library(ggplot2)
 library(ggpubr)
@@ -108,21 +107,23 @@ points_map_withindex_function<- function (trendsresults_raster, title){
   x_map
 }
 
-Sys.time(); monthly_map_ndvi_points<- points_map_withindex_function(monthly_rds_list[[1]], "NDVI"); Sys.time()
+Sys.time(); monthly_map_ndvi_points<- points_map_withindex_function(monthly_rds_list[[3]], "NDVI"); Sys.time()
 Sys.time(); monthly_map_evi_points<- points_map_withindex_function(monthly_rds_list[[2]], "EVI"); Sys.time()
-#Sys.time(); map_aniso_points<- points_map_withindex_function(rds_list[[3]], "anisoEVI"); Sys.time()
+Sys.time(); monthly_map_aniso_points<- points_map_withindex_function(monthly_rds_list[[1]], "anisoEVI"); Sys.time()
 
-points_trajectory_map<- tmap_arrange(monthly_map_ndvi_points, monthly_map_evi_points, ncol = 2, nrow = 1)
+points_trajectory_map<- tmap_arrange(monthly_map_ndvi_points, monthly_map_evi_points, monthly_map_aniso_points, 
+                                     ncol = 3, nrow = 1)
 tmap_save(points_trajectory_map, here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "points_monthlytrajectories_map.jpeg"),
          height = 40, width = 80, units = "cm", dpi=700)
 
-Sys.time(); annual_map_ndvi_points<- points_map_withindex_function(annual_rds_list[[1]], "NDVI"); Sys.time()
+Sys.time(); annual_map_ndvi_points<- points_map_withindex_function(annual_rds_list[[3]], "NDVI"); Sys.time()
 Sys.time(); annual_map_evi_points<- points_map_withindex_function(annual_rds_list[[2]], "EVI"); Sys.time()
+Sys.time(); annual_map_aniso_points <- points_map_withindex_function(annual_rds_list[[1]], "anisoEVI"); Sys.time()
 
-points_trajectory_map2<- tmap_arrange(annual_map_ndvi_points, annual_map_evi_points, ncol = 2, nrow = 1)
+points_trajectory_map2<- tmap_arrange(annual_map_ndvi_points, annual_map_evi_points, 
+                                      annual_map_aniso_points, ncol = 3, nrow = 1)
 tmap_save(points_trajectory_map2, here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "points_annualtrajectories_map.jpeg"),
          height = 40, width = 80, units = "cm", dpi=700)
-
 
 remove(stevens_si, x, x_join, x_join2, mappalette)
 remove(monthly_map_ndvi_points, monthly_map_evi_points, annual_map_ndvi_points, annual_map_evi_points, points_trajectory_map, points_trajectory_map2)
@@ -139,10 +140,13 @@ trajectory_segregate <- function(x) {
     x_split_mask<- terra::mask(x_split_crop, vect(d_trans))
     x_split_mask
 }
-monthly_NDVItrajectories_split<- trajectory_segregate(monthly_rds_list[[1]])
+monthly_NDVItrajectories_split<- trajectory_segregate(monthly_rds_list[[3]])
 monthly_EVItrajectories_split<- trajectory_segregate(monthly_rds_list[[2]])
-annual_NDVItrajectories_split<- trajectory_segregate(annual_rds_list[[1]])
+monthly_anisoEVItrajectories_split <- trajectory_segregate(monthly_rds_list[[1]])
+
+annual_NDVItrajectories_split<- trajectory_segregate(annual_rds_list[[3]])
 annual_EVItrajectories_split<- trajectory_segregate(annual_rds_list[[2]])
+annual_anisoEVItrajectories_split <- trajectory_segregate(annual_rds_list[[1]])
 remove(trajectory_segregate)
 
 distance_function<- function(split_trajectory_raster){
@@ -163,9 +167,11 @@ calculate_distances<- function (split_raster){
 
 Sys.time(); monthly_NDVI_distances<- calculate_distances(monthly_NDVItrajectories_split); Sys.time() 
 Sys.time(); monthly_EVI_distances<- calculate_distances(monthly_EVItrajectories_split); Sys.time() 
+Sys.time(); monthly_aniso_distances <- calculate_distances(monthly_anisoEVItrajectories_split); Sys.time()
 
 Sys.time(); annual_NDVI_distances<- calculate_distances(annual_NDVItrajectories_split); Sys.time() 
 Sys.time(); annual_EVI_distances<- calculate_distances(annual_EVItrajectories_split); Sys.time()
+Sys.time(); annual_aniso_distances <- calculate_distances(annual_anisoEVItrajectories_split); Sys.time()
 
 shortestdistance_trajectory<- function (distance_raster){
   distance_df<- terra::extract(distance_raster, stevens_si_vector)
@@ -178,10 +184,11 @@ shortestdistance_trajectory<- function (distance_raster){
 }
 Sys.time(); monthly_NDVI_closest_trajectory_df<- shortestdistance_trajectory(monthly_NDVI_distances); Sys.time()
 Sys.time(); monthly_EVI_closest_trajectory_df<- shortestdistance_trajectory(monthly_EVI_distances); Sys.time()
+Sys.time(); monthly_aniso_closest_trajectory_df <- shortestdistance_trajectory(monthly_aniso_distances); Sys.time()
 
 Sys.time(); annual_NDVI_closest_trajectory_df<- shortestdistance_trajectory(annual_NDVI_distances); Sys.time()
 Sys.time(); annual_EVI_closest_trajectory_df<- shortestdistance_trajectory(annual_EVI_distances); Sys.time()
-
+Sys.time(); annual_aniso_closest_trajectory_df <- shortestdistance_trajectory(annual_aniso_distances); Sys.time()
 
 ```
 Only 5 out of 17 of the plots fall within the study area of this study. 
@@ -200,8 +207,10 @@ of the study area of this study
 ```{r}
 monthly_NDVItrajectories_split
 monthly_EVItrajectories_split
+monthly_anisoEVItrajectories_split
 annual_NDVItrajectories_split
 annual_EVItrajectories_split
+annual_anisoEVItrajectories_split
 
 convert_NA_to_999_function <- function (split_trajectory_raster){
   classified_raster <- terra::classify(split_trajectory_raster, cbind (NA, 999))
@@ -212,22 +221,28 @@ convert_NA_to_999_function <- function (split_trajectory_raster){
 
 converted_monthly_NDVItrajectories_split <- convert_NA_to_999_function(monthly_NDVItrajectories_split)
 converted_monthly_EVItrajectories_split <- convert_NA_to_999_function(monthly_EVItrajectories_split)
+converted_monthly_anisotrajectories_split <- convert_NA_to_999_function(monthly_anisoEVItrajectories_split)
 
 converted_annual_NDVItrajectories_split <- convert_NA_to_999_function(annual_NDVItrajectories_split)
 converted_annual_EVItrajectories_split <- convert_NA_to_999_function(annual_EVItrajectories_split)
+converted_annual_anisotrajectories_split <- convert_NA_to_999_function(annual_anisoEVItrajectories_split)
 remove(convert_NA_to_999_function)
 
 Sys.time(); converted_monthly_NDVI_distances<- calculate_distances(converted_monthly_NDVItrajectories_split); Sys.time() 
 Sys.time(); converted_monthly_EVI_distances<- calculate_distances(converted_monthly_EVItrajectories_split); Sys.time() 
+Sys.time(); converted_monthly_aniso_distances <- calculate_distances(converted_monthly_anisotrajectories_split); Sys.time()
 
 Sys.time(); converted_annual_NDVI_distances<- calculate_distances(converted_annual_NDVItrajectories_split); Sys.time() 
 Sys.time(); converted_annual_EVI_distances<- calculate_distances(converted_annual_EVItrajectories_split); Sys.time()
+Sys.time(); converted_annual_aniso_distances <- calculate_distances (converted_annual_anisotrajectories_split)
 
 Sys.time(); converted_monthly_NDVI_closest_trajectory_df<- shortestdistance_trajectory(converted_monthly_NDVI_distances); Sys.time()
 Sys.time(); converted_monthly_EVI_closest_trajectory_df<- shortestdistance_trajectory(converted_monthly_EVI_distances); Sys.time()
+Sys.time(); converted_monthly_aniso_closest_trajectory_df <- shortestdistance_trajectory(converted_monthly_aniso_distances); Sys.time()
 
 Sys.time(); converted_annual_NDVI_closest_trajectory_df<- shortestdistance_trajectory(converted_annual_NDVI_distances); Sys.time()
 Sys.time(); converted_annual_EVI_closest_trajectory_df<- shortestdistance_trajectory(converted_annual_EVI_distances); Sys.time()
+Sys.time(); converted_annual_aniso_closest_trajectory_df <- shortestdistance_trajectory(converted_annual_aniso_distances); Sys.time()
 
 ```
 When using monthly trajectory results, most of the remaining 12 studies are also closest to "Step increase" trajectory pixels, 
@@ -242,8 +257,10 @@ When using annual trajectory results, the results are mixed.
 ```{r}
 monthly_NDVItrajectories_split
 monthly_EVItrajectories_split
+monthly_anisoEVItrajectories_split
 annual_NDVItrajectories_split
 annual_EVItrajectories_split
+annual_anisoEVItrajectories_split
 
 #Studies/field sites that are within my study region
 df_prep<- function (closest_distance_df, index_name){
@@ -255,16 +272,19 @@ x
 
 monthly_closest_ndvi<- df_prep(monthly_NDVI_closest_trajectory_df, "monthly_NDVI") 
 monthly_closest_evi<- df_prep(monthly_EVI_closest_trajectory_df, "monthly_EVI")
+monthly_closest_aniso <- df_prep (monthly_aniso_closest_trajectory_df, "monthly_aniso")
 
 annual_closest_ndvi<- df_prep(annual_NDVI_closest_trajectory_df, "annual_NDVI") 
 annual_closest_evi<- df_prep(annual_EVI_closest_trajectory_df, "annual_EVI")
-
+annual_closest_aniso <- df_prep(annual_aniso_closest_trajectory_df, "annual_aniso")
 
 closest_df<- left_join(monthly_closest_ndvi, monthly_closest_evi)
+closest_df <- left_join(closest_df, monthly_closest_aniso)
 closest_df <- left_join(closest_df, annual_closest_ndvi)
 closest_df <- left_join(closest_df, annual_closest_evi)
+closest_df <- left_join(closest_df, annual_closest_aniso)
 closest_df$uniqueID<-as.numeric(closest_df$uniqueID)
-pivot_closest_df <- pivot_longer (closest_df, 2:5)
+pivot_closest_df <- pivot_longer (closest_df, 2:7)
 pivot_closest_df <- pivot_closest_df %>% separate_wider_delim(cols = name, delim = "_", names = c("annual_monthly","IndexName"))
 pivot_closest_df <- pivot_closest_df %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==2~ "Linear increase",
@@ -280,7 +300,8 @@ within_studyarea_plot <- ggplot(pivot_closest_df, aes(x = annual_monthly, fill =
   geom_bar() + facet_grid(~IndexName)+
   scale_fill_manual(values = c("lightgrey","#882255",  "#88CCEE")) +
   theme_classic(base_size = 14) +
-  theme(legend.title=element_blank()) +xlab("Index") +ylab ("Count") +
+  theme(legend.title=element_blank(),
+        axis.text.x = element_text(angle= 45, vjust = 0.5, hjust=0.5)) +xlab("Index") +ylab ("Count") +
   ggtitle ("Field bases studies within our study area")
 
 #Studies/field sites that are outside the study area of this project
@@ -288,22 +309,27 @@ converted_monthly_NDVI_closest_trajectory_df
 names(converted_monthly_NDVI_closest_trajectory_df)<- c("uniqueID", "monthly_NDVI_mindist", "monthly_NDVI")
 converted_monthly_EVI_closest_trajectory_df
 names(converted_monthly_EVI_closest_trajectory_df)<- c("uniqueID", "monthly_EVI_mindist", "monthly_EVI")
+converted_monthly_aniso_closest_trajectory_df
+names(converted_monthly_aniso_closest_trajectory_df) <- c("uniqueID", "monthly_aniso_mindist", "monthly_aniso")
 
 converted_annual_NDVI_closest_trajectory_df
 names(converted_annual_NDVI_closest_trajectory_df)<- c("uniqueID", "annual_NDVI_mindist", "annual_NDVI")
 converted_annual_EVI_closest_trajectory_df
 names(converted_annual_EVI_closest_trajectory_df)<- c("uniqueID", "annual_EVI_mindist", "annual_EVI")
+converted_annual_aniso_closest_trajectory_df
+names(converted_annual_aniso_closest_trajectory_df)<- c("uniqueID", "annual_aniso_mindist", "annual_aniso")
 
 closest_df2 <- left_join(converted_monthly_NDVI_closest_trajectory_df, converted_monthly_EVI_closest_trajectory_df)
+closest_df2 <- left_join(closest_df2, converted_monthly_aniso_closest_trajectory_df)
 closest_df2 <- left_join(closest_df2, converted_annual_EVI_closest_trajectory_df)
 closest_df2 <- left_join(closest_df2, converted_annual_NDVI_closest_trajectory_df)
+closest_df2 <- left_join(closest_df2, converted_annual_aniso_closest_trajectory_df)
 closest_df3 <- closest_df2 %>% filter(monthly_NDVI_mindist != 0) #excluding studies that are directly in a trajectory pixel
 closest_df3$uniqueID<-as.numeric(closest_df3$uniqueID)
 
+trajectories_only<- closest_df3 %>% dplyr::select(c(uniqueID, monthly_NDVI, monthly_EVI, monthly_aniso, annual_NDVI, annual_EVI, annual_aniso))
 
-trajectories_only<- closest_df3 %>% dplyr::select(c(uniqueID, monthly_NDVI, monthly_EVI, annual_NDVI, annual_EVI))
-
-pivot_closest_df2 <- pivot_longer (trajectories_only, 2:5)
+pivot_closest_df2 <- pivot_longer (trajectories_only, 2:7)
 pivot_closest_df2 <- pivot_closest_df2 %>% separate_wider_delim(cols = name, delim = "_", names = c("annual_monthly","IndexName"))
 pivot_closest_df2 <- pivot_closest_df2 %>% mutate(value = case_when(value== 1~ "Linear decrease",
                                                 value==2~ "Linear increase",
@@ -314,20 +340,25 @@ pivot_closest_df2 <- pivot_closest_df2 %>% mutate(value = case_when(value== 1~ "
                                                 value==8~"Quadratic increase (accelerated)",
                                                 value==9~"Quadratic increase (decelerated)",
                                                 TRUE~"No trend"))  
-#pivot_closest_df2 <- pivot_closest_df2 %>% dplyr::select(-c(EVI_min_dist))
-#names(pivot_closest_df2)[2] <- ("min_distance_m")
-#pivot
 
 outside_studyarea_plot <- ggplot(pivot_closest_df2, aes(x = annual_monthly, fill = value)) + 
   geom_bar() + facet_grid(~IndexName) +
   scale_fill_manual(values = c("#117733", "lightgrey", "#CC6677", "#DDCC77" ,  "#882255",  "#88CCEE")) +
   scale_y_continuous(limits=c(0,12), breaks=seq(0,12,2)) +
   theme_classic(base_size = 14) +
-  theme(legend.title=element_blank()) +xlab("Index") +ylab ("Count") +
+  theme(legend.title=element_blank(),
+        axis.text.x = element_text(angle=45, vjust=0.5, hjust=0.5)) +xlab("Index") +ylab ("Count") +
   ggtitle ("Field bases studies outside our study area")
 
-mindist_df <- closest_df3 %>% dplyr::select(c(uniqueID, monthly_NDVI_mindist, monthly_NDVI, monthly_EVI, annual_EVI, annual_NDVI ))
-pivot_closest_df3 <- pivot_longer (mindist_df, 3:6)
+#For SI
+allsites_allindices_annualmonthly_barplot <- ggarrange(within_studyarea_plot, outside_studyarea_plot, nrow = 2, ncol = 1)
+ggsave(here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "SI_allsites_allindices_annualmonthly_barplot.jpeg"),
+       allsites_allindices_annualmonthly_barplot, dpi= 400, height = 30, width = 30, units = "cm")
+
+mindist_df <- closest_df3 %>% dplyr::select(c(uniqueID, monthly_NDVI_mindist, 
+                                              monthly_NDVI, monthly_EVI, monthly_aniso,
+                                              annual_EVI, annual_NDVI, annual_aniso))
+pivot_closest_df3 <- pivot_longer (mindist_df, 3:8)
 pivot_closest_df3 <- pivot_closest_df3 %>% separate_wider_delim(cols = name, delim = "_", names = c("annual_monthly","IndexName"))
 
 p <- ggplot(pivot_closest_df3, aes(x = annual_monthly, y= monthly_NDVI_mindist, fill = value)) + 
@@ -335,15 +366,13 @@ p <- ggplot(pivot_closest_df3, aes(x = annual_monthly, y= monthly_NDVI_mindist, 
   coord_flip() + facet_grid(~IndexName) +
   scale_y_continuous(limits=c(0,18000), breaks=seq(0,18000,2000)) +
   scale_fill_manual(values = c("#117733", "lightgrey","#CC6677", "#DDCC77" ,  "#882255",  "#88CCEE")) +
-  theme_classic(base_size = 14) + xlab ("Trajectory type") + ylab ("Closest distance to (m)") +
-  theme(legend.position = "none") + ggtitle ("Distribution of distance of field study to closest trajectory")
-
-
-barplot_fig <- ggarrange(within_studyarea_plot, outside_studyarea_plot, nrow = 2, ncol = 1)
-library(ggpubr)
-x<- ggarrange(barplot_fig, p, widths = c(2,1))
-ggsave(here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "fieldsites_trajectories_results.jpeg"),
-       x,dpi = 700, height = 50, width=80, units = "cm")
+  theme_classic(base_size = 14) + 
+  xlab ("Trajectory type") + ylab ("Closest distance to (m)") +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle=45, vjust=0.5, hjust=0.5)) + 
+  ggtitle ("Distribution of distance of field study to closest trajectory")
+ggsave(here("Outputs", "AnalysesResults", "Relationship_to_fieldplots", "mindist_outfieldsites_allindices_annualmonthly.jpeg"),
+       p,dpi = 700, height = 30, width=30, units = "cm")
 ```
 
 
