@@ -17,6 +17,11 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
+brazil_states <- st_read(here("Data", "Admin", "BR_UF_2020", "BR_UF_2020.shp"))
+brazil_states <- st_transform(brazil_states, crs= st_crs(cerrado))
+cerrado_states <- st_intersection(brazil_states, cerrado)
+cerrado_states <- cerrado_states %>% filter(NM_UF!="Rondônia" & NM_UF!= "Pará")
+
 monthly_ts_swin11_results <- rast(here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly", "reclass_monthly_ndvi_swin11.tif"))
 
 aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
@@ -26,6 +31,8 @@ aggregate_mapping_function <- function (trendresults_raster){
     tm_shape (trendresults_raster) + 
     tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
               col.legend = tm_legend(show = F)) +
+    tm_shape(cerrado_states) + tm_borders(col = "black", lwd = 1.5)+
+    tm_text("SIGLA_UF", size = 1, fontface = "bold", col = "#DC267F" ) +
     tm_layout(frame = FALSE)
   x_map
 }
