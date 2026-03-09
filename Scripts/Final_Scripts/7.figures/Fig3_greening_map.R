@@ -13,9 +13,9 @@ library(boot)
 library(scales)
 
 #1.Input needed data and models
-analyses_df_noNA_nooutliers <- read_rds(here("Scripts", "Final_Scripts", "analyses", "analyses_df_noNA_nooutliers.rdata"))
+analyses_df_noNA_nooutliers <- read_rds(here("Scripts", "Final_Scripts", "6.analyses", "analyses_df_noNA_nooutliers.rdata"))
 
-greening_gam <- read_rds(here("Scripts", "Final_Scripts", "analyses", "onemodel_inc.rds"))
+greening_gam <- read_rds(here("Scripts", "Final_Scripts", "6.analyses", "onemodel_inc.rds"))
 
 #2. Greening raster created from data
 prediction_raster <- function(gam_model){
@@ -47,12 +47,19 @@ d_trans<- st_transform(d_trans, crs = 4326)
 d_trans<- d_trans %>% mutate(area_km= terra::expanse(vect(d_trans), unit="km"))
 cerrado<- d_trans %>% st_union()
 
+brazil_states <- st_read(here("Data", "Admin", "BR_UF_2020", "BR_UF_2020.shp"))
+brazil_states <- st_transform(brazil_states, crs= st_crs(cerrado))
+cerrado_states <- st_intersection(brazil_states, cerrado)
+cerrado_states <- cerrado_states %>% filter(NM_UF!="Rondônia" & NM_UF!= "Pará")
+
 aggregate_mapping_function <- function (partialeffect_raster, greens_or_brown_values){
   x_map<- tm_shape(cerrado)+ tm_borders()+
     tm_polygons(fill.scale = tm_scale_categorical(n=1, values = "grey"))+
     tm_shape (partialeffect_raster) + 
     tm_raster(col.scale = tm_scale_continuous(values = greens_or_brown_values),
               col.legend = tm_legend(show= TRUE, title = "Probability", reverse = T, frame.color = NA)) + 
+    tm_shape(cerrado_states) + tm_borders(col = "black", lwd = 1.5)+
+    tm_text("SIGLA_UF", size = 1, fontface = "bold", col = "#DC267F" )+
     tm_layout(frame = FALSE)
   x_map
 }
