@@ -21,25 +21,32 @@ brazil_states <- st_read(here("Data", "Admin", "BR_UF_2020", "BR_UF_2020.shp"))
 brazil_states <- st_transform(brazil_states, crs= st_crs(cerrado))
 cerrado_states <- st_intersection(brazil_states, cerrado)
 cerrado_states <- cerrado_states %>% filter(NM_UF!="Rondônia" & NM_UF!= "Pará")
-
 monthly_ts_swin11_results <- rast(here("Outputs", "TrendsResults", "aggregate_trajectory_results", "monthly", "reclass_monthly_ndvi_swin11.tif"))
 
 aggregate_trajectory_palette <- c("#663300", "#61A36A", "#7C7083")
 
 aggregate_mapping_function <- function (trendresults_raster){
-  x_map<- tm_shape(cerrado)+ tm_borders()+
+  x_map<- tm_shape(cerrado)+ tm_borders(col = "black", lwd = 1.5)+
     tm_shape (trendresults_raster) + 
     tm_raster(col.scale = tm_scale_categorical(n=3, values = aggregate_trajectory_palette), 
               col.legend = tm_legend(show = F)) +
     tm_shape(cerrado_states) + tm_borders(col = "black", lwd = 1.5)+
-    tm_text("SIGLA_UF", size = 1, fontface = "bold", col = "#DC267F" ) +
     tm_layout(frame = FALSE)
   x_map
 }
 
 fig1_map <- aggregate_mapping_function(monthly_ts_swin11_results)
 output_file_path <- here("Outputs", "TrendsResults", "aggregate_trajectory_results")
-tmap_save(fig1_map, paste0(output_file_path, "/", "map1km_ndvi_aggtrajectories_monthly_swin11_2.png"),
+tmap_save(fig1_map, paste0(output_file_path, "/", "map1km_ndvi_aggtrajectories_monthly_swin11_3.png"),
+          height = 12, width = 12, units = "cm", dpi= 400)
+
+#only State texts
+state_text_only<- 
+  x_map<- tm_shape(cerrado)+ tm_borders()+
+    tm_shape(cerrado_states) + tm_borders()+
+    tm_text("SIGLA_UF", size = 1, fontface = "bold", fontfamily = "sans", col = "#DC267F" ) +
+    tm_layout(frame = FALSE)
+tmap_save(state_text_only, paste0(output_file_path, "/", "state_text_only_map1km_ndvi_aggtrajectories_monthly_swin11_2.png"),
           height = 12, width = 12, units = "cm", dpi= 400)
 
 
