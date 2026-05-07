@@ -1,0 +1,51 @@
+//In this script I extract monthly MODIS NDVI 2001-2021 (1 km scale)
+//and find the annual mean 
+//20th June 2024
+
+//1. Data input
+var modis_ndvi = ee.ImageCollection('MODIS/061/MOD13A3')
+                  .filter(ee.Filter.date('2000-01-01', '2022-01-01'))
+                  .select('NDVI');
+print (modis_ndvi.size()); //263
+//print (modis_ndvi);
+var ndviVis = {
+  min: 0,
+  max: 9000,
+  palette: [
+    'ffffff', 'ce7e45', 'df923d', 'f1b555', 'fcd163', '99b718', '74a901',
+    '66a000', '529400', '3e8601', '207401', '056201', '004c00', '023b01',
+    '012e01', '011d01', '011301'
+  ],
+};
+Map.setCenter(6.746, 46.529, 2);
+Map.addLayer(modis_ndvi, ndviVis, 'NDVI');
+
+//2. Crop to Cerrado only
+var buffer = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+var cerrado_ndvi= modis_ndvi.map(function(image) { 
+  return image.clip(buffer).toFloat()
+});
+
+print (cerrado_ndvi);
+Map.addLayer(cerrado_ndvi.first(),{}, "2000 Feb Cerrado NDVI") 
+//Above mapping does not work
+print (cerrado_ndvi.size());//252 images ie for each month May (5th month) 2000 to Dec 2021
+
+//3. Creating multiband image to export
+
+var img_modisndvi_cerrado= cerrado_ndvi.toBands()
+print(img_modisndvi_cerrado);
+
+var projection =  img_modisndvi_cerrado.select("2000_02_01_NDVI").projection()  
+print (projection.crs());//weird SR-ORG: 6974 
+print (projection.nominalScale()); //926.62 m
+
+//export collection to google drive
+Export.image.toDrive({
+  image: img_modisndvi_cerrado, 
+  description: "Cerrado_monthly_NDVI",
+  folder:'GEE things', 
+  scale: projection.nominalScale().getInfo(),
+  crs: projection.crs().getInfo(),
+  region: buffer});
+  

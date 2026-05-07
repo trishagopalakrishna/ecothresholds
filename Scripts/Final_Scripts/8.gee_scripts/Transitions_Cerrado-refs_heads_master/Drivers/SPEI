@@ -1,0 +1,65 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// SPEI
+// In this script, I use the CRU based SPEI product and 
+// process it for the Cerrado at 25 sqkm
+
+//Date- 14th Jan 2025
+
+//////////////////////////////////////1. Data input
+// Retrieve the last date from the SPEI dataset.
+var dataset = ee.ImageCollection('CSIC/SPEI/2_10').
+  filterDate('2002-01-01', '2021-12-31');
+print (dataset); 
+var prj= dataset.first().projection();
+//print (prj.crs()); // EPSG: 4326
+//print (prj.nominalScale()); // 55659.74
+//The dataset is a Image Collection with 239 images. And each img
+//contains 48 bands indicating the 1-48 months cumulative scale of PET and Rainfall
+//used to create SPEI. I use only 12 month rainfall and PET
+
+var twelvemonth_cumulative= dataset.select('SPEI_12_month');
+var visParams = {
+  min: -2.33,
+  max:  2.33,
+  palette: [
+    '8b1a1a', 'de2929', 'f3641d',
+    'fdc404', '9afa94', '03f2fd',
+    '12adf3', '1771de', '00008b',
+  ]
+};
+Map.addLayer(twelvemonth_cumulative, visParams, "SPEI 12 month");
+Map.addLayer(buffer_cerrado);
+//print (twelvemonth_cumulative);
+
+var img_spei_twelvemonth= twelvemonth_cumulative.toBands();
+print (img_spei_twelvemonth);
+
+var cerrado_img_spei_twelvemonth = img_spei_twelvemonth.clip(buffer_cerrado);
+
+
+//////////////////////////////////////2. Coarsening and export at 5 x 5km
+var coarse_cerrado_img= cerrado_img_spei_twelvemonth
+  .resample("bilinear")
+  .reproject({
+    crs:'EPSG:4326',
+    scale: 5000}
+    );
+    
+print (coarse_cerrado_img);
+var coarse_proj= coarse_cerrado_img.projection();
+print (coarse_proj.crs()) 
+print (coarse_proj.nominalScale()); 
+
+Export.image.toDrive({
+  image: coarse_cerrado_img,
+  description: "annualSPEI",
+  folder: 'GEE things',
+  scale: coarse_proj.nominalScale().getInfo(),
+  region: buffer_cerrado,
+  crs: coarse_proj.crs().getInfo(),
+  maxPixels: 1e10
+});
+
+

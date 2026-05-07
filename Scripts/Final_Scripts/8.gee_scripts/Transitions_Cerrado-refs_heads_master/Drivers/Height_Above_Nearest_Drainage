@@ -1,0 +1,57 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Height above drainage
+// In this script I extract HAND variable for the Cerrado
+// Information for this product is -https://gee-community-catalog.org/projects/hand/
+// I use the GEE script- https://code.earthengine.google.com/f4df14a0f175a8b82cad7eeb4e2eafc9
+// The Github page of this product- https://github.com/gena/paper-global-hand?tab=readme-ov-file
+// This is not a peer reviewed product, but author of the product has given permission
+// to me to use it (via GEE Google Groups query that I posted) and has said to cite the
+// EGU poster made for this product (on Google scholar)
+// GEE Google Groups query- https://groups.google.com/g/google-earth-engine-developers/c/RdEEfRt6Pzk
+
+//Date- 3rd Jan 2025
+
+/////////////////////////////////// 1. Data input
+var hand90_1000 = ee.Image("users/gena/GlobalHAND/90m-global/hand-1000");
+// I decide to use the 90m version because anyway I need to resample
+// the product to 1km for my analyses. 1000 means that 1000 upstream pixels 
+// were used to delienate the flow accumulation/path analyses ie ~8sqkm drainage area
+// (see GEE Google Groups query and response from author)
+
+var paletteHand = ['023858', '006837', '1a9850', '66bd63', 'a6d96a', 'd9ef8b', 'ffffbf', 'fee08b', 'fdae61', 'f46d43', 'd73027'];
+var vis = {min: 1, max: 150, palette: paletteHand}
+Map.addLayer(hand90_1000, vis, 'HAND 1000, 90m (~8km2)', false)
+
+/////////////////////////////////// 2. Crop and mask to Cerrado buffer
+var hand_cerrado= hand90_1000.clip(buffer_cerrado);
+Map.addLayer(hand_cerrado, vis, 'Cerrado HAND 1000, 90m (~8km2)')
+
+/////////////////////////////////// 3. Projection and resample to ~5sqkm
+var dataset_proj = hand_cerrado.projection();
+print (dataset_proj); //EPSG:4326
+
+//var anisoevi = ee.ImageCollection("projects/anisoveg/assets/evi_anisotropy");
+//var target_projection =  anisoevi.first().projection()
+//print (target_projection.nominalScale()); //1013.829 m
+
+var trial = hand_cerrado.resample('bilinear')
+  .reproject({
+    crs: 'EPSG: 4326',
+    scale: 5000})
+  .clip(buffer_cerrado);
+Map.addLayer(trial, vis, 'HAND 1000, 1km (~8km2)')
+var trial_proj= trial.projection();
+print (trial_proj.nominalScale());//5000m
+
+/////////////////////////////////// 4. Export
+Export.image.toDrive({
+  image: trial, 
+  description: "bufferCerrado_HAND",
+  folder:'GEE things', 
+  scale: 5000,
+  crs: 'EPSG:4326',
+  maxPixels: 1e12,
+  region: buffer_cerrado.geometry()
+});

@@ -1,0 +1,222 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones"),
+    era5_daily = ee.ImageCollection("ECMWF/ERA5_LAND/DAILY_AGGR"),
+    image = ee.Image("projects/ee-trishagopalakrishna/assets/trial_heatwave_15day"),
+    imageVisParam = {"opacity":1,"bands":["temperature_2m"],"min":53.95668158117416,"max":103.70351259358313,"gamma":1};
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+
+// Heat waves
+// In this script, I calculate heat wave index.
+// I use the definition of "A 5-d heatwave with a 90th percentile threshold is defined as five consecutive 
+// days with the maximum temperature exceeding the 90th percentile of the long-term climatology for that month"
+// from Mazdiyasni & AghaKouchak 2015
+// https://www.pnas.org/doi/full/10.1073/pnas.1422945112
+
+//Date- 22nd Jan 2025
+////////////////////////////////////1.EDA
+var count = era5_daily.size();
+//print('Count in entire dataset: ', count); //27409
+var era5_proj= era5_daily.first().projection();
+//print (era5_proj.nominalScale()); //11131.949079327358
+var date_first = ee.Date(era5_daily.first().get('system:time_start'));
+//print('Timestamp- Start date : ', date_first); // Feb 1950
+
+////////////////////////////////////2. Processing
+var temp = era5_daily.select(['temperature_2m']);
+var temp_timeperiod= temp.filterDate('1981', '2021');
+//print (temp_timeperiod.limit(10)); 
+//Map.addLayer (temp_timeperiod.first());
+//var temp_timeperiod=ee.ImageCollection.fromImages(temp_timeperiod);
+//print (temp_timeperiod.limit(5));
+
+//// Calculation of long-term climatology for each month
+//1. Group all days of Jan, all days of Feb..... Group all days of Dec
+//2. Reduce using 90th percentile 
+
+var annualpercentile = ee.List.sequence(1,12) .map(function(n){
+    
+    var month_temp = temp_timeperiod.filter(ee.Filter.calendarRange(n,n,'month'))
+    
+    return month_temp
+          .reduce(ee.Reducer.percentile([90]))
+          .set('month', n)
+          
+  });
+        
+//print (annualpercentile); //list
+var imgcollection_annualpercentile = ee.ImageCollection.fromImages(annualpercentile);
+//print (imgcollection_annualpercentile);
+//Map.addLayer(imgcollection_annualpercentile.first());
+
+//// Calculation considering 7 consecutive days rolling windows 
+//1. For each day, test whether T is > var annualpercentile for January
+//2. Create rolling window of 7 days before to 7 days after for each image
+//   and sum rolling window images and take >= 5
+//3. Create binary image collection (1 is heatwave) by multiplying two lists
+//4. Calculate #heatwaves annually
+
+var studyPeriodTemp = era5_daily.filterDate("2002", "2022").select(['temperature_2m']);
+
+// Step 1
+var studyPeriodHot = studyPeriodTemp.map(function(img) {
+  
+  var month = img.date().get("month");
+  
+  var monthPercentile = imgcollection_annualpercentile.filter(ee.Filter.eq("month", month)).first();
+  
+  var imgHot = img.gte(monthPercentile);
+  
+  return imgHot.copyProperties(img,['system:time_start']);
+});
+
+//print ("studyPeriodHot",studyPeriodHot.limit(10));
+//print (studyPeriodHot.size()); //7305
+//Map.addLayer(studyPeriodHot.first());
+
+// Step 2
+var studyPeriodWindow = studyPeriodHot.map(function(img) {
+  
+  var date = img.date();
+  var start = date.advance(-7, "days");
+  var end = date.advance(7, "days");
+  
+  var windowImgs = studyPeriodHot.filterDate(start, end);
+  
+  var windowHot = windowImgs.sum().gte(5); //5 consecutive days
+  
+  return windowHot.copyProperties(img,['system:time_start']);
+  
+});
+
+//print("studyPeriodWindow", studyPeriodWindow.limit(10))
+//print (studyPeriodWindow.size()); //7305
+
+// Step 3
+var band_index1 = ee.List.sequence(0, 7303); //timestamp t1 
+//print (band_index1);
+var band_index2 = ee.List.sequence(1, 7304); //timestamp t2 
+
+var liststudyPeriodWindow = studyPeriodWindow.toList(studyPeriodWindow.size());
+
+function getImages(list){
+  var img = ee.Image(liststudyPeriodWindow.get(list));
+  return img;
+} 
+
+var list_time1 = (band_index1.map(getImages));
+var list_time2 = (band_index2.map(getImages));
+
+var imgCollection_code = ee.ImageCollection(ee.List.sequence(0, 7303).map(function(n){ 
+    
+    var img1 = ee.Image(list_time1.get(n))
+    
+    var img2 = ee.Image(list_time2.get(n))
+    
+    var code_img = img1.multiply(10).add(img2);
+    
+    return code_img.copyProperties(img1,['system:time_start']);
+}));
+print (imgCollection_code.limit(10));
+
+// Output will have each band with values 0, 1, 11, 10
+// We want to count the number of times a pixel value is 1 through the timeseries
+var heatwave_only= ee.ImageCollection(imgCollection_code.map(function(img){
+    return img.eq(1).copyProperties(img,['system:time_start'])
+}));
+var heatwave_number= heatwave_only.sum() //#heatwaves across time period 2002-2022
+//print (heatwave_number);
+//Map.addLayer(heatwave_number);
+var fulltimeperiod_cerrado_heatwave = heatwave_number.clip(buffer_cerrado);
+
+//Asset export of #heatwaves across time period 
+// Export.image.toAsset({
+//   image: fulltimeperiod_cerrado_heatwave,
+//   description: "fulltimeperiod_heatwave_15day",
+//   //scale: cerrado_heatwave.proj().nominalScale().getInfo(),
+//   region: buffer_cerrado,
+//   //crs: cerrado_heatwave.crs().getInfo(),
+//   maxPixels: 1e10
+// });
+
+//Step 4
+var year_list = ee.List.sequence(2002, 2021); //2021 because we are doing the analyses for whole of 2021 and stopping at sart of 2022
+print (year_list);
+var heatwave_annual = ee.ImageCollection(year_list.map(function(y) {
+  var heatwave_year = heatwave_only.filter(ee.Filter.calendarRange(y, y, "year"));
+  
+  var heatwave_year_sum = heatwave_year.sum();
+  
+  return heatwave_year_sum.set("year", y);
+}));
+
+//print("Annual heatwaves", heatwave_annual);
+var img_heatwaves_annual = heatwave_annual.toBands(); //bandnames are in format that cannot be exported as asset
+
+//Changing band names
+//Step 1- create list of names
+var getBandNames = function(prefix, year_list) {
+  var names = ee.List(year_list).map(function(y) {
+    y = ee.String(y).replace("\\.0", "");
+    return ee.String(prefix)
+      .cat("_")
+      .cat(y);
+  });
+  return names;
+};
+var band_names = getBandNames("Y", year_list);
+print (band_names);
+
+//Step 2- rename band names
+var img_heatwaves_annual_rename = img_heatwaves_annual.rename(band_names);
+print (img_heatwaves_annual_rename);
+var annual_cerrado_heatwave = img_heatwaves_annual_rename.clip(buffer_cerrado);
+
+//Asset export of #heatwaves annualy
+//Export.image.toAsset({
+//   image: annual_cerrado_heatwave,
+//   description: "annual_heatwave_15day",
+//   //scale: cerrado_heatwave.proj().nominalScale().getInfo(),
+//   region: buffer_cerrado,
+//   //crs: cerrado_heatwave.crs().getInfo(),
+//   maxPixels: 1e10
+// });
+ 
+////////////////////////////////////3. Coarsening to 5km and exporting
+var fulltimeperiod_heatwave_15day = ee.Image("projects/ee-trishagopalakrishna/assets/fulltimeperiod_heatwave_15day");
+Map.addLayer(fulltimeperiod_heatwave_15day);
+//var proj= fulltimeperiod_heatwave_15day.projection();
+//print (proj.crs()) //EPSG:4326
+//print (proj.nominalScale()); //1000
+
+var annual_heatwave_15day = ee.Image("projects/ee-trishagopalakrishna/assets/annual_heatwave_15day");
+Map.addLayer(annual_heatwave_15day);
+//var proj2= annual_heatwave_15day.projection();
+//print (proj2.crs()) //EPSG:4326
+//print (proj2.nominalScale()); //1000
+
+var coarse_annual_heatwave = annual_heatwave_15day
+  .resample("bilinear")
+  .reproject({
+    crs:'EPSG:4326',
+    scale: 5000}
+    );
+    
+//print (coarse_annual_heatwave);
+var coarse_proj2= coarse_annual_heatwave.projection();
+//print (coarse_proj2.crs()) //EPSG:4326
+//print (coarse_proj2.nominalScale()); //5000m
+//Map.addLayer(coarse_annual_heatwave);
+
+var imgcoarse_annual_heatwave = coarse_annual_heatwave.toDouble();
+
+Export.image.toDrive({
+  image: imgcoarse_annual_heatwave,
+  description: "Annual-ERA5_Heatwave",
+  folder: 'GEE things',
+  scale: coarse_proj2.nominalScale().getInfo(),
+  region: buffer_cerrado,
+  crs: coarse_proj2.crs().getInfo(),
+  maxPixels: 1e10
+});
+  
+

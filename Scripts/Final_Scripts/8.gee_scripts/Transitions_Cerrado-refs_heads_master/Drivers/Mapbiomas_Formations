@@ -1,0 +1,151 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Mapbiomas formations 
+// In this script I want process annual rasters in which 
+// forest, savanna and grassland formations is retained while
+// other classes are not (0). Then the rasters are agrregated
+// to 1 & 5km such that proportion of 5km pixel is % forest, savanna, grass
+
+//Date- 28th July 2025
+
+//Map.setCenter(-49.44, -11.85, 4);
+
+///////////////////////////////////////////////////Data loading
+
+//https://brasil.mapbiomas.org/wp-content/uploads/sites/4/2024/08/ATBD-Collection-9-v2.docx.pdf
+// Above is Mapbiomas Brasil Collection 8 handbook which provides legend ie what lulc is each pixel value
+var lulc = ee.Image("projects/mapbiomas-public/assets/brazil/lulc/collection9/mapbiomas_collection90_integration_v1");
+print (lulc);
+//Map.addLayer(lulc);
+
+///////////////////////////////////////////////////Processing
+//1. Exclude 'Water' classes and 'Not observed' completely from the Mapbiomas image collection
+
+var water_notobserved_mask= lulc.eq(26).or(lulc.eq(33)).or(lulc.eq(31)).or(lulc.eq(27))
+   .clip(buffer_cerrado);
+//print (water_notobserved_mask);
+//var Viz = {min: 0, max: 38, palette: ['blue', 'green', 'red']};
+//Map.addLayer (water_notobserved_mask, Viz, "Water/Not observed Mask");
+
+var lulc_nowater_notobserved= water_notobserved_mask.eq(0).selfMask();
+//Map.addLayer (lulc_nowater_notobserved, {}, "Excluded water and not observed");
+
+//2a. Create a mask of pixels that are forest (1) or other (0)
+var forest_other_mask= lulc.eq(3)
+   .clip(buffer_cerrado);
+print (forest_other_mask);
+
+// var Viz1 = {bands: ['classification_1985'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 1985");
+// var Viz2 = {bands: ['classification_1986'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 1986");
+// var Viz3 = {bands: ['classification_1987'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 1987");
+// var Viz4 = {bands: ['classification_1988'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 1988");
+// var Viz4 = {bands: ['classification_1992'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 1992");
+// var Viz4 = {bands: ['classification_2005'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (forest_other_mask, Viz1, "Forest 2005");
+
+//2b. Create a mask of pixels that are savanna (1) or other (0)
+var savanna_other_mask= lulc.eq(4)
+   .clip(buffer_cerrado);
+print (savanna_other_mask);
+
+// var Viz1 = {bands: ['classification_1985'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 1985");
+// var Viz2 = {bands: ['classification_1986'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 1986");
+// var Viz3 = {bands: ['classification_1987'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 1987");
+// var Viz4 = {bands: ['classification_1988'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 1988");
+// var Viz4 = {bands: ['classification_1992'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 1992");
+// var Viz4 = {bands: ['classification_2005'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (savanna_other_mask, Viz1, "Savanna 2005");
+
+//2c. Create a mask of pixels that are grass (1) or other (0)
+var grass_other_mask= lulc.eq(12)
+   .clip(buffer_cerrado);
+print (grass_other_mask);
+
+// var Viz1 = {bands: ['classification_1985'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 1985");
+// var Viz2 = {bands: ['classification_1986'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 1986");
+// var Viz3 = {bands: ['classification_1987'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 1987");
+// var Viz4 = {bands: ['classification_1988'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 1988");
+// var Viz4 = {bands: ['classification_1992'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 1992");
+// var Viz4 = {bands: ['classification_2005'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (grass_other_mask, Viz1, "Grass 2005");
+
+//3. Exclude water and not observed from the reclassified anthropic multiband image
+
+var forest_other_waternotobserved_mask = forest_other_mask.mask(lulc_nowater_notobserved);
+Map.addLayer (forest_other_waternotobserved_mask, Viz1, "Forest no water");
+
+var savanna_other_waternotobserved_mask = savanna_other_mask.mask(lulc_nowater_notobserved);
+Map.addLayer (savanna_other_waternotobserved_mask, Viz1, "Savanna no water")
+
+var grass_other_waternotobserved_mask = grass_other_mask.mask(lulc_nowater_notobserved);
+Map.addLayer (grass_other_waternotobserved_mask, Viz1, "Grass no water")
+
+// //4. Aggregate to 5km such that pixel value= % pixels with value 1 to the total
+var projection =  grass_other_waternotobserved_mask.projection(); //change formation accordingly
+print (projection);
+print (projection.crs());//EPSG 4326
+
+var agg_product= grass_other_waternotobserved_mask//1-formation, 0-other and NA-water & not observed
+   .reduceResolution({
+     reducer: ee.Reducer.mean(),
+     maxPixels: 35*35
+     })
+     .reproject({
+       crs: projection.crs().getInfo(),
+       scale:250 //first exporting at 250 m and then final export will be at 5000m
+     });
+print (agg_product);
+var Viz2 = {bands: ['classification_2002'], min: 0, max: 1, palette: ['blue','green', 'red']};
+Map.addLayer (agg_product, Viz2, "Aggregate formation");
+
+// Export.image.toAsset({
+//   image: agg_product,
+//   description: 'subscale_agg_grass', //change formation name
+//   region: buffer_cerrado,
+//   scale: 250, 
+//   crs: agg_product.projection().crs().getInfo(),
+//   maxPixels: 1e10
+// })
+
+
+//5. Exporting at 5km resolution
+var asset_agg_product = ee.Image("projects/ee-trishagopalakrishna/assets/subscale_agg_forest");//insert respective formation asset
+
+var agg_product2= asset_agg_product
+  .reduceResolution({
+    reducer: ee.Reducer.mean(),
+    maxPixels: 35*35
+    })
+    .reproject({
+      crs: 'EPSG: 4326',
+      scale:5000
+    });
+print (agg_product2);
+var Viz2 = {bands: ['classification_2002'], min: 0, max: 1, palette: ['blue','green', 'red']};
+Map.addLayer (agg_product2, Viz2, "Aggregate formation");
+
+Export.image.toDrive({
+  image: agg_product2,
+  description: "Mapbiomass_forest_5km", //change file name
+  folder: 'GEE things',
+  scale: 5000,
+  region: buffer_cerrado,
+  crs: projection.crs().getInfo(), //using projection from original Mapbiomas collection
+  maxPixels: 1e10
+});

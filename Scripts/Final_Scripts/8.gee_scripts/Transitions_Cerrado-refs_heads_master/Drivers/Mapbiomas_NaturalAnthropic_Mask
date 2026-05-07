@@ -1,0 +1,129 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Mapbiomas LULC Mask
+// In this script I want to create an annual raster at 5 km resolution
+// in which pixel value needs to be a whole number of number of 30m pixels
+// within the 1km pixel that are anthropogenic 
+
+//Date- 17th May 2024
+
+//Map.setCenter(-49.44, -11.85, 4);
+
+///////////////////////////////////////////////////Data loading
+
+///https://brasil.mapbiomas.org/wp-content/uploads/sites/4/2024/08/ATBD-Collection-9-v2.docx.pdf
+// Above is Mapbiomas Brasil Collection 8 handbook which provides legend ie what lulc is each pixel value
+var lulc = ee.Image("projects/mapbiomas-public/assets/brazil/lulc/collection9/mapbiomas_collection90_integration_v1");
+print (lulc);
+Map.addLayer(lulc);
+
+//This is the buffered shp of Luis' climate zone shp
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+
+///////////////////////////////////////////////////Processing
+//1. Exclude 'Water' classes and 'Not observed' completely from the Mapbiomas image collection
+
+var water_notobserved_mask= lulc.eq(26).or(lulc.eq(33)).or(lulc.eq(31)).or(lulc.eq(27))
+  .clip(buffer_cerrado);
+print (water_notobserved_mask);
+var Viz = {min: 0, max: 38, palette: ['blue', 'green', 'red']};
+Map.addLayer (water_notobserved_mask, Viz, "Water/Not observed Mask");
+
+var lulc_nowater_notobserved= water_notobserved_mask.eq(0).selfMask();
+Map.addLayer (lulc_nowater_notobserved, {}, "Excluded water and not observed");
+
+//2. Create a mask of pixels that are natural (0) or anthropic (1)
+// I follow the 'Natural/Anthropic' typology for each class. For the class 'Other Non Vegetated Areas' I consider it Anthropic
+
+var natural_anthropic_mask= lulc.eq(14).or(lulc.eq(15)).or(lulc.eq(18)).or(lulc.eq(19))
+  .or(lulc.eq(39)).or(lulc.eq(20)).or(lulc.eq(40))
+  .or(lulc.eq(62)).or(lulc.eq(41)).or(lulc.eq(36))
+  .or(lulc.eq(46)).or(lulc.eq(47)).or(lulc.eq(35))
+  .or(lulc.eq(48)).or(lulc.eq(9)).or(lulc.eq(21))
+  .or(lulc.eq(24)).or(lulc.eq(30)).or(lulc.eq(25))
+  .clip(buffer_cerrado);
+print (natural_anthropic_mask);
+
+// var Viz1 = {bands: ['classification_1985'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 1985");
+// var Viz2 = {bands: ['classification_1986'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 1986");
+// var Viz3 = {bands: ['classification_1987'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 1987");
+// var Viz4 = {bands: ['classification_1988'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 1988");
+// var Viz4 = {bands: ['classification_1992'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 1992");
+// var Viz4 = {bands: ['classification_2005'], min: 0, max: 1, palette: ['blue', 'red']};
+// Map.addLayer (natural_anthropic_mask, Viz1, "Anthropic mask 2005");
+
+//3. Exclude water and not observed from the reclassified anthropic multiband image
+var natural_anthropic_waternotobserved_mask= natural_anthropic_mask.mask(lulc_nowater_notobserved);
+//Map.addLayer (natural_anthropic_waternotobserved_mask, Viz, "Anthropic no water mask");
+
+//4. Aggregate to 1km such that pixel value= % pixels with value 1 to the total
+var projection =  natural_anthropic_mask.projection();
+print (projection);
+print (projection.crs());//EPSG 4326
+
+var agg_anthropic= natural_anthropic_waternotobserved_mask //1-anthropic, 0-not anthropic and NA-water & not observed
+  .reduceResolution({
+    reducer: ee.Reducer.mean(),
+    maxPixels: 35*35
+    })
+    .reproject({
+      crs: projection.crs().getInfo(),
+      scale:250 //first exporting at 250 m and then final export will be at 1000m
+    });
+print (agg_anthropic);
+var Viz2 = {bands: ['classification_2002'], min: 0, max: 1, palette: ['blue','green', 'red']};
+Map.addLayer (agg_anthropic, Viz2, "Aggregate anthropic mask");
+
+
+//5. Export at 1km resolution
+var anisoevi = ee.ImageCollection("projects/anisoveg/assets/evi_anisotropy"); 
+var projection2 =  anisoevi.toBands().projection();
+print (projection2);
+print (projection2.crs());//EPSG: 4326
+print (projection2.nominalScale());
+
+var asset_agg_anthropic = ee.Image("projects/ee-trishagopalakrishna/assets/subscale_agg_mapbiomas");
+
+Export.image.toDrive({
+  image: asset_agg_anthropic,
+  description: "Mapbiomass_anthropic_LULC_mask",
+  folder: 'GEE things',
+  scale: projection2.nominalScale().getInfo(),
+  region: buffer_cerrado,
+  crs: projection2.crs().getInfo(),
+  maxPixels: 1e10
+});
+
+// Exporting at 5km resolution
+var asset_agg_anthropic = ee.Image("projects/ee-trishagopalakrishna/assets/subscale_agg_mapbiomas");
+
+var agg_anthropic2= asset_agg_anthropic
+  .reduceResolution({
+    reducer: ee.Reducer.mean(),
+    maxPixels: 35*35
+    })
+    .reproject({
+      crs: 'EPSG: 4326',
+      scale:5000
+    });
+print (agg_anthropic2);
+//var Viz2 = {bands: ['classification_2002'], min: 0, max: 1, palette: ['blue','green', 'red']};
+//Map.addLayer (agg_anthropic2, Viz2, "Aggregate anthropic mask");
+
+Export.image.toDrive({
+  image: agg_anthropic2,
+  description: "Mapbiomass_anthropic_LULC_mask_5km",
+  folder: 'GEE things',
+  scale: 5000,
+  region: buffer_cerrado,
+  crs: projection.crs().getInfo(), //using projection from original Mapbiomas collection
+  maxPixels: 1e10
+});
+
+

@@ -1,0 +1,76 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var chirps_complete = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY"),
+    buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//Started on 6th Jan 2025
+//In ths script I calculate the total rainfall every month
+//from 1981-2021 to calcualte relative entropy
+
+////////////////////////1. Data EDA
+var count = chirps_complete.size();
+print('Count in entire dataset: ', count); //14610- daily precip data
+var chirps_proj= chirps_complete.first().projection();
+print (chirps_proj.nominalScale()); //5565.974539663679
+
+var date_first = ee.Date(chirps_complete.first().get('system:time_start'));
+print('Timestamp- Start date : ', date_first); // Jan 1 1981
+var date_last=chirps_complete.limit(1, 'system:time_start').first();
+print('Timestamp- End: ', date_last); // Nov 30 2024
+
+////////////////////////2. Processing
+var chirps_timeperiod = chirps_complete.filterDate('1981-01-01', '2021-12-31');
+
+var month_sum = ee.List.sequence(0,41*12).map(function(n) { // .sequence: number of years from starting year to present
+  var start = ee.Date('1981-01-01').advance(n, 'month'); // Starting date
+  var end = start.advance(1, 'month'); // Step by each iteration
+
+  return ee.ImageCollection(chirps_timeperiod)
+        .filterDate(start, end)
+        .sum()
+        .set('system:time_start', start.millis());
+});
+print(month_sum); 
+
+var collection = ee.ImageCollection(month_sum);
+//print(collection);// total precip of each month 1981-2021; 481 images, 1 for each month
+var collection_proj= collection.first().projection();
+//print (collection_proj.nominalScale()); //111319.49079327357
+Map.addLayer(collection.first());
+
+var img_collection= collection.toBands();
+print (img_collection);
+
+var cerrado_img_collection= img_collection.clip(buffer_cerrado);
+var proj= cerrado_img_collection.projection();
+//print (proj.crs()) //EPSG:4326
+//print (proj.nominalScale()); //111319.49079327357
+
+// ////////////////////////3. Export at 5x 5km 
+
+var cerrado_img_collection= img_collection.clip(buffer_cerrado); 
+var proj= cerrado_img_collection.projection();
+print (proj.crs()) //EPSG:4326
+print (proj.nominalScale()); //111319.49079327357
+
+var coarse_cerrado_img= cerrado_img_collection
+   .resample("bilinear")
+   .reproject({
+     crs:'EPSG:4326',
+     scale: 5000}
+     );
+    
+print (coarse_cerrado_img);
+var coarse_proj= coarse_cerrado_img.projection();
+print (coarse_proj.crs()) 
+print (coarse_proj.nominalScale()); 
+
+Export.image.toDrive({
+   image: coarse_cerrado_img,
+   description: "CHIRPS_monthlyrainfall",
+   folder: 'GEE things',
+   scale: coarse_proj.nominalScale().getInfo(),
+   region: buffer_cerrado,
+   crs: coarse_proj.crs().getInfo(),
+   maxPixels: 1e10
+ });
+

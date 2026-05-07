@@ -1,0 +1,82 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var MODIS_burnarea = ee.ImageCollection("MODIS/061/MCD64A1"),
+    buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//In this script, I process the latest version of MODIS fire frequency (500m) for the cerrado
+// to calculate burned area
+//Started on - 02/12/2024
+
+var count= MODIS_burnarea.size();
+//print (MODIS_burnarea);
+//print ('Count of images in collection:', count); //12 months * 24 years (2000-2024)= 288
+var dataset_projection= MODIS_burnarea.first().projection();
+//print (dataset_projection.crs()); //SR-ORG: 6974
+//print (dataset_projection.nominalScale()); //463.312 m
+
+var date = ee.Date(MODIS_burnarea.first().get('system:time_start'));
+//print('Timestamp: ', date); // ee.Date Nov 1 2000 is the first image
+
+var modis_burndate= MODIS_burnarea.select(['BurnDate']);
+
+var modis_burndate_timeperiod= modis_burndate.filterDate('2002-01-01', '2021-12-31');
+var first= (modis_burndate_timeperiod.first());
+//print (first);
+Map.addLayer (modis_burndate_timeperiod.first(),{min:0, max:366}, 'Burned areas 2002-2021' );
+
+///////////////////////1. Monthly binary (burn/no burn)
+var conditional = function(image) {
+  return image.gt(0)
+    .copyProperties(image, ["system:time_start", "system:time_end"]);
+};
+
+var modis_burn_conditional= modis_burndate_timeperiod.map(conditional);
+
+Map.addLayer(modis_burn_conditional.first()); //1- Burn, masked- no burn; I guess masked means NA
+
+//print (modis_burn_conditional);
+// var count=modis_burn_conditional.size();
+//print (count); // 240 images in collection
+
+/////////////////////// 2. Area of a coarse 5 x 5km resolution that burns every month
+modis_burn_conditional
+print (modis_burn_conditional);
+
+var img_modis_burn_conditional= modis_burn_conditional
+  .toBands()
+  .toDouble();
+
+var buffer_cerrado_img_modis_burn_conditional= img_modis_burn_conditional.clip(buffer_cerrado);
+print (buffer_cerrado_img_modis_burn_conditional);
+Map.addLayer(buffer_cerrado_img_modis_burn_conditional.select('2005_09_01_BurnDate'));
+
+// var projection= buffer_cerrado_img_modis_burn_conditional.projection();
+// print (projection.nominalScale());
+// print (projection.crs()); //SR- ORG:6974
+
+var unmask_img= buffer_cerrado_img_modis_burn_conditional.unmask(0);
+var agg_burn= unmask_img //1-burn, 0- unburned
+  .reduceResolution({
+    reducer: ee.Reducer.mean(),
+    maxPixels: 15*15
+    })
+    .reproject({
+      crs:  'EPSG:4326',
+      scale:5000
+    });
+print (agg_burn);
+Map.addLayer(agg_burn.select('2005_09_01_BurnDate'));
+
+var projection= agg_burn.projection();
+print (projection.nominalScale()); //5000 m
+print (projection.crs()); //EPSG: 4326
+
+Export.image.toDrive({
+  image: agg_burn, 
+  description: "bufferCerrado_burnarea_5km",
+  folder:'GEE things', 
+  scale: projection.nominalScale().getInfo(),
+  crs: 'EPSG:4326',
+  maxPixels: 1e12,
+  region: buffer_cerrado
+});
+

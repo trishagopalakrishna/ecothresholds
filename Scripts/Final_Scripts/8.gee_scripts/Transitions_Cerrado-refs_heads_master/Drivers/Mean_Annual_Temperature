@@ -1,0 +1,70 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var buffer_cerrado = ee.FeatureCollection("projects/ee-trishagopalakrishna/assets/Buffer_Cerrado_Climate_Zones"),
+    era5_monthly = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// MAT
+// In this script, I use the ERA 5 monthly aggregated product and process 
+// MAT at 25sqkm cell size. I use ERA 5 based on Burton et al., 2018 and 
+// hence I use the 2m temperature band
+
+//Date- 22nd Jan 2025
+
+////////////////////////1. Data EDA
+var count = era5_monthly.size();
+//print('Count in entire dataset: ', count); //899
+var era5_proj= era5_monthly.first().projection();
+//print (era5_proj.nominalScale()); //11131.949079327358
+
+var date_first = ee.Date(era5_monthly.first().get('system:time_start'));
+//print('Timestamp- Start date : ', date_first); // Feb 1950
+
+////////////////////////2. Processing
+var temp = era5_monthly.select(['temperature_2m']);
+
+var temp_timeperiod = temp.filterDate('1981-01-01', '2021-12-31');
+//print (temp_timeperiod.size()); //492 which is correct
+
+var month_mean = ee.List.sequence(0, (2021-1981)).map(function(n){
+        var start = ee.Date('1981-01-01').advance(n, 'year'); // Starting date
+        var end = start.advance(1, 'year'); // Step by each iteration
+        
+        return ee.ImageCollection(temp_timeperiod)
+        .filterDate(start, end)
+        .reduce(ee.Reducer.mean())
+        //.set('year', year)
+        //.set('system:time_start', start.millis());
+        });
+
+print(month_mean, "byYear");
+
+var imgcollection_monthmean=ee.ImageCollection(month_mean);
+print (imgcollection_monthmean);
+var meanannualtemp= imgcollection_monthmean.reduce(ee.Reducer.mean());
+
+////////////////////////3. Setting resolution and exporting at 5 x 5km
+var mean_cerrado_mat= meanannualtemp.clip(buffer_cerrado); 
+//Map.addLayer(mean_cerrado_mat);
+var proj= mean_cerrado_mat.projection();
+//print (proj.crs()) //EPSG:4326
+//print (proj.nominalScale()); //111319.49079327357
+
+var coarse_mean_cerrado_mat= mean_cerrado_mat
+  .resample("bilinear")
+  .reproject({
+    crs:'EPSG:4326',
+    scale: 5000}
+    );
+print (coarse_mean_cerrado_mat);
+var coarse_proj= coarse_mean_cerrado_mat.projection();
+print (coarse_proj.crs()) 
+print (coarse_proj.nominalScale()); 
+
+Export.image.toDrive({
+  image: coarse_mean_cerrado_mat,
+  description: "ERA5_MAT",
+  folder: 'GEE things',
+  scale: coarse_proj.nominalScale().getInfo(),
+  region: buffer_cerrado,
+  crs: coarse_proj.crs().getInfo(),
+  maxPixels: 1e10
+});
